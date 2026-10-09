@@ -97,6 +97,7 @@
 
 .field {
   display: grid;
+  align-content: start; /* in gestreckten Rasterzellen nicht zwischen Label und Feld verteilen */
   gap: 6px;
   min-width: 0;
 }
@@ -2907,4 +2908,537 @@ a.list-item:hover {
   .task-group {
     padding-left: var(--sp-4);
   }
+}
+
+/* ---------------------------------------------------------------- Ordnerauswahl */
+
+.picker {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.picker-list {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--bg);
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: var(--r-sm);
+}
+
+.picker-row:hover {
+  background: var(--surface-2);
+}
+
+.picker-row[data-selected="true"] {
+  background: var(--accent-soft);
+}
+
+.picker-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  text-align: left;
+}
+
+.picker-label svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.picker-row[data-selected="true"] .picker-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.picker-empty {
+  padding: var(--sp-3);
+}
+
+/* ---------------------------------------------------------------- Posteingangs-Agent */
+
+.grid-kpi-5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+/* Bei fünf Kacheln darf die Beschriftung zweizeilig sein */
+.grid-kpi-5 .kpi-label {
+  white-space: normal;
+  line-height: 1.3;
+}
+
+@media (max-width: 1279px) {
+  .grid-kpi-5 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .grid-kpi-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.mailbox-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.mailbox-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.mailbox-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.mailbox-state {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.agent-safety {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+
+.agent-safety svg {
+  color: var(--ok);
+  flex-shrink: 0;
+}
+
+.agent-mail,
+.agent-target {
+  display: block;
+  max-width: 220px;
+  white-space: normal;
+}
+
+.agent-mail .cell-sub,
+.agent-target .cell-sub,
+.agent-mail .cell-main,
+.agent-target .cell-main {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-target {
+  max-width: 200px;
+}
+
+.agent-file {
+  display: inline-block;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.agent-detail {
+  display: grid;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text-2);
+}
+
+.agent-excerpt {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.agent-detail-actions {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  font-size: var(--fs-16);
+}
+
+.section-title svg {
+  color: var(--danger);
+}
+
+/* Prüfliste */
+
+.review-card[data-tone="danger"] {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.review-mail {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.review-from {
+  display: grid;
+}
+
+.review-subject {
+  font-size: var(--fs-16);
+}
+
+.review-excerpt {
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+.review-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--bg);
+  font-size: var(--fs-13);
+  min-width: 0;
+}
+
+.review-file svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.review-file .file-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.review-flag {
+  font-size: var(--fs-12);
+  color: var(--warn);
+}
+
+.review-side {
+  padding: var(--sp-4) var(--sp-5);
+  border-left: 1px solid var(--border);
+}
+
+.review-suggestion {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.review-suggestion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.review-label {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.review-project {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.review-folder {
+  font-size: var(--fs-13);
+  color: var(--accent-text);
+}
+
+.review-none {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--warn);
+  font-weight: 600;
+  font-size: var(--fs-14);
+}
+
+.review-reason {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.review-edit {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.review-chosen {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: 6px var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-ctl);
+  background: var(--accent-soft);
+  font-size: var(--fs-13);
+}
+
+.review-matches {
+  list-style: none;
+  margin: 0;
+  padding: var(--sp-1);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+}
+
+.review-matches button {
+  width: 100%;
+  padding: 6px var(--sp-2);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--fs-13);
+  text-align: left;
+}
+
+.review-matches button:hover {
+  background: var(--surface-3);
+}
+
+.review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.review-remember {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text-2);
+}
+
+.review-remember .select-wrap {
+  width: 230px;
+}
+
+.review-remember .select {
+  height: 30px;
+}
+
+.review-buttons {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* Postfächer, Regeln, Schwellen */
+
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.rule-list {
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.rule-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.rule-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.rule-main .cell-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rule-form {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.rule-form-inline {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.rule-form-inline .input {
+  flex: 1;
+}
+
+.rules-list {
+  margin: 0;
+  padding-left: var(--sp-5);
+  display: grid;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  color: var(--text-2);
+}
+
+.thresholds {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.range {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.threshold-scale {
+  display: flex;
+  height: 8px;
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  gap: 2px;
+}
+
+.seg-none {
+  background: var(--surface-3);
+}
+
+.seg-review {
+  background: var(--warn);
+}
+
+.seg-auto {
+  background: var(--ok);
+}
+
+.threshold-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .review-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-side {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}
+
+@media (max-width: 640px) {
+  .review-mail,
+  .review-side,
+  .review-actions,
+  .mailbox-row,
+  .rule-row,
+  .rule-form,
+  .agent-safety {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
+
+  .review-remember {
+    width: 100%;
+  }
+
+  .review-remember .select-wrap {
+    flex: 1;
+    width: auto;
+  }
+
+  .review-buttons {
+    width: 100%;
+  }
+
+  .review-buttons .btn {
+    flex: 1 1 auto;
+  }
+
+  .mailbox-row {
+    flex-wrap: wrap;
+  }
+
+  .mailbox-state {
+    justify-items: start;
+    text-align: left;
+  }
+}
+
+.invoice-label {
+  display: inline-block;
+  max-width: 165px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
 }

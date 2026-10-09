@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Receipt } from "lucide-react";
+import { Receipt, Send } from "lucide-react";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, DataTable, EmptyState, ErrorState, KpiCard, Pill, TableSkeleton, Tabs, type Column } from "../components/ui";
@@ -73,7 +73,16 @@ export function Invoices() {
       },
       sortValue: (i) => projects.get(i.projectId)?.bauherrLabel ?? "",
     },
-    { key: "label", header: "Rechnung", render: (i) => i.label, sortValue: (i) => i.label },
+    {
+      key: "label",
+      header: "Rechnung",
+      render: (i) => (
+        <span className="invoice-label" title={i.label}>
+          {i.label}
+        </span>
+      ),
+      sortValue: (i) => i.label,
+    },
     { key: "amount", header: "Betrag", align: "right", render: (i) => formatMoney(i.amountCents), sortValue: (i) => i.amountCents },
     {
       key: "status",
@@ -90,8 +99,15 @@ export function Invoices() {
       align: "right",
       render: (i) =>
         isOpen(i) ? (
-          <Button size="sm" variant={due.has(i.id) ? "primary" : "default"} onClick={() => void markSent(i)}>
-            Als versendet markieren
+          <Button
+            size="sm"
+            variant={due.has(i.id) ? "primary" : "default"}
+            icon={<Send size={13} />}
+            onClick={() => void markSent(i)}
+            aria-label={`${i.label} als versendet markieren`}
+            title="Als versendet markieren"
+          >
+            Versendet
           </Button>
         ) : null,
     },

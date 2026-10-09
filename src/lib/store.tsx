@@ -49,8 +49,8 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
       if (user.role !== "freiberufler") {
         const plan = planAlertTaskSync(computeAlerts(d, today), d.tasks, d.projects, today);
         if (plan.create.length || plan.close.length) {
-          for (const t of plan.create) await repo.createTask(t);
-          for (const id of plan.close) await repo.updateTask(id, { status: "erledigt" });
+          // parallel, damit der erste Start nicht auf jede einzelne Aufgabe wartet
+          await Promise.all([...plan.create.map((t) => repo.createTask(t)), ...plan.close.map((id) => repo.updateTask(id, { status: "erledigt" }))]);
           d = await repo.load(user);
           if (mine !== seq.current) return;
         }

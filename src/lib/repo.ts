@@ -3,7 +3,7 @@
 // Die UI spricht nie direkt mit Supabase.
 
 import type { SessionUser } from "./session";
-import type { AgentRule, AgentSettings, Dataset, MailboxStatus, Project, ProjectDocument, Task } from "./types";
+import type { AgentRule, AgentSettings, Dataset, Mailbox, MailboxStatus, Project, ProjectDocument, Task } from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -35,6 +35,31 @@ export interface UploadInput {
 
 export type NewAgentRule = Pick<AgentRule, "kind" | "match" | "projectId" | "folderPath">;
 
+/** Ergebnis eines Agentenlaufs ("Jetzt prüfen") */
+export interface AgentRunSummary {
+  fetched: number;
+  filed: number;
+  toReview: number;
+  ignored: number;
+  errors: number;
+  duplicates: number;
+  /** Mails in pausierten Postfächern, die liegen bleiben */
+  waitingPaused: number;
+}
+
+/** Entscheidung eines Menschen in der Prüfliste */
+export interface ReviewResolution {
+  action: "bestaetigen" | "aendern" | "ignorieren";
+  /** bei "aendern": Zielprojekt */
+  projectId?: string;
+  /** bei "aendern": konkreter Ordnerpfad (Datum eingesetzt) */
+  folderPath?: string;
+  /** Regel merken: Absender → Projekt / Absender → Ordner / Absender ignorieren */
+  rememberRule?: "absender_projekt" | "absender_ordner" | "ignorieren" | null;
+}
+
+export type MailboxInput = Pick<Mailbox, "label" | "address" | "provider" | "watchFolder"> & { id?: string };
+
 /** Fehler, den die Datenbank (RLS) bzw. das Demo-Repo bei fehlender Berechtigung meldet. */
 export class PermissionError extends Error {
   constructor(message = "Keine Berechtigung für diese Aktion") {
@@ -61,4 +86,11 @@ export interface Repo {
   saveAgentRule(rule: NewAgentRule): Promise<AgentRule>;
   removeAgentRule(id: string): Promise<void>;
   saveAgentSettings(settings: AgentSettings): Promise<void>;
+  saveMailbox(input: MailboxInput): Promise<Mailbox>;
+
+  /** Posteingänge lesen und zuordnen (Demo: nächste Lieferung erfundener Mails; später: Edge Function). */
+  runAgent(): Promise<AgentRunSummary>;
+  resolveReview(attachmentId: string, resolution: ReviewResolution): Promise<void>;
+  /** Automatisch abgelegter Anhang war falsch: zurück in die Prüfliste (zählt gegen die Trefferquote). */
+  reportWrongFiling(attachmentId: string): Promise<void>;
 }

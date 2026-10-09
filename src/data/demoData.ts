@@ -129,6 +129,9 @@ const SPECIAL: ProjectSpec[] = [
   // 8, 9: abgeschlossen
   { stage: 12, lastAgo: 38, status: "abgeschlossen", name: "Brandner", town: "Blaustein", companyId: "c-bz" },
   { stage: 12, lastAgo: 96, status: "abgeschlossen", name: "Gruber", town: "Laupheim", companyId: "c-lh" },
+  // 10, 11: gleicher Nachname in zwei Orten (für mehrdeutige Mails an den Agenten)
+  { stage: 5, lastAgo: 6, name: "Vogel", town: "Ulm", companyId: "c-bz" },
+  { stage: 4, lastAgo: 3, name: "Vogel", town: "Senden", companyId: "c-lh" },
 ];
 
 const RANDOM_COUNT = 34;
@@ -505,6 +508,7 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
 
   let itemNo = 1;
   let attNo = 1;
+  let correctedOnce = false;
   for (let day = 6; day >= 0; day--) {
     const date = addDays(today, -day);
     const weekend = [0, 6].includes(new Date(`${date}T12:00:00Z`).getUTCDay());
@@ -517,7 +521,8 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
       const roll = r.next();
       const itemId = `in-${pad(itemNo++)}`;
       const attId = `att-${pad(attNo++)}`;
-      const at = `${date}T${pad(r.int(7, 17), 2)}:${pad(r.int(0, 59), 2)}:00`;
+      // Heute nur frühe Uhrzeiten, damit nichts "in der Zukunft" liegt, wenn die Demo morgens geöffnet wird
+      const at = day === 0 ? `${date}T06:${pad(5 + k * 9, 2)}:00` : `${date}T${pad(r.int(7, 17), 2)}:${pad(r.int(0, 59), 2)}:00`;
       const mailbox = r.pick(mailboxes.slice(0, 2));
       if (roll < 0.62) {
         const [from, subj, file, folder, needs] = r.pick(FILED);
@@ -527,8 +532,13 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
         const subject = subj.replace("{nr}", p.abmNr!).replace("{name}", p.bauherrLabel).replace("{n}", String(r.int(100, 999)));
         const conf = 0.9 + r.int(0, 9) / 100;
         inboxItems.push({ id: itemId, mailboxId: mailbox.id, messageId: `<demo-${itemId}@abm-demo.example>`, receivedAt: at, fromName, fromEmail, subject, bodyExcerpt: `Anbei erhalten Sie die Unterlagen zu ${subject}.`, status: "abgelegt", projectId: p.id, confidence: conf, reason: `ABM-Nr. ${p.abmNr} im Betreff`, createdAt: at });
-        inboxAttachments.push({ id: attId, itemId, fileName: file, mime: "application/pdf", sizeBytes: r.int(120, 2400) * 1024, storagePath: null, projectId: p.id, folderPath: folder, confidence: conf, status: "abgelegt", documentId: null, corrected: r.chance(0.06) });
+        inboxAttachments.push({ id: attId, itemId, fileName: file, mime: "application/pdf", sizeBytes: r.int(120, 2400) * 1024, storagePath: null, projectId: p.id, folderPath: folder, confidence: conf, status: "abgelegt", documentId: null, corrected: false });
         agentDocs.push({ projectId: p.id, folder, date, name: file, attachmentId: attId });
+        // Genau eine automatische Ablage wurde später korrigiert (realistische Trefferquote in der Demo)
+        if (!correctedOnce && day >= 2) {
+          inboxAttachments[inboxAttachments.length - 1].corrected = true;
+          correctedOnce = true;
+        }
         filed++;
       } else if (roll < 0.85) {
         const [fromName, fromEmail] = splitFrom("Newsletter Baustoffe Süd <news@newsletter.baustoffe.example>");
@@ -583,10 +593,11 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
   ];
   PENDING.forEach(([from, subject, excerpt, file, mime, conf, folder, reason, projectId], i) => {
     const itemId = `in-${pad(itemNo++)}`;
-    const at = `${today}T${pad(7 + i, 2)}:${pad(12 + i * 9, 2)}:00`;
+    const at = `${today}T07:${pad(12 + i * 14, 2)}:00`;
     const [fromName, fromEmail] = splitFrom(from);
     inboxItems.push({ id: itemId, mailboxId: "mb-1", messageId: `<demo-${itemId}@abm-demo.example>`, receivedAt: at, fromName, fromEmail, subject, bodyExcerpt: excerpt, status: "pruefen", projectId, confidence: conf, reason, createdAt: at });
-    inboxAttachments.push({ id: `att-${pad(attNo++)}`, itemId, fileName: file, mime, sizeBytes: r.int(300, 3800) * 1024, storagePath: null, projectId, folderPath: folder, confidence: conf, status: "pruefen", documentId: null, corrected: false });
+    // Vorschlag wie vom Agenten: Datumsordner mit dem Maildatum
+    inboxAttachments.push({ id: `att-${pad(attNo++)}`, itemId, fileName: file, mime, sizeBytes: r.int(300, 3800) * 1024, storagePath: null, projectId, folderPath: folder ? concretePath(folder, today) : null, confidence: conf, status: "pruefen", documentId: null, corrected: false });
   });
   const run = agentRuns.find((x) => x.id === `run-${today}`);
   if (run) {

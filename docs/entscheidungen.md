@@ -188,3 +188,37 @@ Neueste Einträge unten.
 - **Demo-Aufgabe "Vertrag nachfassen"** entfernt, sie entsteht jetzt automatisch aus der Warnung (sonst doppelt).
 - **Rechnungen-Seite** (BUILD.md Abschnitt 5, bisher Platzhalter) mitgebaut: Summen oben (jetzt fällig, geplant, versendet, bezahlt),
   Tabs Nicht versendet · Versendet · Bezahlt · Alle, "Als versendet markieren". Jetzt fällige zuerst.
+
+## Schritt 7 – Posteingangs-Agent (Demo)
+
+- **`src/agent/classify.ts`** ist eine reine Funktion (Mail + Kontext → Entscheidung je Anhang), gedacht für Browser-Demo und Edge Function.
+  Reihenfolge wie BUILD.md: Dublette → Filter → Projekt → Ordner → Sicherheit = min(Projekt, Ordner) → Schwellen.
+- **Sicherheitswerte je Erkennungsweg** (Konstanten `CONFIDENCE`, Annahmen, nach dem Echttest in Schritt 9 zu justieren):
+  ABM-Nr. 98 %, Hausbau-Nr. 97 %, Regel Absender → Projekt 95 %, bekannter Absender mit genau einem Projekt 90 %,
+  Nachname + Ort/Straße 85 % (also standardmäßig Prüfliste mit Vorschlag), Regel Absender → Ordner 95 %,
+  Schlüsselwort im Betreff/Dateinamen 93 %, nur im Text 80 %, mehrere Ordner gleich gut 60 %, Ordner nur nach Absenderart 70 %.
+- **KI:** nur wenn deterministisch kein Projekt eindeutig ist (bzw. für den Ordner, wenn Regel/Schlüsselwort unsicher sind).
+  Anfrage enthält Betreff, Absender, Dateinamen, max. 500 Zeichen Textauszug, max. 20 vorselektierte Projekte (ohne Kontaktdaten) und
+  die erlaubten Ordnerpfade. Antwort wird strikt geprüft (nur Kandidaten-IDs, nur Vorlagenpfade, sonst verworfen und begründet).
+  **KI-Sicherheit ist auf 80 % gedeckelt, ein KI-Vorschlag allein legt also nie automatisch ab.** Regeln überstimmen die KI.
+  Im Demo-Modus ersetzt `demoAi` das Modell; es "fällt" absichtlich auf eine Prompt-Injection herein, die Prüfung verwirft das.
+- **Filter:** Ignorier-Liste (Adresse oder @domain), Newsletter (List-Unsubscribe-Kopf oder typische Absender + "abmelden"),
+  Mails ohne Anhang → ignoriert. Bilder < 15 KB gelten als Signaturbild. Ausführbare Dateien und Archive mit Passwort → "Fehler"
+  (nie abgelegt, in der Prüfliste unter "Nicht abgelegt", nur "Als erledigt markieren"). CAD-Dateien → ignoriert (bleiben auf dem Fileserver).
+- **Mails ohne Anhang** werden im Prototyp ignoriert. Textmails mit Projektbezug (z. B. Rückfragen vom Amt) könnten später als Aufgabe
+  in die Prüfliste kommen; offene Frage an ABM.
+- **Datumsordner** werden mit dem Maildatum benannt (nicht mit dem Ablagedatum).
+- **Demo-Postfächer** (`src/agent/demoMailSource.ts`): 25 erfundene Mails in 3 Lieferungen, je "Jetzt prüfen" eine Lieferung,
+  passend zur Phase der Projekte. Enthalten: Behördenpost, Vermesser, Strom, Newsletter, Bauherr mit zwei Projekten ("Vogel"),
+  ausführbare Datei, CAD, Dublette, Prompt-Injection, Signaturbilder und eine Mail im pausierten Postfach "Projektleitung",
+  die erst nach dem Fortsetzen gelesen wird. Lieferung 2 enthält eine Folgemail des Vermessers, an der man sieht, dass
+  "Regel merken" wirkt (mit Regel: abgelegt, ohne: Prüfliste).
+- **Prüfliste:** Bestätigen · Ändern (Projektsuche + Ordnerbaum aus der Vorlage, Datumsordner mit Maildatum vorbelegt) · Ignorieren,
+  "Regel merken" (Absender → Projekt, → Ordner, immer ignorieren), "Als Aufgabe" (Quelle Agent). Jede Entscheidung → `agent_feedback`.
+- **Trefferquote (7 Tage)** = automatisch abgelegte Anhänge ohne spätere Korrektur / alle automatisch abgelegten. "Falsch zugeordnet"
+  im Agent-Dashboard schickt einen abgelegten Anhang zurück in die Prüfliste; die Korrektur **verschiebt die vorhandene Kopie**
+  (keine zweite Kopie). Von Hand bestätigte Zuordnungen zählen nicht als automatisch.
+- **Neue Postfächer** starten pausiert; Zugangsdaten werden nie in der App eingegeben (Supabase Vault, Schritt 9).
+  Schwellen ändern nur Admins (wie RLS in 0002).
+- **Store-Abgleich der Warnungsaufgaben** legt Aufgaben jetzt parallel an (vorher nacheinander, erster Start dauerte ~1 s länger).
+- **Screenshot-Skript** wartet, bis keine Lade-Platzhalter mehr sichtbar sind, statt einer festen Zeit.

@@ -47,6 +47,13 @@ describe("Demo-Daten", () => {
     }
   });
 
+  it("Vorschläge der Prüfliste sind konkrete Ordner (Datum eingesetzt)", () => {
+    for (const a of db.inboxAttachments.filter((x) => x.folderPath)) {
+      expect(a.folderPath, a.fileName).not.toContain("{datum}");
+      expect(isAllowedFolder(a.folderPath!, db.folderTemplates)).toBe(true);
+    }
+  });
+
   it("legt Dokumente nur in Ordner der Vorlage", () => {
     for (const d of db.documents) expect(isAllowedFolder(d.folderPath, db.folderTemplates), d.folderPath).toBe(true);
   });

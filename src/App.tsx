@@ -5,6 +5,9 @@ import { createRepo } from "./lib/createRepo";
 import { SessionProvider } from "./lib/session";
 import { DataProvider } from "./lib/store";
 import { Dashboard } from "./pages/Dashboard";
+import { AgentDashboard } from "./pages/agent/AgentDashboard";
+import { Mailboxes } from "./pages/agent/Mailboxes";
+import { ReviewList } from "./pages/agent/ReviewList";
 import { Invoices } from "./pages/Invoices";
 import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
@@ -29,9 +32,9 @@ export function App() {
               <Route path="pipeline" element={<Pipeline />} />
               <Route path="aufgaben" element={<Tasks />} />
               <Route path="rechnungen" element={<Invoices />} />
-              <Route path="agent" element={<Placeholder title="Agent-Dashboard" step="Schritt 7" />} />
-              <Route path="agent/pruefung" element={<Placeholder title="Prüfliste" step="Schritt 7" />} />
-              <Route path="agent/postfaecher" element={<Placeholder title="Postfächer" step="Schritt 7" />} />
+              <Route path="agent" element={<AgentDashboard />} />
+              <Route path="agent/pruefung" element={<ReviewList />} />
+              <Route path="agent/postfaecher" element={<Mailboxes />} />
               <Route path="einstellungen" element={<Placeholder title="Einstellungen" step="Schritt 8" />} />
               <Route path="hilfe" element={<Placeholder title="Hilfe" step="Schritt 10" />} />
               <Route path="styleguide" element={<Styleguide />} />

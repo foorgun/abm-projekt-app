@@ -21,5 +21,9 @@ export function createSupabaseRepo(): Repo {
     saveAgentRule: fail,
     removeAgentRule: fail,
     saveAgentSettings: fail,
+    saveMailbox: fail,
+    runAgent: fail,
+    resolveReview: fail,
+    reportWrongFiling: fail,
   };
 }

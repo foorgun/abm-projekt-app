@@ -22,7 +22,9 @@ for (const w of widths) {
   page.on("console", (m) => m.type() === "error" && errors.push(`${w.name} console: ${m.text()}`));
   for (const route of targets) {
     await page.goto(`${base}/#${route}`, { waitUntil: "networkidle" });
-    await page.waitForTimeout(400);
+    // warten, bis die Daten geladen sind (keine Lade-Platzhalter mehr), höchstens 5 s
+    await page.waitForFunction(() => !document.querySelector(".skeleton"), null, { timeout: 5000 }).catch(() => errors.push(`${w.name} ${route}: lädt nach 5 s noch`));
+    await page.waitForTimeout(200);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     if (overflow > 0) errors.push(`${w.name} ${route}: horizontal ${overflow}px Überlauf`);
     const slug = route.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "dashboard";

@@ -17,3 +17,6 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - `08 Bauantrag/02 Bauantragspläne/01 Blanko/02 DWGs` liegt in der Vorlage, aber CAD-Dateien bleiben laut Regel auf dem
   Fileserver. Ordner in der App ausblenden oder nur als Hinweis zeigen?
 - Wer pflegt Aufgaben: auch Freiberufler (eigene Aufgaben), oder nur Mitarbeiter? (Im Prototyp: nur Mitarbeiter.)
+- Agent: Sollen Mails ohne Anhang mit Projektbezug (z. B. Rückfrage vom Amt) als Aufgabe oder in der Prüfliste landen?
+- Agent: Passen die Sicherheitswerte (z. B. Nachname + Ort = 85 %, also immer Prüfliste)? Nach dem Testlauf mit 20 echten Mails anpassen.
+- Agent: Wer darf Regeln anlegen und Schwellen ändern (im Prototyp: Regeln alle Mitarbeiter, Schwellen nur Admin)?
