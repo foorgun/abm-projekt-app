@@ -80,7 +80,7 @@ export function computeAlerts(snapshot: Snapshot, today: string): Alert[] {
           kind: "contract_open",
           severity: days >= ALERT_RULES.contractReturnUrgentDays ? "dringend" : "hinweis",
           projectId: p.id,
-          title: "ABM-Vertrag noch nicht zurück",
+          title: "Vertrag noch nicht zurück",
           detail: `${days} Tage seit Versand`,
           days,
         });

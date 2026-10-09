@@ -45,7 +45,7 @@ describe("Rechnungen", () => {
     const alerts = computeAlerts(snap([reached], [planned]), TODAY);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toMatchObject({ severity: "hinweis", days: 3 });
-    expect(alerts[0].detail).toContain("Baugenehmigung");
+    expect(alerts[0].detail).toContain("seit Genehmigung");
   });
 
   it("warnt nicht vor dem Fälligkeitsdatum", () => {

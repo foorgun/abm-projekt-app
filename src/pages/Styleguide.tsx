@@ -73,10 +73,10 @@ const MONTHS = [
 
 const PHASES = [
   { label: "Plangespräch", value: 6 },
-  { label: "ABM-Vertrag versendet", value: 4 },
-  { label: "ABM-Vertrag zurück", value: 9 },
+  { label: "Vertrag versendet", value: 4 },
+  { label: "Vertrag zurück", value: 9 },
   { label: "Übergabe Baugesuch", value: 12 },
-  { label: "Baugenehmigung", value: 7 },
+  { label: "Genehmigung", value: 7 },
 ];
 
 interface Row {
@@ -131,10 +131,10 @@ export function Styleguide() {
   const [dialog, setDialog] = useState(false);
   const [steps, setSteps] = useState<StepperItem[]>([
     { key: "plangespraech", label: "Plangespräch", date: "2026-01-12" },
-    { key: "vertrag_versendet", label: "ABM-Vertrag versendet", date: "2026-01-20" },
-    { key: "vertrag_zurueck", label: "ABM-Vertrag zurück", date: null },
+    { key: "vertrag_versendet", label: "Vertrag versendet", date: "2026-01-20" },
+    { key: "vertrag_zurueck", label: "Vertrag zurück", date: null },
     { key: "baugesuch_uebergabe", label: "Übergabe Baugesuch", date: "2026-03-02" },
-    { key: "baugenehmigung", label: "Baugenehmigung", date: null },
+    { key: "baugenehmigung", label: "Genehmigung", date: null },
     { key: "baufreigabe", label: "Baufreigabe", date: null },
   ]);
 

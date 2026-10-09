@@ -44,7 +44,13 @@ export function Stepper({
         const state = states[i];
         const stateText = { done: "erledigt", current: "aktueller Schritt", missing: "fehlt noch", open: "offen" }[state];
         return (
-          <li key={it.key} className="step" data-state={state} aria-current={state === "current" ? "step" : undefined}>
+          <li
+            key={it.key}
+            className="step"
+            data-state={state}
+            data-prev-done={i > 0 && states[i - 1] === "done"}
+            aria-current={state === "current" ? "step" : undefined}
+          >
             <span className="step-dot" aria-hidden>
               {state === "done" ? <Check size={14} strokeWidth={3} /> : i + 1}
             </span>
@@ -74,9 +80,19 @@ export function Stepper({
                 data-editable={Boolean(onChangeDate)}
                 disabled={!onChangeDate}
                 onClick={() => setEditing(it.key)}
-                aria-label={onChangeDate ? `Datum für ${it.label} bearbeiten` : undefined}
+                title={it.date ? formatDate(it.date) : undefined}
+                aria-label={onChangeDate ? `Datum für ${it.label} bearbeiten${it.date ? `, ${formatDate(it.date)}` : ""}` : undefined}
               >
-                {it.date ? formatDate(it.date) : state === "missing" ? "fehlt" : "–"}
+                {it.date ? (
+                  <>
+                    <span className="date-short">{formatDate(it.date).replace(/\.(\d{2})(\d{2})$/, ".$2")}</span>
+                    <span className="date-long">{formatDate(it.date)}</span>
+                  </>
+                ) : state === "missing" ? (
+                  "fehlt"
+                ) : (
+                  "–"
+                )}
                 {onChangeDate && <Pencil size={11} aria-hidden />}
               </button>
             )}

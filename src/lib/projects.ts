@@ -40,6 +40,56 @@ export function missingSteps(project: Project, steps: StepDefinition[]): StepDef
   return steps.slice(0, Math.max(0, last)).filter((s) => !project.steps[s.key]);
 }
 
+// ---------------------------------------------------------------------------
+// Stufen (Pipeline): fassen mehrere Schritte zusammen (step_definitions.stage)
+// ---------------------------------------------------------------------------
+
+export interface Stage {
+  name: string;
+  index: number;
+  steps: StepDefinition[];
+}
+
+/** Stufen in Reihenfolge ihres ersten Schritts. */
+export function allStages(steps: StepDefinition[]): Stage[] {
+  const out: Stage[] = [];
+  for (const s of steps) {
+    let st = out.find((x) => x.name === s.stage);
+    if (!st) {
+      st = { name: s.stage, index: out.length, steps: [] };
+      out.push(st);
+    }
+    st.steps.push(s);
+  }
+  return out;
+}
+
+/**
+ * Stufe eines Projekts = Stufe des Schritts, der nach der aktuellen Phase ansteht (dort wird gerade gearbeitet).
+ * Ohne erledigten Schritt die erste Stufe, mit allen Schritten erledigt die letzte.
+ */
+export function stageOf(project: Project, steps: StepDefinition[]): Stage {
+  const stages = allStages(steps);
+  const upcoming = steps[phaseOf(project, steps).index + 1];
+  return upcoming ? stages.find((s) => s.name === upcoming.stage)! : stages[stages.length - 1];
+}
+
+/**
+ * Ziel beim Verschieben in die nächste Stufe: erster offener Schritt der nächsten Stufe.
+ * `skipped` nennt offene Schritte davor, die danach als "fehlt" erscheinen.
+ */
+export function stageMoveTarget(project: Project, steps: StepDefinition[]): { stage: Stage; step: StepDefinition; skipped: StepDefinition[] } | null {
+  const stages = allStages(steps);
+  const current = stageOf(project, steps);
+  const next = stages[current.index + 1];
+  if (!next) return null;
+  const step = next.steps.find((s) => !project.steps[s.key]);
+  if (!step) return null;
+  const idx = steps.indexOf(step);
+  const skipped = steps.slice(0, idx).filter((s) => !project.steps[s.key]);
+  return { stage: next, step, skipped };
+}
+
 export function projectTitle(p: Project): string {
   return p.abmNr && p.abmNr !== "Bauvoranfrage" ? `${p.abmNr} · ${p.bauherrLabel}` : `${p.bauherrLabel} (Bauvoranfrage)`;
 }

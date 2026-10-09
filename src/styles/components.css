@@ -1056,6 +1056,12 @@ kbd {
 
 /* ---------------------------------------------------------------- Stepper */
 
+/*
+ * Schritte sind so breit wie ihr längstes Wort (kein Silbentrennen), Restplatz wird gleich verteilt.
+ * Reicht die Breite nicht, scrollt der Stepper seitlich statt Wörter zu trennen.
+ * Verbindungslinien: jede Stufe zeichnet eine linke (::before) und rechte (::after) Hälfte bis zur Mitte,
+ * damit die Linien auch bei unterschiedlich breiten Schritten genau an den Punkten enden.
+ */
 .stepper {
   display: flex;
   list-style: none;
@@ -1067,28 +1073,40 @@ kbd {
 .step {
   position: relative;
   flex: 1 1 0;
-  min-width: 76px;
   display: grid;
   grid-template-rows: 28px 1fr auto; /* Punkt · Name · Datum: Daten stehen auf einer Linie */
   justify-items: center;
   gap: 6px;
-  padding: 0 4px;
+  padding: 0 3px;
   text-align: center;
 }
 
-/* Verbindungslinie zum vorigen Schritt */
-.step + .step::before {
+.step::before,
+.step::after {
   content: "";
   position: absolute;
   top: 13px;
-  right: calc(50% + 18px);
-  left: calc(-50% + 18px);
   height: 2px;
-  border-radius: 2px;
   background: var(--border-strong);
 }
 
-.step[data-state="done"] + .step::before {
+.step::before {
+  left: 0;
+  right: calc(50% + 16px);
+}
+
+.step::after {
+  left: calc(50% + 16px);
+  right: 0;
+}
+
+.step:first-child::before,
+.step:last-child::after {
+  display: none;
+}
+
+.step[data-state="done"]::after,
+.step[data-prev-done="true"]::before {
   background: var(--accent);
 }
 
@@ -1132,9 +1150,9 @@ kbd {
   font-weight: 550;
   color: var(--text-2);
   line-height: 1.3;
-  max-width: 100%;
-  hyphens: auto;
-  overflow-wrap: break-word;
+  hyphens: manual;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .step[data-state="current"] .step-label {
@@ -1146,6 +1164,7 @@ kbd {
 }
 
 .step-date {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1157,12 +1176,7 @@ kbd {
   font-size: var(--fs-12);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
   white-space: nowrap;
-}
-
-.step-date {
-  position: relative;
 }
 
 .step-date svg {
@@ -1170,6 +1184,10 @@ kbd {
   right: -12px;
   opacity: 0;
   transition: opacity 0.12s ease;
+}
+
+.step-date .date-long {
+  display: none;
 }
 
 .step-date[data-editable="true"]:hover,
@@ -1208,32 +1226,46 @@ kbd {
   }
 
   .step {
+    flex: none;
     grid-template-rows: auto;
     grid-template-columns: 28px minmax(0, 1fr) auto;
     justify-items: start;
     align-items: center;
     gap: 0 var(--sp-3);
-    min-width: 0;
     padding: 7px 0;
     text-align: left;
   }
 
-  .step + .step::before {
-    top: calc(-50% + 14px);
-    bottom: calc(50% + 14px);
+  /* senkrechte Linie: obere Hälfte (::before) und untere Hälfte (::after) je Zeile */
+  .step::before,
+  .step::after {
     left: 13px;
     right: auto;
     width: 2px;
     height: auto;
   }
 
-  .step-label {
-    max-width: none;
+  .step::before {
+    top: 0;
+    bottom: calc(50% + 14px);
+  }
+
+  .step::after {
+    top: calc(50% + 14px);
+    bottom: 0;
   }
 
   .step-date svg {
     position: static;
     opacity: 1;
+  }
+
+  .step-date .date-long {
+    display: inline;
+  }
+
+  .step-date .date-short {
+    display: none;
   }
 }
 
@@ -1783,9 +1815,6 @@ a.list-item:hover {
 }
 
 .table td.warn-cell {
-  width: 32px;
-  padding-left: 0;
-  padding-right: 0;
   text-align: center;
 }
 
@@ -1829,7 +1858,7 @@ a.list-item:hover {
 }
 
 .table .progress-track {
-  width: 40px;
+  width: 32px;
 }
 
 .table-compact th,
@@ -1844,11 +1873,20 @@ a.list-item:hover {
 }
 
 .next-task {
-  display: inline-block;
-  max-width: 180px;
+  display: block;
+  width: 200px;
+  white-space: normal;
+  padding: 6px 0;
+}
+
+/* Titel höchstens zwei Zeilen, vollständig im Tooltip (title) */
+.next-task-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  vertical-align: bottom;
+  line-height: 1.35;
 }
 
 .next-task[data-overdue="true"] {
@@ -1942,7 +1980,8 @@ a.list-item:hover {
 /* ---------------------------------------------------------------- Pipeline-Board */
 
 .board {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--sp-3);
   overflow-x: auto;
   padding-bottom: var(--sp-3);
@@ -1951,7 +1990,7 @@ a.list-item:hover {
 }
 
 .board-col {
-  flex: 0 0 216px;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 200px;
@@ -1990,6 +2029,13 @@ a.list-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.board-col-steps {
+  padding: 0 var(--sp-3) var(--sp-2);
+  font-size: var(--fs-12);
+  color: var(--muted);
+  line-height: 1.4;
 }
 
 .board-cards {
@@ -2087,9 +2133,22 @@ a.list-item:hover {
   font-size: var(--fs-12);
 }
 
+.board-card .pill {
+  justify-self: start;
+}
+
+@media (max-width: 1100px) {
+  .board {
+    grid-template-columns: repeat(4, minmax(240px, 1fr));
+  }
+}
+
 @media (max-width: 640px) {
+  .board {
+    grid-template-columns: repeat(4, 80vw);
+  }
+
   .board-col {
-    flex-basis: 78vw;
     max-height: none;
   }
 }

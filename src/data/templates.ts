@@ -14,13 +14,13 @@ export function buildFolderTemplates(): FolderTemplate[] {
  * Die fünf Excel-Schritte (10–50) bleiben unverändert, neue Schritte liegen dazwischen bzw. dahinter.
  */
 export const PROPOSED_STEPS: StepDefinition[] = [
-  { key: "vermesser_beauftragt", label: "Vermesser beauftragt", sortOrder: 32 },
-  { key: "entwurf_freigegeben", label: "Entwurf freigegeben", sortOrder: 34 },
-  { key: "vorabzug_versendet", label: "Vorabzug versendet", sortOrder: 36 },
-  { key: "baufreigabe", label: "Baufreigabe", sortOrder: 60 },
-  { key: "bauanlaufgespraech", label: "Bauanlaufgespräch", sortOrder: 70 },
-  { key: "hausanschluesse_beantragt", label: "Hausanschlüsse beantragt", sortOrder: 80 },
-  { key: "hausaufstellung", label: "Hausaufstellung", sortOrder: 90 },
+  { key: "vermesser_beauftragt", label: "Vermesser beauftragt", sortOrder: 32, stage: "Planung" },
+  { key: "entwurf_freigegeben", label: "Entwurf freigegeben", sortOrder: 34, stage: "Planung" },
+  { key: "vorabzug_versendet", label: "Vorabzug versendet", sortOrder: 36, stage: "Planung" },
+  { key: "baufreigabe", label: "Baufreigabe", sortOrder: 60, stage: "Genehmigung" },
+  { key: "bauanlaufgespraech", label: "Bauanlaufgespräch", sortOrder: 70, stage: "Baubegleitung" },
+  { key: "hausanschluesse_beantragt", label: "Anschlüsse beantragt", sortOrder: 80, stage: "Baubegleitung" },
+  { key: "hausaufstellung", label: "Hausaufstellung", sortOrder: 90, stage: "Baubegleitung" },
 ];
 
 export function allStepDefinitions(): StepDefinition[] {

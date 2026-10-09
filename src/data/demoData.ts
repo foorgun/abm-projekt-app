@@ -145,6 +145,38 @@ function iso(today: string, ago: number, hour: number, minute: number) {
   return `${addDays(today, -ago)}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`;
 }
 
+const has = (p: Project, k: string) => Boolean(p.steps[k]);
+
+export interface TaskTemplate {
+  title: string;
+  /** Fällig in Tagen ab heute (negativ = überfällig), null = ohne Termin */
+  due: number | null;
+  done?: boolean;
+  /** Projekt muss in dieser Phase sein; ohne Bedingung: Aufgabe ohne Projekt. */
+  fits?: (p: Project) => boolean;
+}
+
+/** Erfundene Aufgaben, jeweils nur bei Projekten in passender Phase (keine Behördenrückfrage vor dem Baugesuch usw.). */
+export const TASK_TEMPLATES: TaskTemplate[] = [
+  { title: "Vertrag bei der Bauherrschaft nachfassen", due: -2, fits: (p) => has(p, "vertrag_versendet") && !has(p, "vertrag_zurueck") },
+  { title: "Vorabzug an Bauherrschaft senden", due: -3, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "vorabzug_versendet") },
+  { title: "Rückfrage Landratsamt zu Stellplätzen beantworten", due: -1, fits: (p) => has(p, "baugesuch_uebergabe") && !has(p, "baugenehmigung") },
+  { title: "Unterschriften Bauantragspläne einholen", due: -6, fits: (p) => has(p, "vorabzug_versendet") && !has(p, "baugesuch_uebergabe") },
+  { title: "Bauanlaufgespräch terminieren", due: 0, fits: (p) => has(p, "baufreigabe") && !has(p, "bauanlaufgespraech") },
+  { title: "Wohnflächenberechnung prüfen", due: 0, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "baugesuch_uebergabe") },
+  { title: "Entwässerungsantrag vorbereiten", due: 2, fits: (p) => has(p, "vorabzug_versendet") && !has(p, "baugesuch_uebergabe") },
+  { title: "Statik beim Tragwerksplaner anfragen", due: 3, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "baugesuch_uebergabe") },
+  { title: "Hausanschlüsse Strom und Wasser beantragen", due: 4, fits: (p) => has(p, "baufreigabe") && !has(p, "hausanschluesse_beantragt") },
+  { title: "Amtlichen Lageplan beim Vermesser bestellen", due: 6, fits: (p) => has(p, "vermesser_beauftragt") && !has(p, "baugesuch_uebergabe") },
+  { title: "Baustellentermin mit Kellerbaufirma abstimmen", due: 12, fits: (p) => has(p, "bauanlaufgespraech") && !has(p, "hausaufstellung") },
+  { title: "Preisspiegel Erdarbeiten erstellen", due: 18, fits: (p) => has(p, "baufreigabe") && !has(p, "hausaufstellung") },
+  { title: "Entwurf mit Bauherrschaft besprechen", due: 5, fits: (p) => has(p, "vertrag_zurueck") && !has(p, "entwurf_freigegeben") },
+  { title: "Team-Besprechung Projektliste", due: 5 },
+  { title: "Eingangsbestätigung ablegen", due: -8, done: true, fits: (p) => has(p, "baugesuch_uebergabe") },
+  { title: "Entwurf 2 an Verkäufer senden", due: -4, done: true, fits: (p) => has(p, "entwurf_freigegeben") },
+  { title: "Geländeprofile anfordern", due: -2, done: true, fits: (p) => has(p, "vermesser_beauftragt") },
+];
+
 export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const r = rng(seed);
   const steps = allStepDefinitions();
@@ -353,37 +385,32 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   }
 
   // ---------------------------------------------------------------- Aufgaben
+  // Jede Aufgabe passt zur Phase ihres Projekts (TASK_TEMPLATES.fits); verschiedene Projekte, stabil per Seed.
   const active = projects.filter((p) => p.status === "aktiv");
-  const TASKS: [string, number | null, number | null, boolean][] = [
-    // Titel, fällig in Tagen (negativ = überfällig), Projekt-Index in `active`, erledigt
-    ["Vorabzug an Bauherrschaft senden", -3, 2, false],
-    ["Rückfrage Landratsamt zu Stellplätzen beantworten", -1, 1, false],
-    ["Unterschriften Bauantragspläne einholen", -6, 5, false],
-    ["Bauanlaufgespräch terminieren", 0, 8, false],
-    ["Wohnflächenberechnung prüfen", 0, 10, false],
-    ["Entwässerungsantrag vorbereiten", 2, 11, false],
-    ["Statik beim Tragwerksplaner anfragen", 3, 12, false],
-    ["Hausanschlüsse Strom und Wasser beantragen", 4, 13, false],
-    ["Amtlichen Lageplan beim Vermesser bestellen", 6, 14, false],
-    ["Baustellentermin mit Kellerbaufirma abstimmen", 12, 15, false],
-    ["Preisspiegel Erdarbeiten erstellen", 18, 16, false],
-    ["Team-Besprechung Projektliste", 5, null, false],
-    ["Eingangsbestätigung ablegen", -8, 3, true],
-    ["Entwurf 2 an Verkäufer senden", -4, 6, true],
-    ["Geländeprofile anfordern", -2, 9, true],
-  ];
-  const tasks: Task[] = TASKS.map(([title, due, pIdx, done], i) => ({
-    id: `task-${pad(i + 1)}`,
-    projectId: pIdx == null ? null : active[pIdx % active.length].id,
-    title,
-    dueOn: due == null ? null : addDays(today, due),
-    assigneeId: TEAM[i % TEAM.length].id,
-    status: done ? "erledigt" : "offen",
-    source: "manuell",
-    sourceKey: null,
-    createdAt: iso(today, 14 - (i % 7), 9, 0),
-    doneAt: done ? iso(today, 1, 15, 30) : null,
-  }));
+  const used = new Set<string>();
+  const tasks: Task[] = [];
+  TASK_TEMPLATES.forEach((tpl, i) => {
+    let projectId: string | null = null;
+    if (tpl.fits) {
+      const candidates = active.filter((p) => tpl.fits!(p) && !used.has(p.id));
+      const pool = candidates.length ? candidates : active.filter((p) => tpl.fits!(p));
+      if (!pool.length) return; // keine passende Phase im Datenbestand: Aufgabe entfällt
+      projectId = r.pick(pool).id;
+      used.add(projectId);
+    }
+    tasks.push({
+      id: `task-${pad(i + 1)}`,
+      projectId,
+      title: tpl.title,
+      dueOn: tpl.due == null ? null : addDays(today, tpl.due),
+      assigneeId: TEAM[i % TEAM.length].id,
+      status: tpl.done ? "erledigt" : "offen",
+      source: "manuell",
+      sourceKey: null,
+      createdAt: iso(today, 14 - (i % 7), 9, 0),
+      doneAt: tpl.done ? iso(today, 1, 15, 30) : null,
+    });
+  });
 
   // ---------------------------------------------------------------- Postfächer und Agent-Historie
   const mailboxes: Mailbox[] = [

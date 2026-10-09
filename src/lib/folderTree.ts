@@ -1,18 +1,26 @@
 // Ordnerbaum eines Projekts: Vorlage (folder_templates) + konkrete Datumsordner aus den abgelegten Dokumenten.
 //
-// Ein Vorlagenordner mit Datum ("01 erhalten am {datum}") erscheint als Sammelknoten; darunter hängen die
-// konkreten Ordner mit echtem Datum ("01 erhalten am 14.11.2026"), die durch Ablagen entstanden sind.
+// Ein Vorlagenordner mit Datum ("01 erhalten am {datum}") erscheint NICHT als eigene Ebene. Die konkreten Ordner
+// mit echtem Datum ("01 erhalten am 14.11.2026") hängen direkt am Elternordner; der Elternordner merkt sich die
+// Vorlage als "Datumsfach" (dateSlots), damit neue Ablagen dort einen Datumsordner anlegen können.
 // Unterordner aus der Vorlage werden unter jedem konkreten Datumsordner wiederholt.
 
 import { DATE_TOKEN, PATH_SEP } from "./folders";
 import type { FolderTemplate, ProjectDocument } from "./types";
 
+export interface DateSlot {
+  /** Pfad mit "{datum}" im letzten Segment, z. B. ".../01 Baugenehmigung/01 erhalten am {datum}". */
+  path: string;
+  /** Anzeige, z. B. "01 erhalten am …" */
+  label: string;
+}
+
 export interface FolderNode {
-  /** Konkreter Pfad. Bei Datums-Sammelknoten enthält das letzte Segment noch "{datum}". */
+  /** Konkreter Pfad (ohne Platzhalter). */
   path: string;
   label: string;
-  /** Sammelknoten für Datumsordner: Ablage hier verlangt ein Datum. */
-  dateTemplate: boolean;
+  /** Datumsordner, die in diesem Ordner angelegt werden können (aus der Vorlage). */
+  dateSlots: DateSlot[];
   description: string | null;
   children: FolderNode[];
   /** Dateien direkt in diesem Ordner */
@@ -44,12 +52,18 @@ export function buildFolderTree(templates: FolderTemplate[], documents: Pick<Pro
   for (const d of documents) counts.set(d.folderPath, (counts.get(d.folderPath) ?? 0) + 1);
   const docPaths = [...counts.keys()];
 
-  function build(templateParent: string | null, concreteParent: string | null): FolderNode[] {
-    return (byParent.get(templateParent) ?? []).map((t) => {
+  /** Kinder eines Ordners: normale Vorlagenordner plus konkrete Datumsordner; Datumsvorlagen als Fächer. */
+  function build(templateParent: string | null, concreteParent: string | null): { children: FolderNode[]; slots: DateSlot[] } {
+    const children: FolderNode[] = [];
+    const slots: DateSlot[] = [];
+    for (const t of byParent.get(templateParent) ?? []) {
       const base = concreteParent ? `${concreteParent}${PATH_SEP}${t.label}` : t.label;
       if (!t.label.includes(DATE_TOKEN)) {
-        return finish({ path: base, label: t.label, dateTemplate: false, description: t.description, children: build(t.path, base) });
+        const sub = build(t.path, base);
+        children.push(finish({ path: base, label: t.label, dateSlots: sub.slots, description: t.description, children: sub.children }));
+        continue;
       }
+      slots.push({ path: base, label: dateTemplateLabel(t.label) });
       // Konkrete Instanzen: Segment an dieser Tiefe passt zum Muster, alles davor ist gleich
       const depth = base.split(PATH_SEP).length;
       const prefix = concreteParent ? `${concreteParent}${PATH_SEP}` : "";
@@ -60,20 +74,21 @@ export function buildFolderTree(templates: FolderTemplate[], documents: Pick<Pro
         const segs = p.split(PATH_SEP);
         if (segs.length >= depth && re.test(segs[depth - 1])) instances.add(segs.slice(0, depth).join(PATH_SEP));
       }
-      const children = [...instances]
-        .sort((a, b) => dateKey(b).localeCompare(dateKey(a))) // neuestes Datum oben
-        .map((inst) => finish({ path: inst, label: inst.split(PATH_SEP).pop()!, dateTemplate: false, description: null, children: build(t.path, inst) }));
-      return finish({ path: base, label: dateTemplateLabel(t.label), dateTemplate: true, description: t.description, children });
-    });
+      for (const inst of [...instances].sort((a, b) => dateKey(b).localeCompare(dateKey(a)))) {
+        const sub = build(t.path, inst);
+        children.push(finish({ path: inst, label: inst.split(PATH_SEP).pop()!, dateSlots: sub.slots, description: t.description, children: sub.children }));
+      }
+    }
+    return { children, slots };
   }
 
   function finish(n: Omit<FolderNode, "own" | "total">): FolderNode {
-    const own = n.dateTemplate ? 0 : counts.get(n.path) ?? 0;
+    const own = counts.get(n.path) ?? 0;
     const total = own + n.children.reduce((s, c) => s + c.total, 0);
     return { ...n, own, total };
   }
 
-  return build(null, null);
+  return build(null, null).children;
 }
 
 /** "…/01 erhalten am 14.11.2026" → "2026-11-14" (zum Sortieren). */
@@ -92,7 +107,7 @@ export function findNode(nodes: FolderNode[], path: string): FolderNode | null {
   return null;
 }
 
-/** Alle Vorfahren-Pfade eines Pfads (zum Aufklappen). Datumsordner liegen unter ihrem Sammelknoten. */
+/** Alle Vorfahren-Pfade eines Pfads (zum Aufklappen). */
 export function ancestorPaths(nodes: FolderNode[], path: string): string[] {
   const trail: string[] = [];
   function walk(list: FolderNode[], acc: string[]): boolean {

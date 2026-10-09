@@ -107,6 +107,7 @@ select test.expect('Freiberufler sieht KEINE Rechnungen',         (select count(
 select test.expect('Freiberufler sieht KEINE Bauherren-Kontakte', (select count(*) from public.bauherren), 0);
 select test.expect('Freiberufler sieht keine Firmenstammdaten',   (select count(*) from public.companies), 0);
 select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 12);
+select test.expect('Alle Schritte haben eine Stufe (0003)',       (select count(*) from public.step_definitions where stage is null), 0);
 select test.expect('Freiberufler sieht nur Dateien seines Projekts', (select count(*) from storage.objects), 1);
 select test.throws('Freiberufler darf kein Projekt anlegen',
   $$insert into public.projects (bauherr_label) values ('Unzulässig')$$);

@@ -147,3 +147,24 @@ Neueste Einträge unten.
   heißt "Jetzt fällig".
 - **Freiberufler** sehen nur Übersicht und Dokumente, keine Aktionen, Stepper nur lesend, dürfen aber hochladen.
   Nicht freigegebene Projekte erscheinen als "nicht gefunden" (verrät nicht, dass es sie gibt).
+
+## Rückmeldung zu Schritt 5
+
+- **Stufen (Migration 0003):** `step_definitions.stage` fasst die 12 Schritte zu 4 Stufen zusammen:
+  Anbahnung (Plangespräch, Vertrag versendet, Vertrag zurück) · Planung (Vermesser, Entwurf, Vorabzug) ·
+  Genehmigung (Übergabe Baugesuch, Genehmigung, Baufreigabe) · Baubegleitung (Bauanlaufgespräch, Anschlüsse, Hausaufstellung).
+  **Stufe eines Projekts = Stufe des Schritts, der nach der aktuellen Phase ansteht** (dort wird gearbeitet); ein Projekt mit
+  "Vertrag zurück" steht also in "Planung". Ohne Schritt: erste Stufe, alles erledigt: letzte Stufe.
+- **Verschieben in die nächste Stufe** setzt deren ersten offenen Schritt. Liegen davor noch offene Schritte, nennt der Dialog sie
+  ("erscheinen danach als fehlt") und bietet an, sie mit demselben Datum zu erledigen (standardmäßig aus).
+- **Kurze Schrittnamen (0003):** Vertrag versendet, Vertrag zurück, Genehmigung, Anschlüsse beantragt. Keys bleiben gleich.
+  Die Warnung heißt passend "Vertrag noch nicht zurück".
+- **Stepper ohne Silbentrennung:** Schritte sind mindestens so breit wie ihr längstes Wort, Restplatz gleich verteilt; Datum kurz
+  (TT.MM.JJ, volles Datum im Tooltip). Passt bei 1280 px genau. Zwischen 1024 und 1280 px scrollt der Stepper seitlich,
+  statt Wörter zu trennen. Mobil weiter vertikal mit vollem Datum.
+- **Ordnerbaum ohne Platzhalter-Ebene:** Datumsordner hängen direkt am Elternordner. Der Elternordner hat ein "Datumsfach";
+  Ablage dort fragt: neuer Datumsordner (Standard, mit Datum) oder direkt in den Ordner. Volle Namen per Tooltip.
+- **Projektliste:** "Nächste Aufgabe" breiter, Titel bis zu zwei Zeilen, vollständig im Tooltip. Letzte Spalte heißt "Warnung".
+  Platz dafür: Bauvoranfragen zeigen "BVA" (Tooltip), Spalte "Fortschritt" heißt "Schritte".
+- **Demo-Aufgaben passen zur Phase** (`TASK_TEMPLATES` mit Bedingung je Aufgabe, per Test geprüft): z. B. Behördenrückfrage nur
+  zwischen Übergabe Baugesuch und Genehmigung, Bauanlaufgespräch erst nach Baufreigabe.

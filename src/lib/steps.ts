@@ -6,6 +6,8 @@ export interface StepDefinition {
   key: string;
   label: string;
   sortOrder: number;
+  /** Übergeordnete Stufe für die Pipeline (Migration 0003), z. B. "Planung". */
+  stage: string;
 }
 
 /**
@@ -13,11 +15,11 @@ export interface StepDefinition {
  * von der Warnlogik referenziert. Weitere Phasen kommen nur aus der Datenbank.
  */
 export const CORE_STEPS: StepDefinition[] = [
-  { key: "plangespraech", label: "Plangespräch", sortOrder: 10 },
-  { key: "vertrag_versendet", label: "ABM-Vertrag versendet", sortOrder: 20 },
-  { key: "vertrag_zurueck", label: "ABM-Vertrag zurück", sortOrder: 30 },
-  { key: "baugesuch_uebergabe", label: "Übergabe Baugesuch", sortOrder: 40 },
-  { key: "baugenehmigung", label: "Baugenehmigung", sortOrder: 50 },
+  { key: "plangespraech", label: "Plangespräch", sortOrder: 10, stage: "Anbahnung" },
+  { key: "vertrag_versendet", label: "Vertrag versendet", sortOrder: 20, stage: "Anbahnung" },
+  { key: "vertrag_zurueck", label: "Vertrag zurück", sortOrder: 30, stage: "Anbahnung" },
+  { key: "baugesuch_uebergabe", label: "Übergabe Baugesuch", sortOrder: 40, stage: "Genehmigung" },
+  { key: "baugenehmigung", label: "Genehmigung", sortOrder: 50, stage: "Genehmigung" },
 ];
 
 let definitions: StepDefinition[] = CORE_STEPS;

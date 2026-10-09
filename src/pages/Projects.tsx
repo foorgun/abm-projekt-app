@@ -80,7 +80,13 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const filtered = Boolean(filters.q || filters.company || filters.architect || filters.phase);
 
   const columns: Column<Project>[] = [
-    { key: "abm", header: "ABM-Nr.", strong: true, render: (p) => p.abmNr ?? "–", sortValue: (p) => p.abmNr ?? "" },
+    {
+      key: "abm",
+      header: "ABM-Nr.",
+      strong: true,
+      render: (p) => (p.kind === "bauvoranfrage" ? <abbr title="Bauvoranfrage">BVA</abbr> : p.abmNr ?? "–"),
+      sortValue: (p) => p.abmNr ?? "",
+    },
     {
       key: "bauherr",
       header: "Bauherr · Ort",
@@ -103,7 +109,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     },
     {
       key: "fortschritt",
-      header: "Fortschritt",
+      header: "Schritte",
       render: (p) => {
         const pr = progressOf(p, steps);
         return <Progress done={pr.done} total={pr.total} />;
@@ -118,8 +124,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         if (t) {
           const overdue = Boolean(t.dueOn && t.dueOn < today);
           return (
-            <span className="next-task" data-overdue={overdue} title={`${t.title}${t.dueOn ? `, fällig ${formatDate(t.dueOn)}` : ""}`}>
-              {t.title}
+            <span className="next-task" data-overdue={overdue} title={`${t.title}${t.dueOn ? `\n${overdue ? "überfällig seit" : "fällig"} ${formatDate(t.dueOn)}` : ""}`}>
+              <span className="next-task-title">{t.title}</span>
               {t.dueOn && <span className="cell-sub">{overdue ? "überfällig seit " : "fällig "}{formatDate(t.dueOn)}</span>}
             </span>
           );
@@ -127,14 +133,14 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         const s = p.status === "aktiv" ? nextStep(p, steps) : null;
         return s ? (
           <span className="next-task muted" title={`Nächster Schritt: ${s.label}`}>
-            Schritt: {s.label}
+            <span className="next-task-title">Schritt: {s.label}</span>
           </span>
         ) : (
           <span className="muted">–</span>
         );
       },
     },
-    { key: "warn", header: <span className="sr-only">Warnungen</span>, className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} />, sortValue: (p) => alertsByProject.get(p.id)?.length ?? 0 },
+    { key: "warn", header: "Warnung", className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
   ];
 
   const phaseOptions = [{ value: "", label: "Alle Phasen" }, ...allPhases(steps).map((ph) => ({ value: ph.key, label: ph.label }))];

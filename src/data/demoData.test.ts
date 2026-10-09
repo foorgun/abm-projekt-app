@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { computeAlerts } from "../lib/alerts";
 import { isAllowedFolder } from "../lib/folders";
 import { FOLDER_KEYWORDS } from "./folderHints";
-import { buildDemoDataset } from "./demoData";
+import { buildDemoDataset, TASK_TEMPLATES } from "./demoData";
 
 const TODAY = "2026-10-09";
 const db = buildDemoDataset(TODAY);
@@ -71,5 +71,34 @@ describe("Demo-Daten", () => {
     for (const x of [...db.invoices, ...db.documents, ...db.parties]) expect(ids.has(x.projectId)).toBe(true);
     const docs = new Set(db.documents.map((d) => d.id));
     for (const a of db.inboxAttachments) if (a.documentId) expect(docs.has(a.documentId)).toBe(true);
+  });
+});
+
+describe("Demo-Aufgaben", () => {
+  it("passen zur Phase ihres Projekts", () => {
+    expect(db.tasks.length).toBeGreaterThanOrEqual(14);
+    for (const t of db.tasks) {
+      const tpl = TASK_TEMPLATES.find((x) => x.title === t.title)!;
+      if (!tpl.fits) {
+        expect(t.projectId).toBeNull();
+        continue;
+      }
+      const p = db.projects.find((x) => x.id === t.projectId)!;
+      // Erledigte Aufgaben dürfen in einer späteren Phase liegen; offene müssen genau passen
+      expect(tpl.fits(p), `${t.title} bei ${p.bauherrLabel}`).toBe(true);
+      expect(p.status).toBe("aktiv");
+    }
+  });
+
+  it("Rückfragen vom Amt nur nach Übergabe des Baugesuchs", () => {
+    const amt = db.tasks.filter((t) => /Landratsamt|Baurechtsamt|Behörde/.test(t.title));
+    expect(amt.length).toBeGreaterThan(0);
+    for (const t of amt) expect(db.projects.find((p) => p.id === t.projectId)!.steps.baugesuch_uebergabe).toBeTruthy();
+  });
+
+  it("Prüfliste: Behördenpost nur zu Projekten nach Übergabe des Baugesuchs", () => {
+    for (const item of db.inboxItems.filter((i) => /lra-demo|stadt-demo/.test(i.fromEmail) && i.projectId)) {
+      expect(db.projects.find((p) => p.id === item.projectId)!.steps.baugesuch_uebergabe, item.subject).toBeTruthy();
+    }
   });
 });

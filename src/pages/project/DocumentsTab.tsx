@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
 import { Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, Mail, Upload } from "lucide-react";
 import { useToast } from "../../components/Toast";
-import { Button, Checkbox, Dialog, EmptyState, Field, Input, Pill } from "../../components/ui";
+import { Button, Checkbox, Dialog, EmptyState, Field, Input, Pill, Select } from "../../components/ui";
 import { fileKind } from "../../lib/files";
 import { concretePath, displayPath } from "../../lib/folders";
 import { ancestorPaths, buildFolderTree, findNode, type FolderNode } from "../../lib/folderTree";
@@ -15,6 +15,8 @@ interface PendingUpload {
   node: FolderNode;
   files: File[];
   date: string;
+  /** Pfad des Datumsfachs oder "" für "direkt in den Ordner" */
+  slot: string;
 }
 
 /**
@@ -53,10 +55,10 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
     if (n.children.length) setExpanded((s) => new Set(s).add(n.path));
   }
 
-  /** Startet den Upload; bei Datums-Sammelknoten erst nach dem Datum fragen. */
+  /** Startet den Upload; hat der Ordner Datumsfächer, erst Ziel und Datum abfragen (Standard: neuer Datumsordner). */
   function startUpload(target: FolderNode, list: File[]) {
     if (!list.length) return;
-    if (target.dateTemplate) setPending({ node: target, files: list, date: today });
+    if (target.dateSlots.length) setPending({ node: target, files: list, date: today, slot: target.dateSlots[0].path });
     else void upload(target.path, list);
   }
 
@@ -110,7 +112,7 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
           onDragLeave={() => setDropTarget((t) => (t === n.path ? null : t))}
           onDrop={(e) => onDrop(e, n)}
         >
-          <button type="button" className="tree-toggle" onClick={() => toggle(n.path)} tabIndex={-1} aria-hidden={!hasKids} disabled={!hasKids}>
+          <button type="button" className="tree-toggle" onClick={() => toggle(n.path)} tabIndex={-1} aria-hidden={!hasKids} disabled={!hasKids} aria-label={open ? "Zuklappen" : "Aufklappen"}>
             {hasKids ? open ? <ChevronDown size={14} /> : <ChevronRight size={14} /> : null}
           </button>
           <button
@@ -121,11 +123,10 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
               if (e.key === "ArrowRight" && hasKids && !open) toggle(n.path);
               if (e.key === "ArrowLeft" && open) toggle(n.path);
             }}
-            title={n.description ?? undefined}
+            title={[n.label, n.description].filter(Boolean).join("\n")}
           >
             <Icon size={15} aria-hidden className="tree-icon" />
             <span className="tree-name">{n.label}</span>
-            {n.dateTemplate && <span className="sr-only">(Datumsordner)</span>}
           </button>
           {n.total > 0 && (
             <span className="tree-count" title={n.own === n.total ? `${n.total} Dateien` : `${n.own} hier, ${n.total} mit Unterordnern`}>
@@ -187,25 +188,12 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
               />
             </header>
 
-            {node.dateTemplate ? (
-              <div className="docs-date-info">
-                <p>
-                  Datumsordner: Beim Ablegen wird ein Unterordner mit Datum angelegt, z. B. <strong>{node.label.replace("…", formatDate(today))}</strong>.
-                </p>
-                {node.children.length > 0 && (
-                  <ul className="docs-instances">
-                    {node.children.map((c) => (
-                      <li key={c.path}>
-                        <button type="button" className="link-button" onClick={() => select(c)}>
-                          <Folder size={14} aria-hidden /> {c.label}
-                        </button>
-                        <span className="muted">{c.total} Dateien</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ) : files.length ? (
+            {node.dateSlots.length > 0 && (
+              <p className="docs-date-info">
+                Neue Ablagen hier legen einen Datumsordner an: {node.dateSlots.map((d) => d.label.replace("…", formatDate(today))).join(" oder ")}.
+              </p>
+            )}
+            {files.length > 0 && (
               <ul className="file-list">
                 {files.map((f) => {
                   const Icon = KIND_ICON[fileKind(f.name, f.mime)];
@@ -213,7 +201,7 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
                     <li key={f.id} className="file-row">
                       <Icon size={18} className="file-icon" aria-hidden />
                       <div className="file-main">
-                        <span className="file-name" title="Vorschau und Download folgen mit Supabase Storage (Schritt 8)">
+                        <span className="file-name" title={`${f.name}\nVorschau und Download folgen mit Supabase Storage (Schritt 8)`}>
                           {f.name}
                         </span>
                         <span className="file-meta">
@@ -232,7 +220,7 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
                   );
                 })}
               </ul>
-            ) : null}
+            )}
 
             <div
               className="dropzone"
@@ -241,7 +229,7 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
               onDragLeave={() => setDropTarget(null)}
               onDrop={(e) => onDrop(e, node)}
             >
-              {!files.length && !node.dateTemplate && <EmptyState icon={<Folder size={18} />} title="Ordner ist leer" />}
+              {!files.length && <EmptyState icon={<Folder size={18} />} title={node.total ? "Dateien liegen in den Unterordnern" : "Ordner ist leer"} />}
               <p>
                 <Upload size={15} aria-hidden /> Dateien hierher ziehen oder auf einen Ordner links
               </p>
@@ -253,16 +241,16 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
 
       {pending && (
         <Dialog
-          title="Datum für den Ordner"
+          title="Wohin ablegen?"
           onClose={() => setPending(null)}
           footer={
             <>
               <Button onClick={() => setPending(null)}>Abbrechen</Button>
               <Button
                 variant="primary"
-                disabled={!pending.date || busy}
+                disabled={(pending.slot !== "" && !pending.date) || busy}
                 onClick={() => {
-                  const target = concretePath(pending.node.path, pending.date);
+                  const target = pending.slot ? concretePath(pending.slot, pending.date) : pending.node.path;
                   const list = pending.files;
                   setPending(null);
                   void upload(target, list);
@@ -276,9 +264,26 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
           <p>
             {pending.files.length} {pending.files.length === 1 ? "Datei" : "Dateien"} in <strong>{pending.node.label}</strong>
           </p>
-          <Field label="Datum (z. B. erhalten am)" htmlFor="upload-date" hint={`Ordnername: ${pending.date ? pending.node.label.replace("…", formatDate(pending.date)) : "–"}`}>
-            <Input id="upload-date" type="date" value={pending.date} max={today} onChange={(e) => setPending({ ...pending, date: e.target.value })} />
+          <Field label="Ziel" htmlFor="upload-slot">
+            <Select
+              id="upload-slot"
+              value={pending.slot}
+              onChange={(e) => setPending({ ...pending, slot: e.target.value })}
+              options={[
+                ...pending.node.dateSlots.map((d) => ({ value: d.path, label: `Neuer Datumsordner: ${d.label}` })),
+                { value: "", label: `Direkt in „${pending.node.label}“` },
+              ]}
+            />
           </Field>
+          {pending.slot !== "" && (
+            <Field
+              label="Datum (z. B. erhalten am)"
+              htmlFor="upload-date"
+              hint={`Ordnername: ${pending.date ? (pending.node.dateSlots.find((d) => d.path === pending.slot)?.label ?? "").replace("…", formatDate(pending.date)) : "–"}`}
+            >
+              <Input id="upload-date" type="date" value={pending.date} max={today} onChange={(e) => setPending({ ...pending, date: e.target.value })} />
+            </Field>
+          )}
         </Dialog>
       )}
     </div>

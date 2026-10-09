@@ -29,22 +29,29 @@ describe("Ordnerbaum", () => {
     expect(findNode(tree, "05 Entwurf")).toMatchObject({ total: 0 });
   });
 
-  it("zeigt Datumsordner als Sammelknoten mit konkreten Instanzen, neuestes Datum oben", () => {
-    const sammel = findNode(tree, `${BG}/01 Baugenehmigung/01 erhalten am {datum}`)!;
-    expect(sammel.dateTemplate).toBe(true);
-    expect(sammel.label).toBe("01 erhalten am …");
-    expect(sammel.children.map((c) => c.label)).toEqual(["01 erhalten am 02.12.2026", "01 erhalten am 14.11.2026"]);
-    expect(sammel.total).toBe(2);
+  it("zeigt Datumsordner direkt unter dem Elternordner, ohne Platzhalter-Ebene, neuestes Datum oben", () => {
+    const parent = findNode(tree, `${BG}/01 Baugenehmigung`)!;
+    expect(parent.children.map((c) => c.label)).toEqual(["01 erhalten am 02.12.2026", "01 erhalten am 14.11.2026"]);
+    expect(parent.dateSlots).toEqual([{ path: `${BG}/01 Baugenehmigung/01 erhalten am {datum}`, label: "01 erhalten am …" }]);
+    expect(parent.total).toBe(2);
+    expect(findNode(tree, `${BG}/01 Baugenehmigung/01 erhalten am {datum}`)).toBeNull();
+  });
+
+  it("Ordner mit Datumsfach ohne Ablage ist ein leeres Blatt", () => {
+    const n = findNode(tree, "10 Bodengutachten")!;
+    expect(n.children).toEqual([]);
+    expect(n.dateSlots[0].label).toBe("Bodengutachten erhalten am …");
   });
 
   it("wiederholt Vorlagen-Unterordner unter verschachtelten Datumsordnern", () => {
     const termin = findNode(tree, TERMIN)!;
-    expect(termin.children.map((c) => c.label)).toEqual(["01 Einladung versendet …", "02 Fotos"]);
+    expect(termin.children.map((c) => c.label)).toEqual(["01 Einladung versendet 01.10.2026", "02 Fotos"]);
+    expect(termin.dateSlots.map((d) => d.label)).toEqual(["01 Einladung versendet …"]);
     expect(termin.total).toBe(2);
     expect(findNode(tree, `${TERMIN}/02 Fotos`)?.own).toBe(1);
   });
 
   it("liefert die Vorfahren zum Aufklappen", () => {
-    expect(ancestorPaths(tree, BGDATE)).toEqual([BG, `${BG}/01 Baugenehmigung`, `${BG}/01 Baugenehmigung/01 erhalten am {datum}`]);
+    expect(ancestorPaths(tree, BGDATE)).toEqual([BG, `${BG}/01 Baugenehmigung`]);
   });
 });
