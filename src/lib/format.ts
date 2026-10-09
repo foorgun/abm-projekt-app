@@ -66,3 +66,18 @@ export function addDays(iso: string, days: number): string {
 export function monthStart(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
+
+/** Relative Zeitangabe: "gerade eben", "vor 12 Min.", "vor 3 Std.", "gestern, 14:05", "vor 4 Tagen", sonst Datum. */
+export function formatRelative(atIso: string, now: Date = new Date()): string {
+  const at = new Date(atIso.length <= 10 ? `${atIso}T12:00:00` : atIso);
+  const diffMin = Math.round((now.getTime() - at.getTime()) / 60000);
+  const time = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+  const days = daysBetween(todayIso(at), todayIso(now));
+  if (diffMin < 0) return formatDate(todayIso(at));
+  if (diffMin < 1) return "gerade eben";
+  if (days === 0 && diffMin < 60) return `vor ${diffMin} Min.`;
+  if (days === 0) return `heute, ${time}`;
+  if (days === 1) return `gestern, ${time}`;
+  if (days < 7) return `vor ${days} Tagen`;
+  return formatDate(todayIso(at));
+}

@@ -7,17 +7,17 @@ export interface HBarDatum {
   value: number;
 }
 
-const ROW = 30;
 const BAR = 14;
 
 /**
  * Horizontales Balkendiagramm. Kategorien links, Wert direkt am Balkenende.
  * Die Labelspalte passt sich der Breite an (schmal auf Mobil).
  */
-export function HBarChart({ data, caption, unit = "" }: { data: HBarDatum[]; caption: string; unit?: string }) {
+export function HBarChart({ data, caption, unit = "", rowHeight = 30 }: { data: HBarDatum[]; caption: string; unit?: string; rowHeight?: number }) {
+  const ROW = rowHeight;
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
-  const labelW = Math.min(170, Math.max(96, width * 0.36));
+  const labelW = Math.min(190, Math.max(132, width * 0.38));
   const valueW = 36;
   const innerW = Math.max(0, width - labelW - valueW);
   const max = Math.max(1, ...data.map((d) => d.value));

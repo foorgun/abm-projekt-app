@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useData } from "../../lib/store";
+import { ToastProvider } from "../Toast";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
@@ -42,20 +43,22 @@ export function AppShell() {
   }, [drawer]);
 
   return (
-    <div className="app" data-collapsed={collapsed} data-drawer={drawer ? "open" : "closed"}>
-      <Sidebar
-        collapsed={collapsed}
-        onToggleCollapse={() => setCollapsed((c) => !c)}
-        onNavigate={() => setDrawer(false)}
-        counts={{ tasks: dueTaskCount, review: reviewCount }}
-      />
-      <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden />
-      <div className="app-main">
-        <Header onOpenDrawer={() => setDrawer(true)} alertCount={alerts.length} onNewProject={() => {}} onNewTask={() => {}} />
-        <main className="app-content" id="inhalt">
-          <Outlet />
-        </main>
+    <ToastProvider>
+      <div className="app" data-collapsed={collapsed} data-drawer={drawer ? "open" : "closed"}>
+        <Sidebar
+          collapsed={collapsed}
+          onToggleCollapse={() => setCollapsed((c) => !c)}
+          onNavigate={() => setDrawer(false)}
+          counts={{ tasks: dueTaskCount, review: reviewCount }}
+        />
+        <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden />
+        <div className="app-main">
+          <Header onOpenDrawer={() => setDrawer(true)} alerts={alerts} onNewProject={() => {}} onNewTask={() => {}} />
+          <main className="app-content" id="inhalt">
+            <Outlet />
+          </main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }

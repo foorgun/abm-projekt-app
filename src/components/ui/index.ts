@@ -12,3 +12,4 @@ export * from "./States";
 export * from "./Stepper";
 export * from "./Tabs";
 export * from "./Tooltip";
+export * from "./Popover";

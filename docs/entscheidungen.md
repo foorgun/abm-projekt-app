@@ -78,3 +78,18 @@ Neueste Einträge unten.
   Apple Silicon, Command Line Tools zu alt; Update bräuchte `sudo`). Die Datenbanktests liefen stattdessen gegen
   Postgres 16.14 aus dem npm-Paket `@embedded-postgres/darwin-arm64` mit einem kleinen psql-Ersatz, beides nur temporär
   außerhalb des Repos. In der CI läuft das echte `psql`. `tools/test-db.sh` ist unverändert nutzbar (`PG_BIN=…`).
+
+## Schritt 3 – Dashboard
+
+- **Reihenfolge:** KPI-Kacheln, dann "Handlungsbedarf" in voller Breite (wichtigste Karte, daher vor den Diagrammen),
+  dann die zwei Diagramme, dann "Letzte Aktivitäten". Handlungsbedarf zeigt 6 Warnungen, der Rest per "Alle anzeigen".
+- **Direktaktion:** Rechnungswarnungen haben "Als versendet markieren" (setzt Versanddatum heute). Alle Zeilen führen zum Projekt.
+- **Kein Trend-Badge bei "Aktive Projekte":** Ein Monatsvergleich am Monatsanfang ist irreführend (z. B. −12 am 9. Oktober).
+  Stattdessen Fußzeile "x neu im Oktober, y im Vormonat".
+- **"Neue Projekte pro Monat"** zählt nach Eingangsmonat inklusive Storno (es war ein Eingang). Aktueller Monat hervorgehoben.
+- **"Projekte nach Phase"** nur aktive Projekte, Phasen ohne Projekt entfallen.
+- **Freiberufler** sehen nur "Aktive Projekte" und "Warnungen" als Kacheln, keine Aktivitäten (RLS: nur Mitarbeiter).
+- **Glocke:** aufklappbar mit den fünf dringendsten Warnungen und Link zum Dashboard.
+- **Rückmeldungen** nach Aktionen als kurzer Hinweis unten (Toast, per aria-live vorgelesen); Fehler wie "Keine Berechtigung" ebenso.
+- **Demo-Daten:** Zufallsprojekte werden jetzt vorwärts erzeugt (Eingang gleichmäßig über 12 Monate, Schritte bis heute),
+  dadurch realistische Monatsverteilung und keine ungeplanten Warnungen. Die gesetzten Fälle bleiben unverändert.

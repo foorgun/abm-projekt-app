@@ -93,6 +93,8 @@ interface ProjectSpec {
   stage: number;
   /** Tage seit dem letzten erledigten Schritt. */
   lastAgo: number;
+  /** Alternativ: Eingang vor so vielen Tagen; Schritte laufen dann vorwärts bis heute (Zufallsprojekte). */
+  intakeAgo?: number;
   status?: Project["status"];
   kind?: Project["kind"];
   /** Schritt-Keys, die trotz späterer Schritte fehlen ("fehlt noch"). */
@@ -131,6 +133,10 @@ const SPECIAL: ProjectSpec[] = [
 
 const RANDOM_COUNT = 34;
 
+function daysAgo(today: string, iso: string) {
+  return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000);
+}
+
 function pad(n: number, w = 3) {
   return String(n).padStart(w, "0");
 }
@@ -147,15 +153,13 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   // ---------------------------------------------------------------- Projekte
   const specs: ProjectSpec[] = [...SPECIAL];
   for (let i = 0; i < RANDOM_COUNT; i++) {
-    const roll = r.next();
-    // Verteilung: viele in frühen und mittleren Phasen, einige abgeschlossen
-    const stage = roll < 0.12 ? 0 : roll < 0.22 ? 1 : roll < 0.62 ? r.int(3, 7) : roll < 0.84 ? r.int(8, 11) : 12;
-    // Kein Zufallsprojekt soll unbeabsichtigt Warnungen erzeugen: Wartezeiten unter den Schwellen halten
-    const maxAgo = stage === 2 ? 12 : stage === 7 ? 80 : 40;
+    // Eingang gleichmäßig über die letzten 12 Monate verteilt; die Schritte laufen vorwärts bis heute.
+    // Weil die Abstände unter den Warnschwellen bleiben, erzeugen Zufallsprojekte keine ungeplanten Warnungen.
     specs.push({
-      stage,
-      lastAgo: r.int(1, maxAgo),
-      status: stage === 12 && r.chance(0.8) ? "abgeschlossen" : r.chance(0.04) ? "storno" : "aktiv",
+      stage: 0,
+      lastAgo: 0,
+      intakeAgo: Math.round(((i + r.next()) / RANDOM_COUNT) * 360),
+      status: r.chance(0.04) ? "storno" : undefined,
       kind: r.chance(0.05) ? "bauvoranfrage" : "neubau",
     });
   }
@@ -177,15 +181,29 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     const company = COMPANIES.find((c) => c.id === companyId);
     const sales = company ? SALESPEOPLE.filter((s) => s.companyId === company.id) : [];
 
-    // Schrittdaten rückwärts vom letzten erledigten Schritt
-    const done = steps.slice(0, spec.stage);
     const dates: Record<string, string> = {};
+    let done = steps.slice(0, spec.stage);
     let cursor = -spec.lastAgo;
-    for (let i = done.length - 1; i >= 0; i--) {
-      const key = done[i].key;
-      dates[key] = addDays(today, cursor);
-      const gap = GAPS[key] ?? 10;
-      cursor -= Math.max(1, Math.round(gap * (0.7 + r.next() * 0.6)));
+    if (spec.intakeAgo !== undefined) {
+      // Vorwärts: ab Eingang, solange der nächste Schritt nicht in der Zukunft liegt
+      cursor = -spec.intakeAgo;
+      done = [];
+      for (const s of steps) {
+        const next = cursor + Math.max(1, Math.round((GAPS[s.key] ?? 10) * (0.7 + r.next() * 0.5))) + (s.key === "plangespraech" ? r.int(3, 12) : 0);
+        if (next > 0) break;
+        cursor = next;
+        dates[s.key] = addDays(today, cursor);
+        done.push(s);
+      }
+      cursor = -spec.intakeAgo;
+    } else {
+      // Rückwärts vom letzten erledigten Schritt (bewusst gesetzte Fälle)
+      for (let i = done.length - 1; i >= 0; i--) {
+        const key = done[i].key;
+        dates[key] = addDays(today, cursor);
+        const gap = GAPS[key] ?? 10;
+        cursor -= Math.max(1, Math.round(gap * (0.7 + r.next() * 0.6)));
+      }
     }
     for (const k of spec.skip ?? []) delete dates[k];
     const firstDate = done.length ? dates[done[0].key] ?? addDays(today, cursor) : addDays(today, -spec.lastAgo);
@@ -202,7 +220,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       abmNr,
       hausbauNr: company ? `HB-${firstDate.slice(2, 4)}${pad(r.int(100, 999))}` : null,
       kind,
-      status: spec.status ?? "aktiv",
+      status: spec.status ?? (dates.hausaufstellung && daysAgo(today, dates.hausaufstellung) > 21 ? "abgeschlossen" : "aktiv"),
       companyId,
       salespersonId: sales.length ? r.pick(sales).id : null,
       bauherrLabel: name!,
