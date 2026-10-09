@@ -12,6 +12,7 @@ export function createSupabaseRepo(): Repo {
     load: fail,
     setStepDate: fail,
     createProject: fail,
+    setProjectStatus: fail,
     markInvoiceSent: fail,
     uploadDocument: fail,
     createTask: fail,

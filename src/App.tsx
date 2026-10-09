@@ -8,6 +8,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
 import { Projects } from "./pages/Projects";
+import { ProjectDetail } from "./pages/project/ProjectDetail";
 import { Styleguide } from "./pages/Styleguide";
 
 export function App() {
@@ -22,7 +23,7 @@ export function App() {
               <Route path="projekte" element={<Projects tab="alle" />} />
               <Route path="projekte/aktiv" element={<Projects tab="aktiv" />} />
               <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
-              <Route path="projekte/:id" element={<Placeholder title="Projekt" step="Schritt 5" />} />
+              <Route path="projekte/:id" element={<ProjectDetail />} />
               <Route path="pipeline" element={<Pipeline />} />
               <Route path="aufgaben" element={<Placeholder title="Aufgaben" step="Schritt 6" />} />
               <Route path="rechnungen" element={<Placeholder title="Rechnungen" step="Schritt 3–6" />} />

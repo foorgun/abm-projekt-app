@@ -3,6 +3,7 @@
 // damit die Rollen-Umschaltung zeigt, was z. B. ein Freiberufler sieht. Echter Schutz liegt in der Datenbank.
 
 import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
+import { checkFile } from "./files";
 import { isAllowedFolder } from "./folders";
 import { todayIso } from "./format";
 import { PermissionError, type NewAgentRule, type NewProject, type NewTask, type Repo, type TaskPatch, type UploadInput } from "./repo";
@@ -115,6 +116,16 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(structuredClone(p));
     },
 
+    async setProjectStatus(projectId, status) {
+      requireStaff();
+      const p = project(projectId);
+      if (p.status === status) return done(undefined);
+      p.status = status;
+      const text = { aktiv: "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
+      log({ projectId, kind: "projekt", text });
+      return done(undefined);
+    },
+
     async markInvoiceSent(invoiceId, sentOn) {
       requireStaff();
       const inv = db.invoices.find((i) => i.id === invoiceId);
@@ -130,7 +141,10 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       // Wie RLS: Mitarbeiter überall, Freiberufler nur in zugewiesenen Projekten
       const p = project(projectId);
       if (!isStaff() && p.planerId !== DEMO_FREELANCER_TEAM_ID) throw new PermissionError();
+      if (folderPath.includes("{datum}")) throw new Error("Für diesen Ordner fehlt das Datum");
       if (!isAllowedFolder(folderPath, db.folderTemplates)) throw new Error("Ordner gehört nicht zur Vorlage");
+      const check = checkFile(file.name, file.size);
+      if (!check.ok) throw new Error(check.reason);
       const day = todayIso();
       // Bei Namenskonflikt Zähler anhängen, nie überschreiben
       const base = `${projectId}/${folderPath}/${day}_${file.name}`;

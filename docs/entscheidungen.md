@@ -123,3 +123,27 @@ Neueste Einträge unten.
 - **Neues Projekt:** ein Dialog für Kopfzeile und leere Zustände. ABM-Nr. wird aus Firmenpräfix + höchster Nummer + 1 vorgeschlagen.
   Nach dem Anlegen öffnet sich das Projekt.
 - **Warn-Icon** in Tabellen und Karten mit nativem Titel statt eigener Blase (Tabellen scrollen in einem Container, der Blasen abschneiden würde).
+
+## Schritt 5 – Projektdetail
+
+- **Aufbau:** Brotkrumen, Kopf (Bauherr, Status, ABM-Nr., Hausbau-Nr., Ort, Firma, Architekt; Aktionen "Aufgabe anlegen" und "Status"),
+  Prozess-Stepper, Warnbanner des Projekts, Tabs Übersicht · Dokumente · Aufgaben · Rechnungen · Aktivität. Der Tab steht in der URL
+  (`?tab=dokumente`), damit Links direkt auf einen Bereich zeigen können.
+- **Stepper:** alle Schritte aus `step_definitions`, bei 1280 px ohne Scrollen (Beschriftung mit deutscher Silbentrennung), auf Mobil
+  vertikal. Datum per Klick bearbeiten, leeres Datum setzt den Schritt zurück. "Fehlt" = offen, obwohl ein späterer Schritt erledigt ist
+  (gestrichelt, orange, plus Hinweis im Kartenkopf). Schnellaktion "<nächster Schritt> heute erledigt".
+- **Übersicht:** "Projektbeteiligte" mit den Feldern aus Liste.docx; Bauadresse und Kontakt Bauherr nur für Mitarbeiter (sonst Schloss-Hinweis).
+- **Ordnerbaum** (`src/lib/folderTree.ts`): Vorlage plus konkrete Datumsordner aus den Dokumenten. Datumsordner der Vorlage erscheinen als
+  Sammelknoten "… erhalten am …" mit den echten Datumsordnern darunter (neuestes oben); Vorlagen-Unterordner wiederholen sich unter jedem
+  Datumsordner. Zähler zeigt Dateien inkl. Unterordner (Titel zeigt "x hier, y mit Unterordnern"). Leere Ordner gedimmt, optional ausblendbar.
+- **Upload:** Drag-and-Drop auf jeden Ordner im Baum, in die Ablagefläche rechts oder per Button; mehrere Dateien auf einmal.
+  Ablage auf einem Datums-Sammelknoten fragt nach dem Datum (Standard heute) und legt den Datumsordner an.
+  Abgelehnt mit Meldung: CAD (.dwg, .pln, …), ausführbare Dateien, > 50 MB, Pfade außerhalb der Vorlage, Pfad ohne Datum.
+  Die Regel liegt in `src/lib/files.ts` und gilt später auch für den Agenten.
+- **Herkunft** je Datei als Pill "Agent" bzw. "Upload". Vorschau/Download folgen mit Supabase Storage (Schritt 8); im Demo-Modus
+  werden nur Metadaten gespeichert.
+- **Status ändern** (Aktiv/Abgeschlossen/Storno) über das Menü "Status", protokolliert in Aktivitäten (neue Repo-Methode `setProjectStatus`).
+- **Rechnungen-Tab** mit Summen (gesamt, offen, bezahlt) und "Als versendet markieren"; eine geplante Rechnung, deren Auslöser erreicht ist,
+  heißt "Jetzt fällig".
+- **Freiberufler** sehen nur Übersicht und Dokumente, keine Aktionen, Stepper nur lesend, dürfen aber hochladen.
+  Nicht freigegebene Projekte erscheinen als "nicht gefunden" (verrät nicht, dass es sie gibt).

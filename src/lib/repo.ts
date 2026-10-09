@@ -50,6 +50,7 @@ export interface Repo {
 
   setStepDate(projectId: string, stepKey: string, date: string | null): Promise<void>;
   createProject(input: NewProject): Promise<Project>;
+  setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;
   markInvoiceSent(invoiceId: string, sentOn: string): Promise<void>;
   uploadDocument(input: UploadInput): Promise<ProjectDocument>;
 

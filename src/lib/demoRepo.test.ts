@@ -53,6 +53,18 @@ describe("demoRepo: Änderungen", () => {
     expect(after.activities[0]).toMatchObject({ projectId: p.id, kind: "schritt", actor: "Mehmet Cetin" });
   });
 
+  it("Status ändern protokolliert und ist Freiberuflern verboten", async () => {
+    const r = repo();
+    const d = await r.load(admin);
+    const p = d.projects.find((x) => x.status === "aktiv")!;
+    await r.setProjectStatus(p.id, "abgeschlossen");
+    const after = await r.load(admin);
+    expect(after.projects.find((x) => x.id === p.id)!.status).toBe("abgeschlossen");
+    expect(after.activities[0]).toMatchObject({ projectId: p.id, text: "Projekt abgeschlossen" });
+    await r.load(freelancer);
+    await expect(r.setProjectStatus(p.id, "aktiv")).rejects.toBeInstanceOf(PermissionError);
+  });
+
   it("geladene Daten sind Kopien (keine Mutation von außen)", async () => {
     const r = repo();
     const d = await r.load(admin);
@@ -79,6 +91,10 @@ describe("demoRepo: Änderungen", () => {
     expect(a.storagePath).not.toBe(b.storagePath);
     expect(b.storagePath).toMatch(/Plan \(2\)\.pdf$/);
     await expect(r.uploadDocument({ projectId: p.id, folderPath: "../geheim", file })).rejects.toThrow(/Vorlage/);
+    await expect(r.uploadDocument({ projectId: p.id, folderPath: "10 Bodengutachten/Bodengutachten erhalten am {datum}", file })).rejects.toThrow(/Datum/);
+    await expect(r.uploadDocument({ projectId: p.id, folderPath: "05 Entwurf/01 Entwurf 1 Pläne", file: { name: "Plan.dwg", size: 1, type: "" } })).rejects.toThrow(/Fileserver/);
+    const dated = await r.uploadDocument({ projectId: p.id, folderPath: "10 Bodengutachten/Bodengutachten erhalten am 02.10.2026", file });
+    expect(dated.folderPath).toBe("10 Bodengutachten/Bodengutachten erhalten am 02.10.2026");
   });
 
   it("Aufgabe mit gleicher Quelle wird nicht doppelt angelegt", async () => {
