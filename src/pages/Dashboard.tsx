@@ -2,14 +2,14 @@ import { PageHead } from "../components/layout/PageHead";
 import { Card, CardBody, KpiSkeleton, Skeleton, TableSkeleton } from "../components/ui";
 import { formatLongDate, todayIso } from "../lib/format";
 import { greeting } from "../lib/greeting";
-import { useSession } from "../lib/session";
+import { firstName, useSession } from "../lib/session";
 
 /** Schritt 1: Ladezustand des Dashboards. Inhalte folgen in Schritt 3. */
 export function Dashboard() {
   const { user } = useSession();
   return (
     <>
-      <PageHead title={`${greeting()}, ${user.name.split(" ")[0]}`} sub={formatLongDate(todayIso())} />
+      <PageHead title={`${greeting()}, ${firstName(user)}`} sub={formatLongDate(todayIso())} />
       <div className="stack">
         <div className="grid-kpi">
           <KpiSkeleton />

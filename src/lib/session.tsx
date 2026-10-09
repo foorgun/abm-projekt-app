@@ -22,8 +22,13 @@ interface SessionValue {
 
 const SessionContext = createContext<SessionValue | null>(null);
 
-/** Erfundener Demo-Benutzer. Im Supabase-Modus (Schritt 8) kommt der Benutzer aus der Anmeldung. */
-const DEMO_USER: SessionUser = { name: "Jana Roth", role: "admin" };
+/** Demo-Benutzer, Standardrolle Admin. Im Supabase-Modus (Schritt 8) kommt der Benutzer aus der Anmeldung. */
+export const DEMO_USER: SessionUser = { name: "Mehmet Cetin", role: "admin" };
+
+/** Vorname für Begrüßungen. */
+export function firstName(user: SessionUser): string {
+  return user.name.trim().split(/\s+/)[0] ?? user.name;
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState(DEMO_USER);

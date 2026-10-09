@@ -29,10 +29,21 @@ Neueste Einträge unten.
 - **Tabs:** zwei Varianten derselben Komponente, `line` (Seitenbereiche) und `segmented` (Filter wie Heute/Woche).
 - **Einklappen:** ab 1024 px klappt « die Seitenleiste auf Icons ein (gespeichert in `localStorage`, nur Komfort).
   Darunter ist sie ein Drawer über das Menü-Icon, Escape oder Klick daneben schließt ihn.
-- **Benutzer im Demo-Modus:** erfundene "Jana Roth", Rolle über das Benutzermenü umschaltbar (Admin/Mitarbeiter/Freiberufler),
-  damit die Freiberufler-Sicht vorführbar ist. Echter Schutz bleibt RLS (Schritt 8).
+- **Benutzer im Demo-Modus:** "Mehmet Cetin", Standardrolle Admin (Vorgabe ABM, ersetzt das frühere "Jana Roth").
+  Rolle über das Benutzermenü umschaltbar (Admin/Mitarbeiter/Freiberufler), damit die Freiberufler-Sicht vorführbar ist.
+  Echter Schutz bleibt RLS (Schritt 8). Begrüßung nimmt den Vornamen aus dem Benutzer.
 - **Kein Dark-Mode-Schalter** wie im Referenzbild: Dark ist fest, Light ist nur vorbereitet.
 - **Diagramme:** eigene SVG-Komponenten (Säulen, gestapelt, horizontal, Linie), keine Diagrammbibliothek.
   Jede hat Tooltip und eine aufklappbare Tabellenansicht für Barrierefreiheit.
 - **Dashboard in Schritt 1** zeigt den Ladezustand (Skeleton) in der Zielstruktur. Die vollständige Komposition mit Beispielwerten
   steht unter `#/styleguide`.
+
+## Design-Korrekturen nach Rückmeldung zu Schritt 1
+
+- Gruppentitel und KPI-Nebenzeilen heller (`--muted` bzw. `--text-2`, 12 px). `--faint` auf `#7a8394` angehoben (≥ 4,5:1 auf allen Flächen).
+- Aktiver Menüpunkt: Teal-Balken links plus `--accent-soft` als Hintergrund.
+- KPI-Kacheln: gleiche Höhe (Raster `auto 1fr auto`), Beschriftung einzeilig, kurze Labels ("Offene Rechnungen", "Zur Prüfung"), Wert 32 px (neues Token `--fs-32`; mobil 28 px).
+- Säulendiagramm: Säulen max. 16 px, gedämpft in `--chart-1-muted` (`#33706b`, 3:1 gegen `--surface`), nur die hervorgehobene Periode
+  (aktueller Monat) in `--chart-1` und mit fetter Achsenbeschriftung. Gitterlinien `--chart-grid` deutlicher, Achsenwerte 12 px in `--muted`.
+- Karten: `--surface` `#161b23` (vorher `#14181f`), Rand `--border` `#29303c` (vorher `#242a35`). Diagrammfarben auf der neuen Fläche erneut geprüft.
+- Begrüßung: bis 11 Uhr "Guten Morgen", 11 bis 17 Uhr "Guten Tag", ab 17 Uhr "Guten Abend" (Test in `src/lib/greeting.test.ts`).

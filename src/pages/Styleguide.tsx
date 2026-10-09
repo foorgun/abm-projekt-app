@@ -91,7 +91,7 @@ interface Row {
 }
 
 const ROWS: Row[] = [
-  { id: "1", project: "8161-9001 · Beispiel", event: "Baugenehmigung eingetragen", tone: "ok", status: "Erledigt", who: "Jana Roth", when: "vor 12 Min.", done: 5 },
+  { id: "1", project: "8161-9001 · Beispiel", event: "Baugenehmigung eingetragen", tone: "ok", status: "Erledigt", who: "Mehmet Cetin", when: "vor 12 Min.", done: 5 },
   { id: "2", project: "8260-9001 · Muster", event: "Lageplan abgelegt", tone: "accent", status: "Agent", who: "Agent", when: "vor 40 Min.", done: 2 },
   { id: "3", project: "8185-9001 · Probst", event: "Rechnung fällig", tone: "danger", status: "Offen", who: "System", when: "heute, 08:02", done: 1 },
   { id: "4", project: "Bauvoranfrage · Winter", event: "Zuordnung unsicher", tone: "warn", status: "Prüfen", who: "Agent", when: "gestern", done: 3 },
@@ -156,8 +156,8 @@ export function Styleguide() {
         <div className="grid-kpi">
           <KpiCard icon={<FolderOpen size={16} />} label="Aktive Projekte" value="38" trend={<Trend value={4} good />} foot="4 mehr als im Vormonat" info="Projekte mit Status aktiv" />
           <KpiCard icon={<ListTodo size={16} />} label="Offene Aufgaben" value="17" tone="warn" foot="davon 3 überfällig" />
-          <KpiCard icon={<Receipt size={16} />} label="Rechnungen nicht versendet" value="13.500 €" tone="danger" valueTone="danger" foot="2 Rechnungen" />
-          <KpiCard icon={<Bot size={16} />} label="Agent: zur Prüfung" value="5" tone="info" trend={<Trend value={-2} good />} foot="seit gestern" />
+          <KpiCard icon={<Receipt size={16} />} label="Offene Rechnungen" value="13.500 €" tone="danger" valueTone="danger" foot="2 Rechnungen nicht versendet" />
+          <KpiCard icon={<Bot size={16} />} label="Zur Prüfung" value="5" tone="info" trend={<Trend value={-2} good />} foot="Posteingang-Agent, seit gestern" />
         </div>
 
         <div className="grid-2">
@@ -167,6 +167,7 @@ export function Styleguide() {
               <BarChart
                 caption="Neue Projekte pro Monat"
                 series={[{ name: "Neue Projekte" }]}
+                highlight={MONTHS.length - 1}
                 data={MONTHS.map(([label, title, v]) => ({ label, title, values: [v] }))}
               />
             </CardBody>

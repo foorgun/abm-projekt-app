@@ -15,8 +15,8 @@ export interface BarDatum {
   values: number[];
 }
 
-const PAD = { top: 12, right: 8, bottom: 28, left: 36 };
-const MAX_BAR = 24;
+const PAD = { top: 12, right: 8, bottom: 28, left: 40 };
+const MAX_BAR = 16;
 const GAP = 2; // Flächenfuge zwischen gestapelten Segmenten
 
 /** Pfad für ein Rechteck mit 4 px gerundetem Datenende oben, eckig an der Basis. */
@@ -32,12 +32,15 @@ export function BarChart({
   height = 240,
   caption,
   unit = "",
+  highlight,
 }: {
   data: BarDatum[];
   series: BarSeries[];
   height?: number;
   caption: string;
   unit?: string;
+  /** Index der hervorgehobenen Kategorie (z. B. aktueller Monat). Alle anderen Säulen werden gedämpft. */
+  highlight?: number;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -48,9 +51,9 @@ export function BarChart({
   const innerW = Math.max(0, width - PAD.left - PAD.right);
   const innerH = height - PAD.top - PAD.bottom;
   const band = data.length ? innerW / data.length : innerW;
-  const barW = Math.min(MAX_BAR, band * 0.56);
+  const barW = Math.min(MAX_BAR, band * 0.42);
   const y = (v: number) => PAD.top + innerH - (v / max) * innerH;
-  // Bei schmalen Diagrammen nur jede zweite Kategorie beschriften
+  // Bei schmalen Diagrammen nur jede zweite Kategorie beschriften, gezählt vom Ende (jüngste Periode immer beschriftet)
   const labelEvery = band < 30 ? 2 : 1;
 
   const h = hover != null ? data[hover] : null;
@@ -85,14 +88,15 @@ export function BarChart({
                 // Fuge: jedes Segment über dem ersten endet GAP über dem darunterliegenden
                 const bottom = si === 0 ? y0 : y0 - GAP;
                 const hh = Math.max(1, bottom - top);
+                const muted = highlight != null && highlight !== i && hover !== i;
                 return si === last ? (
-                  <path key={si} className="bar" data-series={si + 1} d={topRounded(x, top, barW, hh)} />
+                  <path key={si} className="bar" data-series={si + 1} data-muted={muted} d={topRounded(x, top, barW, hh)} />
                 ) : (
-                  <rect key={si} className="bar" data-series={si + 1} x={x} y={top} width={barW} height={hh} />
+                  <rect key={si} className="bar" data-series={si + 1} data-muted={muted} x={x} y={top} width={barW} height={hh} />
                 );
               })}
-              {i % labelEvery === 0 && (
-                <text className="chart-cat" x={x + barW / 2} y={height - 8} textAnchor="middle">
+              {(data.length - 1 - i) % labelEvery === 0 && (
+                <text className="chart-cat" data-current={highlight === i} x={x + barW / 2} y={height - 8} textAnchor="middle">
                   {d.label}
                 </text>
               )}

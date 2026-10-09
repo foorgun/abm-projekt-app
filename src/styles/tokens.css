@@ -8,21 +8,21 @@
 
   /* Flächen */
   --bg: #0c0e12;
-  --surface: #14181f;
-  --surface-2: #1a1f28;
-  --surface-3: #212734;
+  --surface: #161b23;
+  --surface-2: #1d232d;
+  --surface-3: #252c38;
   --sidebar: #0a0c0f;
   --overlay: rgba(4, 6, 9, 0.64);
 
   /* Linien */
-  --border: #242a35;
-  --border-strong: #323a48;
+  --border: #29303c;
+  --border-strong: #363f4e;
 
   /* Text */
   --text: #e8ebf1;
   --text-2: #b7beca;
   --muted: #8d96a6;
-  --faint: #636c7c;
+  --faint: #7a8394; /* noch AA-tauglich für 12-px-Text auf --sidebar und --surface */
 
   /* Akzent (Hauptaktionen, aktive Navigation, Diagramm-Hauptserie) */
   --accent: #2bb3a3;
@@ -45,8 +45,10 @@
   /* Diagramme */
   --chart-1: #25a294; /* Akzent, eine Stufe dunkler: besteht die Farbprüfung für Diagramme auf --surface */
   --chart-2: #8b7cf6;
-  --chart-grid: #1f2530;
-  --chart-axis: var(--faint);
+  /* Gedämpfte Hauptserie: Vergangenheit/Vergleich, nur die aktuelle Periode in --chart-1 */
+  --chart-1-muted: #33706b; /* 3:1 gegen --surface */
+  --chart-grid: #262d38;
+  --chart-axis: var(--muted);
 
   /* Fokus */
   --focus: #7fe3d6;
@@ -59,6 +61,7 @@
   --fs-16: 16px;
   --fs-20: 20px;
   --fs-28: 28px;
+  --fs-32: 32px;
 
   /* Abstände (4er-Raster) */
   --sp-1: 4px;

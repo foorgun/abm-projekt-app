@@ -9,7 +9,7 @@ export interface LinePoint {
   value: number;
 }
 
-const PAD = { top: 12, right: 12, bottom: 28, left: 36 };
+const PAD = { top: 12, right: 12, bottom: 28, left: 40 };
 
 /** Liniendiagramm (eine Serie) mit Flächen-Hauch, Fadenkreuz und Tooltip. */
 export function LineChart({ data, caption, name, height = 240 }: { data: LinePoint[]; caption: string; name: string; height?: number }) {
