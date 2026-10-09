@@ -5,7 +5,9 @@ import { createRepo } from "./lib/createRepo";
 import { SessionProvider } from "./lib/session";
 import { DataProvider } from "./lib/store";
 import { Dashboard } from "./pages/Dashboard";
+import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
+import { Projects } from "./pages/Projects";
 import { Styleguide } from "./pages/Styleguide";
 
 export function App() {
@@ -17,11 +19,11 @@ export function App() {
           <Routes>
             <Route element={<AppShell />}>
               <Route index element={<Dashboard />} />
-              <Route path="projekte" element={<Placeholder title="Alle Projekte" step="Schritt 4" />} />
-              <Route path="projekte/aktiv" element={<Placeholder title="Aktive Projekte" step="Schritt 4" />} />
-              <Route path="projekte/abgeschlossen" element={<Placeholder title="Abgeschlossene Projekte" step="Schritt 4" />} />
+              <Route path="projekte" element={<Projects tab="alle" />} />
+              <Route path="projekte/aktiv" element={<Projects tab="aktiv" />} />
+              <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
               <Route path="projekte/:id" element={<Placeholder title="Projekt" step="Schritt 5" />} />
-              <Route path="pipeline" element={<Placeholder title="Pipeline" step="Schritt 4" />} />
+              <Route path="pipeline" element={<Pipeline />} />
               <Route path="aufgaben" element={<Placeholder title="Aufgaben" step="Schritt 6" />} />
               <Route path="rechnungen" element={<Placeholder title="Rechnungen" step="Schritt 3–6" />} />
               <Route path="agent" element={<Placeholder title="Agent-Dashboard" step="Schritt 7" />} />

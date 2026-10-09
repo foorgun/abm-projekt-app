@@ -9,6 +9,7 @@ export interface Column<T> {
   sortValue?: (row: T) => string | number | null;
   align?: "left" | "right";
   strong?: boolean;
+  className?: string;
 }
 
 /**
@@ -23,6 +24,9 @@ export function DataTable<T>({
   expand,
   label,
   initialSort,
+  groupBy,
+  stickyFirst,
+  compact,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -32,6 +36,12 @@ export function DataTable<T>({
   expand?: (row: T) => ReactNode;
   label: string;
   initialSort?: { key: string; dir: "asc" | "desc" };
+  /** Gruppiert Zeilen (z. B. nach Eingangsmonat). Reihenfolge der Gruppen = Reihenfolge des ersten Auftretens. */
+  groupBy?: (row: T) => string;
+  /** Erste Spalte bleibt beim horizontalen Scrollen stehen (Mobil). */
+  stickyFirst?: boolean;
+  /** Engere Zellenabstände für breite Tabellen. */
+  compact?: boolean;
 }) {
   const [sort, setSort] = useState(initialSort ?? null);
   const [open, setOpen] = useState<string | null>(null);
@@ -58,9 +68,53 @@ export function DataTable<T>({
 
   const clickable = Boolean(onRowClick || expand);
 
+  // Gruppen: stabil nach erstem Auftreten, innerhalb der Gruppe bleibt die Sortierung erhalten
+  const grouped = useMemo(() => {
+    if (!groupBy) return [{ key: "", rows: sorted }];
+    const map = new Map<string, T[]>();
+    for (const r of sorted) {
+      const k = groupBy(r);
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    return [...map.entries()].map(([key, rows]) => ({ key, rows }));
+  }, [sorted, groupBy]);
+
+  function renderRow(row: T) {
+    const k = rowKey(row);
+    const isOpen = open === k;
+    const toggle = () => (expand ? setOpen(isOpen ? null : k) : onRowClick?.(row));
+    return (
+      <Fragment key={k}>
+        <tr
+          data-clickable={clickable}
+          tabIndex={clickable ? 0 : undefined}
+          aria-expanded={expand ? isOpen : undefined}
+          onClick={toggle}
+          onKeyDown={(e) => {
+            if (!clickable || (e.key !== "Enter" && e.key !== " ") || e.target !== e.currentTarget) return;
+            e.preventDefault();
+            toggle();
+          }}
+        >
+          {columns.map((c) => (
+            <td key={c.key} className={[c.align === "right" && "num", c.strong && "strong", c.className].filter(Boolean).join(" ") || undefined}>
+              {c.render(row)}
+            </td>
+          ))}
+        </tr>
+        {expand && isOpen && (
+          <tr className="row-detail">
+            <td colSpan={columns.length}>{expand(row)}</td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  }
+
   return (
     <div className="table-wrap">
-      <table className="table" aria-label={label}>
+      <table className={["table", stickyFirst && "table-sticky-first", compact && "table-compact"].filter(Boolean).join(" ")} aria-label={label}>
         <thead>
           <tr>
             {columns.map((c) => {
@@ -87,38 +141,18 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {sorted.map((row) => {
-            const k = rowKey(row);
-            const isOpen = open === k;
-            return (
-              <Fragment key={k}>
-                <tr
-                  data-clickable={clickable}
-                  tabIndex={clickable ? 0 : undefined}
-                  aria-expanded={expand ? isOpen : undefined}
-                  onClick={() => (expand ? setOpen(isOpen ? null : k) : onRowClick?.(row))}
-                  onKeyDown={(e) => {
-                    if (!clickable || (e.key !== "Enter" && e.key !== " ")) return;
-                    if (e.target !== e.currentTarget) return;
-                    e.preventDefault();
-                    if (expand) setOpen(isOpen ? null : k);
-                    else onRowClick?.(row);
-                  }}
-                >
-                  {columns.map((c) => (
-                    <td key={c.key} className={[c.align === "right" && "num", c.strong && "strong"].filter(Boolean).join(" ") || undefined}>
-                      {c.render(row)}
-                    </td>
-                  ))}
+          {grouped.map((g) => (
+            <Fragment key={g.key}>
+              {groupBy && (
+                <tr className="row-group">
+                  <th colSpan={columns.length} scope="colgroup">
+                    {g.key} <span className="muted">· {g.rows.length}</span>
+                  </th>
                 </tr>
-                {expand && isOpen && (
-                  <tr className="row-detail">
-                    <td colSpan={columns.length}>{expand(row)}</td>
-                  </tr>
-                )}
-              </Fragment>
-            );
-          })}
+              )}
+              {g.rows.map(renderRow)}
+            </Fragment>
+          ))}
         </tbody>
       </table>
     </div>

@@ -93,3 +93,33 @@ Neueste Einträge unten.
 - **Rückmeldungen** nach Aktionen als kurzer Hinweis unten (Toast, per aria-live vorgelesen); Fehler wie "Keine Berechtigung" ebenso.
 - **Demo-Daten:** Zufallsprojekte werden jetzt vorwärts erzeugt (Eingang gleichmäßig über 12 Monate, Schritte bis heute),
   dadurch realistische Monatsverteilung und keine ungeplanten Warnungen. Die gesetzten Fälle bleiben unverändert.
+
+## Rückmeldung zu Schritt 3
+
+- Demo-Namen "Beispiel", "Muster", "Probst", "Storno-Beispiel" ersetzt durch Reinhardt (der 10.000-€-Fall), Engelhardt, Scholz, Fuchs
+  (in `demoData.ts` und `supabase/seed.sql`).
+- KPI-Kacheln: Der Link deckt per `::after` die ganze Kachel ab, der Info-Button liegt darüber. So steckt kein Button in einem Link
+  (gültiges HTML, sauber per Tastatur).
+- Sidebar-Badges haben Titel und Screenreader-Text ("heute fällig und überfällig", "offene Prüfungen").
+- Seitenleiste im echten Browserfenster geprüft (1280×860, 1440×1000, 1280×600): bleibt beim Scrollen bei top 0, volle Fensterhöhe.
+- Werte über den Säulen in "Neue Projekte pro Monat" (`showValues`).
+
+## Schritt 4 – Projekte und Pipeline
+
+- **Tabs sind Routen** (`/projekte`, `/projekte/aktiv`, `/projekte/abgeschlossen`), Wechsel ohne Neuladen. **Filter stehen in der URL**
+  (`?q=…&firma=…&architekt=…&phase=…&sort=…&gruppe=monat&storno=1`) und bleiben beim Tabwechsel erhalten; Links sind teilbar.
+- **Spalten zusammengelegt**, damit die Tabelle bei 1280 px ohne seitliches Scrollen passt: "Bauherr · Ort" (Ort als zweite Zeile),
+  eigene Status-Spalte entfällt. Aktive Projekte zeigen ihre Phase, abgeschlossene und stornierte ihren Status an derselben Stelle.
+  "Architekt" heißt im Kopf "Arch." (mit Titel). Inhaltsbereich hat 24 statt 32 px Seitenrand.
+- **"Nächste Aufgabe"**: früheste offene Aufgabe des Projekts, überfällige in Rot. Ohne Aufgabe steht der nächste offene Schritt (grau).
+- **Suche** (Liste, Pipeline, Kopfzeile): UND-Verknüpfung der Wörter, Umlaute vereinheitlicht, Nummern ohne Leerzeichen/Bindestriche
+  verglichen ("8161 101" findet "8161-101"). Kopfzeile: bis 6 Treffer mit Pfeiltasten, Enter öffnet die gefilterte Liste.
+- **Stornierte** nur im Tab "Alle" per Häkchen einblendbar.
+- **Gruppierung nach Eingangsmonat** sortiert die Gruppen neueste zuerst, innerhalb bleibt die gewählte Sortierung.
+- **Pipeline:** Spalten = "Eingang" + jeder Schritt aus `step_definitions`, nur aktive Projekte. Verschieben nur in die direkt nächste
+  Spalte (sonst erklärender Hinweis), mit Bestätigungsdialog und Datum (Standard heute, nicht in der Zukunft).
+  Zusätzlich je Karte ein Button "→ nächste Phase" für Tastatur und Touch (Drag-and-Drop funktioniert auf Touch-Geräten nicht).
+  Freiberufler können nicht verschieben.
+- **Neues Projekt:** ein Dialog für Kopfzeile und leere Zustände. ABM-Nr. wird aus Firmenpräfix + höchster Nummer + 1 vorgeschlagen.
+  Nach dem Anlegen öffnet sich das Projekt.
+- **Warn-Icon** in Tabellen und Karten mit nativem Titel statt eigener Blase (Tabellen scrollen in einem Container, der Blasen abschneiden würde).

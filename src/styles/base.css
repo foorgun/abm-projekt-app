@@ -115,3 +115,8 @@ td,
     animation: none !important;
   }
 }
+
+abbr[title] {
+  text-decoration: none;
+  cursor: help;
+}

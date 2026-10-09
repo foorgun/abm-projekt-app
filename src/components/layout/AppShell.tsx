@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useData } from "../../lib/store";
+import { NewProjectProvider, useNewProject } from "../NewProjectDialog";
 import { ToastProvider } from "../Toast";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -19,7 +20,6 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
-  const { alerts, dueTaskCount, reviewCount } = useData();
 
   useEffect(() => {
     try {
@@ -44,21 +44,47 @@ export function AppShell() {
 
   return (
     <ToastProvider>
-      <div className="app" data-collapsed={collapsed} data-drawer={drawer ? "open" : "closed"}>
-        <Sidebar
-          collapsed={collapsed}
-          onToggleCollapse={() => setCollapsed((c) => !c)}
-          onNavigate={() => setDrawer(false)}
-          counts={{ tasks: dueTaskCount, review: reviewCount }}
-        />
-        <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden />
-        <div className="app-main">
-          <Header onOpenDrawer={() => setDrawer(true)} alerts={alerts} onNewProject={() => {}} onNewTask={() => {}} />
-          <main className="app-content" id="inhalt">
-            <Outlet />
-          </main>
-        </div>
-      </div>
+      <NewProjectProvider>
+        <ShellLayout collapsed={collapsed} setCollapsed={setCollapsed} drawer={drawer} setDrawer={setDrawer} />
+      </NewProjectProvider>
     </ToastProvider>
+  );
+}
+
+function ShellLayout({
+  collapsed,
+  setCollapsed,
+  drawer,
+  setDrawer,
+}: {
+  collapsed: boolean;
+  setCollapsed: (fn: (c: boolean) => boolean) => void;
+  drawer: boolean;
+  setDrawer: (v: boolean) => void;
+}) {
+  const { alerts, dueTaskCount, reviewCount } = useData();
+  const openNewProject = useNewProject();
+  const navigate = useNavigate();
+  return (
+    <div className="app" data-collapsed={collapsed} data-drawer={drawer ? "open" : "closed"}>
+      <Sidebar
+        collapsed={collapsed}
+        onToggleCollapse={() => setCollapsed((c) => !c)}
+        onNavigate={() => setDrawer(false)}
+        counts={{ tasks: dueTaskCount, review: reviewCount }}
+      />
+      <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden />
+      <div className="app-main">
+        <Header
+          onOpenDrawer={() => setDrawer(true)}
+          alerts={alerts}
+          onNewProject={openNewProject}
+          onNewTask={() => navigate("/aufgaben?neu=1")}
+        />
+        <main className="app-content" id="inhalt">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 }

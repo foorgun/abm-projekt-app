@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
-import { Bell, ChevronDown, FilePlus2, ListTodo, Menu as MenuIcon, Plus, Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, ChevronDown, FilePlus2, ListTodo, Menu as MenuIcon, Plus } from "lucide-react";
+import { HeaderSearch } from "./HeaderSearch";
 import { Link } from "react-router-dom";
 import type { Alert } from "../../lib/alerts";
 import { SEVERITY_TONE } from "../../lib/alertUi";
@@ -18,22 +19,9 @@ export function Header({
   onNewProject: () => void;
   onNewTask: () => void;
 }) {
-  const searchRef = useRef<HTMLInputElement>(null);
   const narrow = useNarrow();
   const { data } = useData();
   const alertCount = alerts.length;
-
-  // Strg+K / Cmd+K fokussiert die Suche
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
 
   return (
     <header className="header">
@@ -41,16 +29,7 @@ export function Header({
         <MenuIcon size={18} />
       </IconButton>
 
-      <div className="header-search" role="search">
-        <Search size={16} aria-hidden />
-        <input
-          ref={searchRef}
-          type="search"
-          placeholder={narrow ? "Suchen" : "Projekte, Bauherren, ABM-Nr. durchsuchen"}
-          aria-label="Projekte, Bauherren, ABM-Nr. durchsuchen"
-        />
-        <kbd aria-hidden>Strg K</kbd>
-      </div>
+      <HeaderSearch placeholder={narrow ? "Suchen" : "Projekte, Bauherren, ABM-Nr. durchsuchen"} />
 
       <div className="header-spacer" />
 
