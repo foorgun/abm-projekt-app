@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { useData } from "../../lib/store";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
@@ -17,6 +18,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
+  const { alerts, dueTaskCount, reviewCount } = useData();
 
   useEffect(() => {
     try {
@@ -45,11 +47,11 @@ export function AppShell() {
         collapsed={collapsed}
         onToggleCollapse={() => setCollapsed((c) => !c)}
         onNavigate={() => setDrawer(false)}
-        counts={{}}
+        counts={{ tasks: dueTaskCount, review: reviewCount }}
       />
       <div className="drawer-backdrop" onClick={() => setDrawer(false)} aria-hidden />
       <div className="app-main">
-        <Header onOpenDrawer={() => setDrawer(true)} alertCount={0} onNewProject={() => {}} onNewTask={() => {}} />
+        <Header onOpenDrawer={() => setDrawer(true)} alertCount={alerts.length} onNewProject={() => {}} onNewTask={() => {}} />
         <main className="app-content" id="inhalt">
           <Outlet />
         </main>

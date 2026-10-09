@@ -54,3 +54,15 @@ export function formatBytes(bytes: number | null | undefined): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
 }
+
+/** ISO-Datum plus `days` Tage (negativ = zurück). */
+export function addDays(iso: string, days: number): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + days));
+  return t.toISOString().slice(0, 10);
+}
+
+/** Erster Tag des Monats eines ISO-Datums. */
+export function monthStart(iso: string): string {
+  return `${iso.slice(0, 7)}-01`;
+}

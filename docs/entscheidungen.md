@@ -47,3 +47,34 @@ Neueste Einträge unten.
   (aktueller Monat) in `--chart-1` und mit fetter Achsenbeschriftung. Gitterlinien `--chart-grid` deutlicher, Achsenwerte 12 px in `--muted`.
 - Karten: `--surface` `#161b23` (vorher `#14181f`), Rand `--border` `#29303c` (vorher `#242a35`). Diagrammfarben auf der neuen Fläche erneut geprüft.
 - Begrüßung: bis 11 Uhr "Guten Morgen", 11 bis 17 Uhr "Guten Tag", ab 17 Uhr "Guten Abend" (Test in `src/lib/greeting.test.ts`).
+
+## Schritt 2 – Datenschicht
+
+- **Ordnervorlage aus einer Quelle:** `docs/ordnerstruktur.md` wird geparst (`src/lib/folders.ts`, 126 Ordner).
+  Die App nutzt den Parser direkt, Migration 0002 enthält dieselben Zeilen, erzeugt mit `npm run gen:folders`.
+  Ein Test schlägt fehl, wenn beides auseinanderläuft. Schlüsselwörter je Ordner stehen in `src/data/folderHints.ts`.
+- **Pfade:** Trenner `/`, Datumsplatzhalter (alle Schreibweisen, auch "… am" ohne Datum) normalisiert zu `{datum}`.
+  Beim Ablegen wird `{datum}` durch `TT.MM.JJJJ` ersetzt. `<Firma>`, `<Betreff>`, `<Nr>` bleiben als Text (nur von Hand befüllt).
+- **"Phase"** = letzter erledigter Schritt in Reihenfolge, ohne Schritt "Eingang" (`src/lib/projects.ts`).
+- **Reihenfolge der vorgeschlagenen Phasen** (sort_order, Excel-Schritte unverändert 10–50): Vermesser beauftragt 32,
+  Entwurf freigegeben 34, Vorabzug versendet 36, Baufreigabe 60, Bauanlaufgespräch 70, Hausanschlüsse beantragt 80,
+  Hausaufstellung 90. Admins können die Liste ändern (neue Policy `steps_def_admin`).
+- **Zusätzliche Tabellen/Spalten**, die BUILD.md nicht ausdrücklich nennt, aber die Seiten brauchen:
+  `projects.hausbau_nr` (Zuordnung von Mails), `project_parties` (Beteiligte laut Liste.docx; Firmen, daher für zugewiesene
+  Freiberufler lesbar), `activities` (unveränderliches Protokoll), `agent_settings` (eine Zeile mit den Schwellen, nur Admin ändert),
+  `agent_feedback` (Lernbeispiele), `inbox_attachments.corrected` (für die Trefferquote), `documents.mime`.
+- **Aufgaben-Zuweisung** zeigt auf `team_members`, nicht auf Benutzerkonten (so funktionieren auch Personen ohne Login).
+- **Schutz in der Datenbank:** `secret_ref` darf keine Passwörter enthalten, `body_excerpt` max. 2000 Zeichen,
+  `message_id` eindeutig, Regeln nur auf Vorlagenordner, Ordnerpfade ohne `..`, Aufgaben-`source_key` eindeutig.
+- **Demo-Daten** (`src/data/demoData.ts`): 44 erfundene Projekte, deterministisch per Seed und **relativ zu heute** erzeugt,
+  damit Warnungen an jedem Tag gleich aussehen (der 10.000-€-Fall ist immer 42 Tage überfällig). Firmennamen
+  (Bien-Zenker, Living Haus, Schwabenhaus) wie in `reuse/supabase/seed.sql`. Alle Mailadressen auf `example`-Domains.
+- **demoRepo bildet RLS nach:** Freiberufler sehen im Demo-Modus nur Projekte von Planer "S. Kohler", keine Rechnungen,
+  keine Bauherren-Kontakte, keine Aufgaben, keinen Agenten. Änderungen ohne Berechtigung werfen `PermissionError`.
+  Navigationseinträge Rechnungen, Aufgaben und Agent sind für Freiberufler ausgeblendet.
+- **Demo-Daten leben im Speicher:** Neuladen der Seite setzt alles zurück (bewusst, für Vorführungen).
+- **supabaseRepo** ist bis Schritt 8 ein Platzhalter, der mit klarer Meldung fehlschlägt, statt still Demo-Daten zu zeigen.
+- **Lokales Postgres:** Homebrew konnte `postgresql@16` auf diesem Mac nicht installieren (Intel-Homebrew unter Rosetta auf
+  Apple Silicon, Command Line Tools zu alt; Update bräuchte `sudo`). Die Datenbanktests liefen stattdessen gegen
+  Postgres 16.14 aus dem npm-Paket `@embedded-postgres/darwin-arm64` mit einem kleinen psql-Ersatz, beides nur temporär
+  außerhalb des Repos. In der CI läuft das echte `psql`. `tools/test-db.sh` ist unverändert nutzbar (`PG_BIN=…`).

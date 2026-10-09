@@ -63,3 +63,49 @@ values
    'Abschlag Vorplanung', 350000, 'vertrag_zurueck', 'bezahlt', '2026-02-17', '2026-02-10', '2026-02-24'),
   ('e0000000-0000-4000-8000-000000000003', 'a0000000-0000-4000-8000-000000000004',
    'Bauvoranfrage pauschal', 180000, 'vertrag_zurueck', 'versendet', '2026-04-01', '2026-03-20', null);
+
+-- ---------------------------------------------------------------------------
+-- Ergänzungen für Migration 0002 (ebenfalls erfunden)
+-- ---------------------------------------------------------------------------
+update public.projects set hausbau_nr = 'HB-26118' where id = 'a0000000-0000-4000-8000-000000000001';
+update public.projects set hausbau_nr = 'HB-26204' where id = 'a0000000-0000-4000-8000-000000000002';
+
+insert into public.project_parties (project_id, role, name, contact) values
+  ('a0000000-0000-4000-8000-000000000001', 'vermesser', 'Vermessungsbüro Albrecht & Partner', 'vermessung@example.com'),
+  ('a0000000-0000-4000-8000-000000000001', 'strom',     'Stromnetz Alb-Donau', null),
+  ('a0000000-0000-4000-8000-000000000002', 'vermesser', 'Vermessung Donautal', null);
+
+insert into public.documents (id, project_id, name, storage_path, kind, size_bytes, folder_path, source, received_on, mime) values
+  ('d0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'Baugenehmigung.pdf',
+   'a0000000-0000-4000-8000-000000000001/09 Baugenehmigung, Baufreigabe,Baubeginnsanzeige/01 Baugenehmigung/01 erhalten am 14.08.2026/2026-08-14_Baugenehmigung.pdf',
+   'pdf', 412000, '09 Baugenehmigung, Baufreigabe,Baubeginnsanzeige/01 Baugenehmigung/01 erhalten am 14.08.2026', 'agent', '2026-08-14', 'application/pdf');
+
+insert into public.tasks (id, project_id, title, due_on, assignee_id, status, source, source_key) values
+  ('f0000000-0000-4000-8000-000000000001', 'a0000000-0000-4000-8000-000000000001', 'Rechnung Genehmigungsplanung versenden',
+   '2026-10-09', '70000000-0000-4000-8000-000000000001', 'offen', 'warnung', 'invoice_unsent:e0000000-0000-4000-8000-000000000001'),
+  ('f0000000-0000-4000-8000-000000000002', null, 'Team-Besprechung Projektliste', '2026-10-14', null, 'offen', 'manuell', null);
+
+insert into public.activities (project_id, kind, text, actor, at) values
+  ('a0000000-0000-4000-8000-000000000001', 'schritt', 'Baugenehmigung erledigt', 'Architekt BE', '2026-08-14 10:00+02');
+
+insert into public.mailboxes (id, label, address, provider, status, secret_ref) values
+  ('ab000000-0000-4000-8000-000000000001', 'Sammelpostfach', 'info@abm-demo.example', 'demo', 'verbunden', 'vault:mailbox_info');
+
+insert into public.inbox_items (id, mailbox_id, message_id, received_at, from_name, from_email, subject, body_excerpt, status, project_id, confidence, reason) values
+  ('10000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000001', '<seed-1@abm-demo.example>', '2026-08-14 09:12+02',
+   'Stadt Ulm Baurecht', 'baurecht@stadt-demo.example', 'Baugenehmigung 8161-9001', 'Anbei der Bescheid.', 'abgelegt',
+   'a0000000-0000-4000-8000-000000000001', 0.98, 'ABM-Nr. 8161-9001 im Betreff');
+
+insert into public.inbox_attachments (id, item_id, file_name, mime, size_bytes, project_id, folder_path, confidence, status, document_id) values
+  ('20000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'Baugenehmigung.pdf', 'application/pdf', 412000,
+   'a0000000-0000-4000-8000-000000000001', '09 Baugenehmigung, Baufreigabe,Baubeginnsanzeige/01 Baugenehmigung/01 erhalten am 14.08.2026',
+   0.98, 'abgelegt', 'd0000000-0000-4000-8000-000000000001');
+
+update public.documents set source_item_id = '20000000-0000-4000-8000-000000000001' where id = 'd0000000-0000-4000-8000-000000000001';
+
+insert into public.agent_runs (mailbox_id, started_at, finished_at, fetched, filed) values
+  ('ab000000-0000-4000-8000-000000000001', '2026-08-14 09:15+02', '2026-08-14 09:15:06+02', 1, 1);
+
+insert into public.agent_rules (kind, match, folder_path) values
+  ('ignorieren', '@newsletter.baustoffe.example', null),
+  ('absender_ordner', 'eingang@lra-demo.example', '08 Bauantrag/05 Eingangsbestätigung/01 Eingangsbestätigung');

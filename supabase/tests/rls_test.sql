@@ -106,7 +106,7 @@ select test.expect('Freiberufler sieht Schritte seines Projekts', (select count(
 select test.expect('Freiberufler sieht KEINE Rechnungen',         (select count(*) from public.invoices), 0);
 select test.expect('Freiberufler sieht KEINE Bauherren-Kontakte', (select count(*) from public.bauherren), 0);
 select test.expect('Freiberufler sieht keine Firmenstammdaten',   (select count(*) from public.companies), 0);
-select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 5);
+select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 12);
 select test.expect('Freiberufler sieht nur Dateien seines Projekts', (select count(*) from storage.objects), 1);
 select test.throws('Freiberufler darf kein Projekt anlegen',
   $$insert into public.projects (bauherr_label) values ('Unzulässig')$$);
@@ -123,8 +123,100 @@ select test.throws('Freiberufler darf Dokument nicht unter fremdem Namen eintrag
             '00000000-0000-4000-8000-0000000000a2')$$);
 rollback;
 
+
+-- ===========================================================================
+-- Migration 0002: Ordnervorlage, Aufgaben, Aktivitäten, Agent
+-- ===========================================================================
+
+-- Ohne Rolle --------------------------------------------------------------------
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('ohne Rolle: keine Ordnervorlage', (select count(*) from public.folder_templates), 0);
+select test.expect('ohne Rolle: keine Aufgaben',      (select count(*) from public.tasks), 0);
+select test.expect('ohne Rolle: keine Postfächer',    (select count(*) from public.mailboxes), 0);
+rollback;
+
+-- Mitarbeiter ---------------------------------------------------------------------
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiter sieht Ordnervorlage (126 Ordner)', (select count(*) from public.folder_templates), 126);
+select test.expect('Mitarbeiter sieht Aufgaben',      (select count(*) from public.tasks), 2);
+select test.expect('Mitarbeiter sieht Aktivitäten',   (select count(*) from public.activities), 1);
+select test.expect('Mitarbeiter sieht Postfächer',    (select count(*) from public.mailboxes), 1);
+select test.expect('Mitarbeiter sieht Posteingang',   (select count(*) from public.inbox_items), 1);
+select test.expect('Mitarbeiter sieht Anhänge',       (select count(*) from public.inbox_attachments), 1);
+select test.expect('Mitarbeiter sieht Agent-Läufe',   (select count(*) from public.agent_runs), 1);
+select test.expect('Mitarbeiter sieht Agent-Regeln',  (select count(*) from public.agent_rules), 2);
+select test.expect('Mitarbeiter darf Aufgabe anlegen',
+  test.affected($$insert into public.tasks (title, due_on) values ('Neue Aufgabe', '2026-10-10')$$), 1);
+select test.throws('Aufgabe aus derselben Warnung wird nicht doppelt angelegt',
+  $$insert into public.tasks (title, source, source_key) values ('Doppelt', 'warnung', 'invoice_unsent:e0000000-0000-4000-8000-000000000001')$$);
+select test.throws('Erledigt ohne Erledigt-Datum wird abgelehnt',
+  $$update public.tasks set status = 'erledigt' where id = 'f0000000-0000-4000-8000-000000000002'$$);
+select test.expect('Mitarbeiter darf Aufgabe korrekt erledigen',
+  test.affected($$update public.tasks set status = 'erledigt', done_at = now() where id = 'f0000000-0000-4000-8000-000000000002'$$), 1);
+select test.expect('Mitarbeiter darf Regel anlegen',
+  test.affected($$insert into public.agent_rules (kind, match, project_id) values ('absender_projekt', 'p.lang@bien-zenker.example', 'a0000000-0000-4000-8000-000000000001')$$), 1);
+select test.throws('Regel "Absender → Projekt" ohne Projekt wird abgelehnt',
+  $$insert into public.agent_rules (kind, match) values ('absender_projekt', 'x@example.com')$$);
+select test.throws('Regel mit Großbuchstaben/Leerzeichen wird abgelehnt',
+  $$insert into public.agent_rules (kind, match) values ('ignorieren', ' News@Example.com')$$);
+select test.throws('Regel auf Ordner außerhalb der Vorlage wird abgelehnt',
+  $$insert into public.agent_rules (kind, match, folder_path) values ('absender_ordner', 'x@example.com', '99 Erfunden')$$);
+select test.throws('Mail mit gleicher message_id wird nicht doppelt gespeichert',
+  $$insert into public.inbox_items (mailbox_id, message_id, received_at, from_email) values ('ab000000-0000-4000-8000-000000000001', '<seed-1@abm-demo.example>', now(), 'x@example.com')$$);
+select test.throws('Postfach mit Passwort in secret_ref wird abgelehnt',
+  $$insert into public.mailboxes (label, address, provider, secret_ref) values ('X', 'x@abm-demo.example', 'imap', 'password=geheim')$$);
+select test.expect('Mitarbeiter darf Schwellen NICHT ändern (nur Admin)',
+  test.affected($$update public.agent_settings set auto_file_threshold = 0.5$$), 0);
+select test.expect('Aktivitäten sind unveränderlich',
+  test.affected($$update public.activities set text = 'geändert'$$), 0);
+select test.expect('Aktivitäten sind nicht löschbar',
+  test.affected($$delete from public.activities$$), 0);
+select test.throws('Mitarbeiter darf Ordnervorlage nicht ändern',
+  $$insert into public.folder_templates (path, sort, label) values ('12 Neu', 99, '12 Neu')$$);
+rollback;
+
+-- Admin ---------------------------------------------------------------------------
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin darf Schwellen ändern',
+  test.affected($$update public.agent_settings set auto_file_threshold = 0.95$$), 1);
+select test.throws('Schwellen in falscher Reihenfolge werden abgelehnt',
+  $$update public.agent_settings set suggest_threshold = 0.97$$);
+select test.expect('Admin darf Ordnervorlage ergänzen',
+  test.affected($$insert into public.folder_templates (path, sort, label) values ('12 Gewährleistung', 999, '12 Gewährleistung')$$), 1);
+select test.throws('Ordnerpfad mit .. wird abgelehnt',
+  $$insert into public.folder_templates (path, sort, label) values ('08 Bauantrag/../geheim', 1000, 'x')$$);
+rollback;
+
+-- Freiberufler (nur Projekt 1) -------------------------------------------------------
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht Ordnervorlage',               (select count(*) from public.folder_templates), 126);
+select test.expect('Freiberufler sieht Beteiligte nur seines Projekts', (select count(*) from public.project_parties), 2);
+select test.expect('Freiberufler sieht Dokumente seines Projekts',   (select count(*) from public.documents), 1);
+select test.expect('Freiberufler sieht KEINE Aufgaben',              (select count(*) from public.tasks), 0);
+select test.expect('Freiberufler sieht KEINE Aktivitäten',           (select count(*) from public.activities), 0);
+select test.expect('Freiberufler sieht KEINE Postfächer',            (select count(*) from public.mailboxes), 0);
+select test.expect('Freiberufler sieht KEINEN Posteingang',          (select count(*) from public.inbox_items), 0);
+select test.expect('Freiberufler sieht KEINE Anhänge',               (select count(*) from public.inbox_attachments), 0);
+select test.expect('Freiberufler sieht KEINE Agent-Regeln',          (select count(*) from public.agent_rules), 0);
+select test.expect('Freiberufler sieht KEINE Schwellen',             (select count(*) from public.agent_settings), 0);
+select test.throws('Freiberufler darf keine Aufgabe anlegen',
+  $$insert into public.tasks (title) values ('Unzulässig')$$);
+select test.throws('Freiberufler darf keine Agent-Regel anlegen',
+  $$insert into public.agent_rules (kind, match) values ('ignorieren', 'x@example.com')$$);
+select test.throws('Freiberufler darf keine Beteiligten ändern',
+  $$insert into public.project_parties (project_id, role, name) values ('a0000000-0000-4000-8000-000000000001', 'wasser', 'X')$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
-select test.expect('Seed: 5 Schritte definiert', (select count(*) from public.step_definitions), 5);
+select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',
   (select count(*) from public.invoices where status = 'faellig' and sent_on is null), 1);
 

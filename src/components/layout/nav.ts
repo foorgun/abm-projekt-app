@@ -46,7 +46,7 @@ export const NAV: NavGroup[] = [
   {
     label: "Arbeit",
     items: [
-      { to: "/aufgaben", label: "Aufgaben", icon: ListTodo, count: "tasks" },
+      { to: "/aufgaben", label: "Aufgaben", icon: ListTodo, count: "tasks", hiddenFor: ["freiberufler"] },
       { to: "/rechnungen", label: "Rechnungen", icon: Receipt, hiddenFor: ["freiberufler"] },
     ],
   },

@@ -12,3 +12,8 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Welche Postfächer soll der Agent überwachen (Sammelpostfach, persönliche)? Wer verwaltet Microsoft 365 (App-Registrierung, Admin-Zustimmung)?
 - Dürfen Mailtexte (Auszüge) an einen KI-Dienst gesendet werden? AVV vorhanden?
 - Backup des Fileservers: wo, wie oft, Wiederherstellung getestet?
+- Ordner mit Namens-Platzhaltern (`<Firma> am …`, `<Betreff> …`, `BAUANTRAG VERSAND <Nr>`): Soll der Agent dort je ablegen,
+  oder nur Menschen von Hand?
+- `08 Bauantrag/02 Bauantragspläne/01 Blanko/02 DWGs` liegt in der Vorlage, aber CAD-Dateien bleiben laut Regel auf dem
+  Fileserver. Ordner in der App ausblenden oder nur als Hinweis zeigen?
+- Wer pflegt Aufgaben: auch Freiberufler (eigene Aufgaben), oder nur Mitarbeiter? (Im Prototyp: nur Mitarbeiter.)
