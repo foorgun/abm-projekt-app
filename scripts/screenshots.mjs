@@ -27,6 +27,14 @@ for (const w of widths) {
     if (overflow > 0) errors.push(`${w.name} ${route}: horizontal ${overflow}px Überlauf`);
     const slug = route.replace(/[^a-z0-9]+/gi, "_").replace(/^_|_$/g, "") || "dashboard";
     await page.screenshot({ path: `screenshots/${slug}-${w.name}.png`, fullPage: true });
+    await page.screenshot({ path: `screenshots/${slug}-${w.name}-top.png` });
+    // Mobil: zusätzlich mit geöffneter Navigation
+    if (w.width < 1024 && route === targets[0]) {
+      await page.click(".header-menu");
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: `screenshots/${slug}-${w.name}-drawer.png` });
+      await page.keyboard.press("Escape");
+    }
   }
   await page.close();
 }
