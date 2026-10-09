@@ -316,9 +316,44 @@ kbd {
   color: inherit;
 }
 
-a.kpi:hover {
-  text-decoration: none;
+.kpi-clickable {
+  position: relative;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.kpi-clickable:hover {
   border-color: var(--border-strong);
+  background: var(--surface-2);
+}
+
+.kpi-link {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.kpi-link:hover {
+  text-decoration: none;
+}
+
+.kpi-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-card);
+}
+
+.kpi-link:focus-visible {
+  outline: none;
+}
+
+.kpi-link:focus-visible::after {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.kpi-clickable .tip {
+  position: relative;
+  z-index: 1;
 }
 
 .kpi-head {
@@ -1165,6 +1200,7 @@ a.kpi:hover {
   font-size: var(--fs-12);
 }
 
+.chart-value[data-current="true"],
 .chart-cat[data-current="true"] {
   fill: var(--text);
   font-weight: 650;

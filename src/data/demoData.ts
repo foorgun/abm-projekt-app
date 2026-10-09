@@ -111,15 +111,15 @@ interface ProjectSpec {
  */
 const SPECIAL: ProjectSpec[] = [
   // 0: der 10.000-€-Fall: Genehmigung vor 56 Tagen, Rechnung seit 42 Tagen fällig, nie versendet
-  { stage: 8, lastAgo: 56, name: "Beispiel", town: "Ulm", companyId: "c-bz", planerId: "t-sk" },
+  { stage: 8, lastAgo: 56, name: "Reinhardt", town: "Ulm", companyId: "c-bz", planerId: "t-sk" },
   // 1: Vertrag seit 26 Tagen draußen, nicht zurück → Hinweis
-  { stage: 2, lastAgo: 26, name: "Muster", town: "Neu-Ulm", companyId: "c-lh" },
+  { stage: 2, lastAgo: 26, name: "Engelhardt", town: "Neu-Ulm", companyId: "c-lh" },
   // 2: Baugesuch vor 131 Tagen übergeben, Genehmigung fehlt → Info
-  { stage: 7, lastAgo: 131, name: "Probst", town: "Ehningen", companyId: "c-sh", planerId: "t-sk" },
+  { stage: 7, lastAgo: 131, name: "Scholz", town: "Ehningen", companyId: "c-sh", planerId: "t-sk" },
   // 3: Bauvoranfrage
   { stage: 3, lastAgo: 9, name: "Winter", town: "Ulm", kind: "bauvoranfrage", companyId: null },
   // 4: Storno
-  { stage: 1, lastAgo: 160, name: "Storno-Beispiel", town: "Tübingen", status: "storno", companyId: "c-bz" },
+  { stage: 1, lastAgo: 160, name: "Fuchs", town: "Tübingen", status: "storno", companyId: "c-bz" },
   // 5: Schritt übersprungen: Vertrag zurück fehlt, obwohl Vermesser schon beauftragt
   { stage: 4, lastAgo: 4, skip: ["vertrag_zurueck"], name: "Hartmann", town: "Langenau", companyId: "c-bz", planerId: "t-sk" },
   // 6: Genehmigung vor 3 Tagen, geplante Rechnung wird fällig → Hinweis

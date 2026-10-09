@@ -11,9 +11,9 @@ export function Pill({ tone = "neutral", dot = true, children }: { tone?: Tone; 
   );
 }
 
-export function Badge({ tone, children, label }: { tone?: "accent" | "danger" | "warn"; children: ReactNode; label?: string }) {
+export function Badge({ tone, children, label, title }: { tone?: "accent" | "danger" | "warn"; children: ReactNode; label?: string; title?: string }) {
   return (
-    <span className="badge" data-tone={tone} aria-label={label}>
+    <span className="badge" data-tone={tone} aria-label={label} title={title}>
       {children}
     </span>
   );

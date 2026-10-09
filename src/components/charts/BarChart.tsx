@@ -15,7 +15,7 @@ export interface BarDatum {
   values: number[];
 }
 
-const PAD = { top: 12, right: 8, bottom: 28, left: 40 };
+const PAD = { top: 22, right: 8, bottom: 28, left: 40 };
 const MAX_BAR = 16;
 const GAP = 2; // Flächenfuge zwischen gestapelten Segmenten
 
@@ -33,6 +33,7 @@ export function BarChart({
   caption,
   unit = "",
   highlight,
+  showValues = false,
 }: {
   data: BarDatum[];
   series: BarSeries[];
@@ -41,6 +42,8 @@ export function BarChart({
   unit?: string;
   /** Index der hervorgehobenen Kategorie (z. B. aktueller Monat). Alle anderen Säulen werden gedämpft. */
   highlight?: number;
+  /** Summe über jeder Säule anzeigen (nur sinnvoll bei wenigen Kategorien). */
+  showValues?: boolean;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -95,6 +98,11 @@ export function BarChart({
                   <rect key={si} className="bar" data-series={si + 1} data-muted={muted} x={x} y={top} width={barW} height={hh} />
                 );
               })}
+              {showValues && totals[i] > 0 && (
+                <text className="chart-value" data-current={highlight === i} x={x + barW / 2} y={y(totals[i]) - 6} textAnchor="middle">
+                  {totals[i].toLocaleString("de-DE")}
+                </text>
+              )}
               {(data.length - 1 - i) % labelEvery === 0 && (
                 <text className="chart-cat" data-current={highlight === i} x={x + barW / 2} y={height - 8} textAnchor="middle">
                   {d.label}

@@ -16,6 +16,12 @@ import type { AppRole } from "../../lib/session";
 
 export type CountKey = "tasks" | "review";
 
+/** Erklärung der Zahl am Navigationseintrag (Tooltip und Screenreader). */
+export const COUNT_HINT: Record<CountKey, string> = {
+  tasks: "heute fällig und überfällig",
+  review: "offene Prüfungen",
+};
+
 export interface NavEntry {
   to: string;
   label: string;

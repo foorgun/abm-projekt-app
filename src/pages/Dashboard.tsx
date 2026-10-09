@@ -203,6 +203,7 @@ export function Dashboard() {
                 series={[{ name: "Neue Projekte" }]}
                 height={280}
                 highlight={months.length - 1}
+                showValues
                 data={months.map((m) => ({ label: m.label, title: m.title, values: [m.count] }))}
               />
             </CardBody>

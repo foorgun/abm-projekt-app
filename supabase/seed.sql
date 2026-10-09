@@ -19,8 +19,8 @@ insert into public.team_members (id, code, name, role) values
   ('70000000-0000-4000-8000-000000000004', null, 'S. Kohler',    'planer');
 
 insert into public.bauherren (id, name, address, phone, email, notes) values
-  ('b0000000-0000-4000-8000-000000000001', 'Familie Beispiel', 'Musterweg 1, 89073 Ulm', '0731 000000', 'beispiel@example.com', 'Erfundener Datensatz'),
-  ('b0000000-0000-4000-8000-000000000002', 'Frau Muster',      'Testgasse 2, 70173 Stuttgart', '0711 000000', 'muster@example.com', 'Erfundener Datensatz');
+  ('b0000000-0000-4000-8000-000000000001', 'Familie Reinhardt', 'Lindenweg 12, 89073 Ulm', '0731 000000', 'reinhardt@example.com', 'Erfundener Datensatz'),
+  ('b0000000-0000-4000-8000-000000000002', 'Familie Engelhardt', 'Gartenweg 5, 70173 Stuttgart', '0711 000000', 'engelhardt@example.com', 'Erfundener Datensatz');
 
 insert into public.projects
   (id, abm_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location,
@@ -28,18 +28,18 @@ insert into public.projects
 values
   ('a0000000-0000-4000-8000-000000000001', '8161-9001', 'neubau', 'aktiv',
    'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'b0000000-0000-4000-8000-000000000001',
-   'Beispiel', 'Ulm', '70000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000003', '3.1+3.2', '2026-01-01'),
+   'Reinhardt', 'Ulm', '70000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000003', '3.1+3.2', '2026-01-01'),
   ('a0000000-0000-4000-8000-000000000002', '8260-9001', 'neubau', 'aktiv',
    'c0000000-0000-4000-8000-000000000002', '50000000-0000-4000-8000-000000000003', 'b0000000-0000-4000-8000-000000000002',
-   'Muster', 'Ingolstadt', '70000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000004', null, '2026-02-01'),
+   'Engelhardt', 'Ingolstadt', '70000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000004', null, '2026-02-01'),
   ('a0000000-0000-4000-8000-000000000003', '8185-9001', 'neubau', 'aktiv',
    'c0000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000004', null,
-   'Probst', 'Ehningen', '70000000-0000-4000-8000-000000000002', null, null, '2026-03-01'),
+   'Scholz', 'Ehningen', '70000000-0000-4000-8000-000000000002', null, null, '2026-03-01'),
   ('a0000000-0000-4000-8000-000000000004', 'Bauvoranfrage', 'bauvoranfrage', 'aktiv',
    null, null, null, 'Winter', 'Ulm', '70000000-0000-4000-8000-000000000001', null, null, '2026-03-01'),
   ('a0000000-0000-4000-8000-000000000005', '8161-9002', 'neubau', 'storno',
    'c0000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000002', null,
-   'Storno-Beispiel', 'Tübingen', '70000000-0000-4000-8000-000000000001', null, null, '2026-04-01');
+   'Fuchs', 'Tübingen', '70000000-0000-4000-8000-000000000001', null, null, '2026-04-01');
 
 insert into public.project_steps (project_id, step_key, occurred_on) values
   ('a0000000-0000-4000-8000-000000000001', 'plangespraech',       '2026-01-12'),

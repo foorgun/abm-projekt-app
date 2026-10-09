@@ -17,13 +17,21 @@ export interface KpiCardProps {
 }
 
 export function KpiCard({ icon, label, value, info, trend, foot, tone = "accent", valueTone, to }: KpiCardProps) {
-  const body = (
-    <>
+  // Klickbare Kachel: der Link deckt per ::after die ganze Fläche ab, der Info-Button liegt darüber.
+  // So steckt kein Button in einem Link (gültiges HTML, sauber per Tastatur bedienbar).
+  return (
+    <section className={to ? "card kpi kpi-clickable" : "card kpi"}>
       <div className="kpi-head">
         <span className="kpi-icon" data-tone={tone === "accent" ? undefined : tone} aria-hidden>
           {icon}
         </span>
-        <span className="kpi-label">{label}</span>
+        {to ? (
+          <Link to={to} className="kpi-label kpi-link">
+            {label}
+          </Link>
+        ) : (
+          <span className="kpi-label">{label}</span>
+        )}
         {info && <InfoTip text={info} />}
       </div>
       <div className="kpi-value-row">
@@ -33,14 +41,7 @@ export function KpiCard({ icon, label, value, info, trend, foot, tone = "accent"
         {trend}
       </div>
       {foot && <div className="kpi-foot">{foot}</div>}
-    </>
-  );
-  return to ? (
-    <Link to={to} className="card kpi">
-      {body}
-    </Link>
-  ) : (
-    <section className="card kpi">{body}</section>
+    </section>
   );
 }
 

@@ -3,7 +3,7 @@ import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, Settings, User
 import logo from "../../assets/abm-logo.png";
 import { ROLE_LABEL, useSession, type AppRole } from "../../lib/session";
 import { Avatar, Badge, IconButton, Menu } from "../ui";
-import { NAV, type CountKey } from "./nav";
+import { COUNT_HINT, NAV, type CountKey } from "./nav";
 
 export function Sidebar({
   collapsed,
@@ -67,12 +67,16 @@ export function Sidebar({
                         end={item.end}
                         className="nav-item"
                         onClick={onNavigate}
-                        title={collapsed ? item.label : undefined}
+                        title={collapsed ? (count ? `${item.label}: ${count} ${COUNT_HINT[item.count!]}` : item.label) : undefined}
                       >
                         <Icon size={18} aria-hidden />
                         <span className="nav-label">{item.label}</span>
                         {count ? (
-                          <Badge tone={item.count === "review" ? "warn" : "accent"} label={`${count} offen`}>
+                          <Badge
+                            tone={item.count === "review" ? "warn" : "accent"}
+                            label={`${count} ${COUNT_HINT[item.count!]}`}
+                            title={`${count} ${COUNT_HINT[item.count!]}`}
+                          >
                             {count}
                           </Badge>
                         ) : null}

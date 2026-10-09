@@ -91,9 +91,9 @@ interface Row {
 }
 
 const ROWS: Row[] = [
-  { id: "1", project: "8161-9001 · Beispiel", event: "Baugenehmigung eingetragen", tone: "ok", status: "Erledigt", who: "Mehmet Cetin", when: "vor 12 Min.", done: 5 },
-  { id: "2", project: "8260-9001 · Muster", event: "Lageplan abgelegt", tone: "accent", status: "Agent", who: "Agent", when: "vor 40 Min.", done: 2 },
-  { id: "3", project: "8185-9001 · Probst", event: "Rechnung fällig", tone: "danger", status: "Offen", who: "System", when: "heute, 08:02", done: 1 },
+  { id: "1", project: "8161-101 · Reinhardt", event: "Baugenehmigung eingetragen", tone: "ok", status: "Erledigt", who: "Mehmet Cetin", when: "vor 12 Min.", done: 5 },
+  { id: "2", project: "8260-041 · Engelhardt", event: "Lageplan abgelegt", tone: "accent", status: "Agent", who: "Agent", when: "vor 40 Min.", done: 2 },
+  { id: "3", project: "8185-023 · Scholz", event: "Rechnung fällig", tone: "danger", status: "Offen", who: "System", when: "heute, 08:02", done: 1 },
   { id: "4", project: "Bauvoranfrage · Winter", event: "Zuordnung unsicher", tone: "warn", status: "Prüfen", who: "Agent", when: "gestern", done: 3 },
 ];
 

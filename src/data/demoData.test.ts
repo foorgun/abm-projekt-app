@@ -23,7 +23,7 @@ describe("Demo-Daten", () => {
     const alerts = computeAlerts(db, TODAY);
     expect(alerts[0]).toMatchObject({ kind: "invoice_unsent", severity: "dringend", days: 42 });
     expect(alerts[0].detail).toContain("10.000");
-    expect(db.projects.find((p) => p.id === alerts[0].projectId)?.bauherrLabel).toBe("Beispiel");
+    expect(db.projects.find((p) => p.id === alerts[0].projectId)?.bauherrLabel).toBe("Reinhardt");
   });
 
   it("zeigt jede Warnart mindestens einmal", () => {
