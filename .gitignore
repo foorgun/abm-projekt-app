@@ -1,0 +1,19 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.local
+.DS_Store
+
+# Echte Daten gehören nie ins Repo
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.eml
+*.msg
+tools/out/
+import-*/
+screenshots/
+__pycache__/

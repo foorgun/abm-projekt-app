@@ -1,0 +1,11 @@
+:root {
+  --bg: #0c0e12;
+  --surface: #14181f;
+  --surface-2: #1a1f28;
+  --sidebar: #0a0c0f;
+  --border: #242a35;
+  --text: #e8ebf1;
+  --muted: #8d96a6;
+  --accent: #2bb3a3;
+  --font: "Inter Variable", system-ui, sans-serif;
+}
