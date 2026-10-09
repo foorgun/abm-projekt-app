@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertOctagon, Check, ClipboardCheck, FileText, ListPlus, Pencil, Search, ShieldAlert, X } from "lucide-react";
+import { AlertOctagon, Check, ClipboardCheck, FileText, FlaskConical, ListPlus, Pencil, Search, ShieldAlert, X } from "lucide-react";
 import { FolderPicker } from "../../components/FolderPicker";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
@@ -15,6 +15,11 @@ import type { InboxAttachment, InboxItem, Project } from "../../lib/types";
 import { ConfidencePill } from "./agentUi";
 
 type Remember = NonNullable<ReviewResolution["rememberRule"]> | "";
+
+/** Die Prüfung hat einen KI-Vorschlag verworfen: Hinweis auf einen Manipulationsversuch im Mailtext. */
+export function isRejectedAi(item: InboxItem): boolean {
+  return /KI-(Projekt|Ordner) verworfen/.test(item.reason ?? "");
+}
 
 /**
  * Prüfliste: je unsichere Zuordnung eine Karte mit Mail, Anhang und Vorschlag.
@@ -34,7 +39,9 @@ export function ReviewList() {
       .map((att) => ({ att, item: items.get(att.itemId)! }))
       .filter((x) => x.item)
       .sort((a, b) => b.item.receivedAt.localeCompare(a.item.receivedAt));
-    return { review: list.filter((x) => x.att.status === "pruefen"), errors: list.filter((x) => x.att.status === "fehler") };
+    // Abgefangene Manipulationsversuche ans Ende, damit die echten Prüfungen oben stehen
+    const review = list.filter((x) => x.att.status === "pruefen").sort((a, b) => Number(isRejectedAi(a.item)) - Number(isRejectedAi(b.item)));
+    return { review, errors: list.filter((x) => x.att.status === "fehler") };
   }, [data]);
 
   const head = <PageHead title="Prüfliste" sub="Zuordnungen, bei denen der Agent unsicher war. Jede Entscheidung wird als Lernbeispiel gespeichert." />;
@@ -132,7 +139,7 @@ function MailHead({ item, att }: { item: InboxItem; att: InboxAttachment }) {
 }
 
 function ReviewCard({ att, item }: { att: InboxAttachment; item: InboxItem }) {
-  const { data, mutate, today } = useData();
+  const { data, mutate, today, repo } = useData();
   const toast = useToast();
   const [mode, setMode] = useState<"view" | "edit">("view");
   const [remember, setRemember] = useState<Remember>("");
@@ -167,8 +174,15 @@ function ReviewCard({ att, item }: { att: InboxAttachment; item: InboxItem }) {
   const chosen = projects.find((p) => p.id === projectId) ?? null;
   const finalPath = template ? (template.includes(DATE_TOKEN) ? (date ? concretePath(template, date) : null) : template) : null;
 
+  const rejected = isRejectedAi(item);
   return (
-    <Card className="review-card">
+    <Card className="review-card" data-test-case={rejected || undefined}>
+      {rejected && (
+        <div className="review-testcase" role="note">
+          {repo.mode === "demo" ? <FlaskConical size={15} aria-hidden /> : <ShieldAlert size={15} aria-hidden />}
+          {repo.mode === "demo" ? "Testfall: Manipulationsversuch (wurde abgefangen)" : "KI-Vorschlag verworfen: Mail mit Vorsicht prüfen"}
+        </div>
+      )}
       <div className="review-grid">
         <MailHead item={item} att={att} />
 
@@ -177,7 +191,8 @@ function ReviewCard({ att, item }: { att: InboxAttachment; item: InboxItem }) {
             <div className="review-suggestion" data-empty={!suggested}>
               <div className="review-suggestion-head">
                 <span className="review-label">Vorschlag des Agenten</span>
-                <ConfidencePill value={att.confidence} auto={auto} suggest={suggest} />
+                {/* Ohne Vorschlag keine Prozentzahl: sie würde einen Vorschlag suggerieren */}
+                <ConfidencePill value={suggested && att.folderPath ? att.confidence : null} auto={auto} suggest={suggest} />
               </div>
               {suggested && att.folderPath ? (
                 <>

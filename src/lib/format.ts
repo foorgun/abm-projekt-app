@@ -81,3 +81,15 @@ export function formatRelative(atIso: string, now: Date = new Date()): string {
   if (days < 7) return `vor ${days} Tagen`;
   return formatDate(todayIso(at));
 }
+
+/**
+ * Fälligkeit kurz: "heute", "morgen", sonst "TT.MM." (anderes Jahr: "TT.MM.JJ").
+ * Überfällig wird über die Farbe und einen Text für Screenreader gekennzeichnet, nicht im Wort selbst.
+ */
+export function formatDue(due: string, today: string): string {
+  const diff = daysBetween(today, due);
+  if (diff === 0) return "heute";
+  if (diff === 1) return "morgen";
+  const [y, m, d] = due.split("-");
+  return y === today.slice(0, 4) ? `${d}.${m}.` : `${d}.${m}.${y.slice(2)}`;
+}

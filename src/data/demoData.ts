@@ -509,22 +509,30 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
   let itemNo = 1;
   let attNo = 1;
   let correctedOnce = false;
+  const isWeekend = (iso: string) => [0, 6].includes(new Date(`${iso}T12:00:00Z`).getUTCDay());
+  // Offene Prüfungen liegen auf dem letzten Werktag (heute, wenn heute ein Werktag ist)
+  let pendingDate = today;
+  while (isWeekend(pendingDate)) pendingDate = addDays(pendingDate, -1);
+
   for (let day = 6; day >= 0; day--) {
     const date = addDays(today, -day);
-    const weekend = [0, 6].includes(new Date(`${date}T12:00:00Z`).getUTCDay());
-    const count = weekend ? r.int(0, 1) : r.int(2, 5);
+    if (isWeekend(date)) continue; // am Wochenende kommt nichts
+    // 3 bis 8 Anhänge je Werktag (abgelegt + Prüfung), überwiegend automatisch; dazu 0–2 Newsletter (ignoriert)
+    const relevant = date === pendingDate ? r.int(1, 4) : r.int(3, 8);
+    const kinds: ("auto" | "hand" | "news")[] = [];
+    for (let k = 0; k < relevant; k++) kinds.push(date === pendingDate || r.next() < 0.82 ? "auto" : "hand");
+    for (let k = r.int(0, 2); k > 0; k--) kinds.splice(r.int(0, kinds.length), 0, "news");
     let filed = 0;
     let review = 0;
     let ignored = 0;
-    for (let k = 0; k < count; k++) {
+    kinds.forEach((kind, k) => {
       let p = r.pick(active);
-      const roll = r.next();
       const itemId = `in-${pad(itemNo++)}`;
       const attId = `att-${pad(attNo++)}`;
       // Heute nur frühe Uhrzeiten, damit nichts "in der Zukunft" liegt, wenn die Demo morgens geöffnet wird
-      const at = day === 0 ? `${date}T06:${pad(5 + k * 9, 2)}:00` : `${date}T${pad(r.int(7, 17), 2)}:${pad(r.int(0, 59), 2)}:00`;
+      const at = day === 0 ? `${date}T06:${pad(5 + k * 5, 2)}:00` : `${date}T${pad(7 + Math.floor((k * 10) / kinds.length), 2)}:${pad(r.int(0, 59), 2)}:00`;
       const mailbox = r.pick(mailboxes.slice(0, 2));
-      if (roll < 0.62) {
+      if (kind === "auto") {
         const [from, subj, file, folder, needs] = r.pick(FILED);
         const fitting = active.filter((x) => x.steps[needs] && x.steps[needs]! <= date);
         if (fitting.length) p = r.pick(fitting);
@@ -540,7 +548,7 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
           correctedOnce = true;
         }
         filed++;
-      } else if (roll < 0.85) {
+      } else if (kind === "news") {
         const [fromName, fromEmail] = splitFrom("Newsletter Baustoffe Süd <news@newsletter.baustoffe.example>");
         inboxItems.push({ id: itemId, mailboxId: mailbox.id, messageId: `<demo-${itemId}@abm-demo.example>`, receivedAt: at, fromName, fromEmail, subject: "Neuheiten im Fachhandel", bodyExcerpt: "Unsere Angebote der Woche …", status: "ignoriert", projectId: null, confidence: null, reason: "Absender auf Ignorier-Liste", createdAt: at });
         inboxAttachments.push({ id: attId, itemId, fileName: "angebote.jpg", mime: "image/jpeg", sizeBytes: 9 * 1024, storagePath: null, projectId: null, folderPath: null, confidence: null, status: "ignoriert", documentId: null, corrected: false });
@@ -553,12 +561,10 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
         agentDocs.push({ projectId: p.id, folder: "02 Schriftverkehr/01 Schriftverkehr mit Bauherrschaft/01 Überschrift {datum}", date, name: "Unterlagen_Bauantrag.pdf", attachmentId: attId });
         review++;
       }
-    }
-    if (count > 0) {
-      agentRuns.push({ id: `run-${date}`, mailboxId: "mb-1", startedAt: `${date}T07:45:00`, finishedAt: `${date}T07:45:08`, fetched: count, filed, toReview: review, ignored, errors: 0, note: null });
-    }
+    });
+    agentRuns.push({ id: `run-${date}`, mailboxId: "mb-1", startedAt: `${date}T07:45:00`, finishedAt: `${date}T07:45:08`, fetched: kinds.length, filed, toReview: review, ignored, errors: 0, note: null });
   }
-  // Offene Prüfungen von heute (unsichere Zuordnungen)
+  // Offene Prüfungen vom letzten Werktag (unsichere Zuordnungen)
   const byStep = (k: string) => active.find((x) => x.steps[k] && !x.steps.baugenehmigung) ?? active[0];
   const pA = byStep("baugesuch_uebergabe");
   const pB = byStep("vermesser_beauftragt");
@@ -593,19 +599,15 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
   ];
   PENDING.forEach(([from, subject, excerpt, file, mime, conf, folder, reason, projectId], i) => {
     const itemId = `in-${pad(itemNo++)}`;
-    const at = `${today}T07:${pad(12 + i * 14, 2)}:00`;
+    const at = `${pendingDate}T${pendingDate === today ? "07" : "16"}:${pad(12 + i * 14, 2)}:00`;
     const [fromName, fromEmail] = splitFrom(from);
     inboxItems.push({ id: itemId, mailboxId: "mb-1", messageId: `<demo-${itemId}@abm-demo.example>`, receivedAt: at, fromName, fromEmail, subject, bodyExcerpt: excerpt, status: "pruefen", projectId, confidence: conf, reason, createdAt: at });
     // Vorschlag wie vom Agenten: Datumsordner mit dem Maildatum
-    inboxAttachments.push({ id: `att-${pad(attNo++)}`, itemId, fileName: file, mime, sizeBytes: r.int(300, 3800) * 1024, storagePath: null, projectId, folderPath: folder ? concretePath(folder, today) : null, confidence: conf, status: "pruefen", documentId: null, corrected: false });
+    inboxAttachments.push({ id: `att-${pad(attNo++)}`, itemId, fileName: file, mime, sizeBytes: r.int(300, 3800) * 1024, storagePath: null, projectId, folderPath: folder ? concretePath(folder, pendingDate) : null, confidence: conf, status: "pruefen", documentId: null, corrected: false });
   });
-  const run = agentRuns.find((x) => x.id === `run-${today}`);
-  if (run) {
-    run.fetched += PENDING.length;
-    run.toReview += PENDING.length;
-  } else {
-    agentRuns.push({ id: `run-${today}`, mailboxId: "mb-1", startedAt: `${today}T07:45:00`, finishedAt: `${today}T07:45:06`, fetched: PENDING.length, filed: 0, toReview: PENDING.length, ignored: 0, errors: 0, note: null });
-  }
+  const run = agentRuns.find((x) => x.id === `run-${pendingDate}`)!;
+  run.fetched += PENDING.length;
+  run.toReview += PENDING.length;
 
   return { inboxItems, inboxAttachments, agentRuns, agentDocs };
 }

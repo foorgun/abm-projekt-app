@@ -222,3 +222,18 @@ Neueste Einträge unten.
   Schwellen ändern nur Admins (wie RLS in 0002).
 - **Store-Abgleich der Warnungsaufgaben** legt Aufgaben jetzt parallel an (vorher nacheinander, erster Start dauerte ~1 s länger).
 - **Screenshot-Skript** wartet, bis keine Lade-Platzhalter mehr sichtbar sind, statt einer festen Zeit.
+
+## Vor der Vorführung
+
+- **Toast** unten rechts (Mobil: unten über die volle Breite), verdeckt keine Inhalte mehr.
+- **Manipulationsversuch** erkennbar daran, dass die Prüfung einen KI-Vorschlag verworfen hat (`isRejectedAi`). Solche Karten stehen
+  am Ende der Prüfliste. Hinweis im Demo-Modus "Testfall: Manipulationsversuch (wurde abgefangen)", im Echtbetrieb neutral
+  "KI-Vorschlag verworfen: Mail mit Vorsicht prüfen". Karten ohne Vorschlag zeigen keine Prozentzahl.
+- **Tooltips in Tabellen** (`CellTip`): per Portal am Fenster positioniert (wird vom scrollenden Tabellencontainer nicht abgeschnitten),
+  erscheint sofort bei Hover und Tastaturfokus. Der native Browser-Titel kam erst nach ca. 1 s und nie per Tastatur.
+- **Demo-Historie:** jeder Werktag der letzten 7 Tage 3 bis 8 Anhänge (rund 80 % automatisch), Wochenende leer; offene Prüfungen
+  liegen auf dem letzten Werktag. Per Test für Freitag, Samstag, Montag und Mittwoch geprüft. Live-Läufe ("Jetzt prüfen") kommen obendrauf.
+- **Fälligkeit** als "heute", "morgen", sonst "TT.MM."; Termine außerhalb des laufenden Jahres als "TT.MM.JJ" (sonst nicht eindeutig).
+  Überfällig: rot, plus "überfällig" für Screenreader und im Tooltip.
+- **Demo zurücksetzen** im Benutzermenü, nur im Demo-Modus (`Repo.resetDemo` ist optional, `supabaseRepo` hat es nicht), mit Rückfrage.
+  Setzt Daten, Agent-Postfächer und Rolle (Admin) zurück. Unten links steht im Demo-Modus "Demo-Daten".

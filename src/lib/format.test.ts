@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, formatMoney, formatRelative } from "./format";
+import { addDays, formatDue, formatMoney, formatRelative } from "./format";
 
 const NOW = new Date(2026, 9, 9, 15, 30);
 
@@ -23,5 +23,19 @@ describe("Datum und Geld", () => {
   it("formatiert Euro ohne Cent, wenn glatt", () => {
     expect(formatMoney(1_000_000)).toBe("10.000\u00a0€");
     expect(formatMoney(123_456)).toBe("1.234,56\u00a0€");
+  });
+});
+
+describe("formatDue", () => {
+  it("heute, morgen, sonst TT.MM.", () => {
+    expect(formatDue("2026-10-09", "2026-10-09")).toBe("heute");
+    expect(formatDue("2026-10-10", "2026-10-09")).toBe("morgen");
+    expect(formatDue("2026-10-03", "2026-10-09")).toBe("03.10.");
+    expect(formatDue("2026-10-20", "2026-10-09")).toBe("20.10.");
+  });
+
+  it("anderes Jahr mit kurzer Jahreszahl", () => {
+    expect(formatDue("2027-01-03", "2026-12-30")).toBe("03.01.27");
+    expect(formatDue("2026-12-31", "2026-12-30")).toBe("morgen");
   });
 });

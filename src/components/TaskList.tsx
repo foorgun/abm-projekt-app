@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { Bot, Check, Plus, ShieldAlert } from "lucide-react";
-import { formatDate } from "../lib/format";
+import { formatDate, formatDue } from "../lib/format";
 import { projectTitle } from "../lib/projects";
 import type { NewTask, TaskPatch } from "../lib/repo";
 import type { Project, Task, TeamMember } from "../lib/types";
@@ -110,9 +110,18 @@ export function TaskList({
                 data-today={dueToday}
                 disabled={!onUpdate || !canEdit || done}
                 onClick={() => setEditingDue(t.id)}
-                title={onUpdate && canEdit && !done ? "Fälligkeit ändern" : undefined}
+                title={[t.dueOn ? `${overdue ? "Überfällig seit" : "Fällig am"} ${formatDate(t.dueOn)}` : null, onUpdate && canEdit && !done ? "Klicken zum Ändern" : null].filter(Boolean).join(" · ") || undefined}
               >
-                {done ? `erledigt${t.doneAt ? ` ${formatDate(t.doneAt.slice(0, 10))}` : ""}` : t.dueOn ? (overdue ? `überfällig · ${formatDate(t.dueOn)}` : dueToday ? "heute" : formatDate(t.dueOn)) : "ohne Termin"}
+                {done ? (
+                  `erledigt${t.doneAt ? ` ${formatDue(t.doneAt.slice(0, 10), today)}` : ""}`
+                ) : t.dueOn ? (
+                  <>
+                    {overdue && <span className="sr-only">überfällig, </span>}
+                    {formatDue(t.dueOn, today)}
+                  </>
+                ) : (
+                  "ohne Termin"
+                )}
               </button>
             )}
           </li>

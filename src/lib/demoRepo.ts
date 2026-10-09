@@ -68,7 +68,7 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
 }
 
 export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: number } = {}): Repo {
-  const db: Dataset = buildDemoDataset(today);
+  let db: Dataset = buildDemoDataset(today);
   let user: SessionUser = { name: "Demo", role: "admin" };
   const delay = opts.delayMs ?? DELAY_MS;
   const done = <T,>(v: T) => wait(v, delay);
@@ -158,6 +158,14 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
 
   return {
     mode: "demo",
+
+    async resetDemo() {
+      db = buildDemoDataset(today);
+      mailQueue = null;
+      batch = 0;
+      delivered.clear();
+      return done(undefined);
+    },
 
     async load(u) {
       user = u;

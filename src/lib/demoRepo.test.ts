@@ -65,6 +65,17 @@ describe("demoRepo: Änderungen", () => {
     await expect(r.setProjectStatus(p.id, "aktiv")).rejects.toBeInstanceOf(PermissionError);
   });
 
+  it("Demo zurücksetzen verwirft alle Änderungen, auch Agent-Läufe", async () => {
+    const r = repo();
+    const fresh = await r.load(admin);
+    await r.setStepDate(fresh.projects[0].id, "baufreigabe", TODAY);
+    await r.runAgent();
+    await r.resetDemo!();
+    const after = await r.load(admin);
+    expect(JSON.stringify(after)).toBe(JSON.stringify(fresh));
+    expect((await r.runAgent()).fetched).toBeGreaterThan(0); // Postfächer liefern wieder von vorn
+  });
+
   it("geladene Daten sind Kopien (keine Mutation von außen)", async () => {
     const r = repo();
     const d = await r.load(admin);

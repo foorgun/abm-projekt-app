@@ -640,6 +640,7 @@ kbd {
 /* ---------------------------------------------------------------- Tabelle */
 
 .table-wrap {
+  position: relative; /* absolut positionierte Kinder (z. B. sr-only) bleiben im Scrollbereich */
   width: 100%;
   overflow-x: auto;
 }
@@ -1658,16 +1659,17 @@ a.list-item:hover {
   gap: var(--sp-2);
 }
 
+/* Rückmeldung unten rechts, verdeckt keine Inhalte in der Mitte (Prüfliste, Tabellen) */
 .toast {
   position: fixed;
+  right: var(--sp-6);
   bottom: var(--sp-6);
-  left: 50%;
-  transform: translateX(-50%);
   z-index: 90;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  max-width: calc(100vw - 32px);
+  width: max-content;
+  max-width: min(420px, calc(100vw - 32px));
   padding: var(--sp-3) var(--sp-4);
   border-radius: var(--r-card);
   background: var(--surface-3);
@@ -2229,7 +2231,7 @@ a.list-item:hover {
 
 .task-due {
   flex-shrink: 0;
-  min-width: 156px;
+  min-width: 88px;
   height: 28px;
   padding: 0 8px;
   border: 1px solid transparent;
@@ -3441,4 +3443,68 @@ a.list-item:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   vertical-align: bottom;
+}
+
+@media (max-width: 640px) {
+  .toast {
+    left: var(--sp-4);
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    width: auto;
+    max-width: none;
+  }
+}
+
+.cell-tip {
+  outline-offset: 1px;
+}
+
+.cell-tip-bubble {
+  position: fixed;
+  z-index: 100;
+  max-width: 360px;
+  padding: 6px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-pop);
+  color: var(--text);
+  font-size: var(--fs-12);
+  line-height: 1.45;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  transform: translateY(-100%);
+}
+
+.cell-tip-bubble[data-below="true"] {
+  transform: none;
+}
+
+.cell-tip-bubble .muted {
+  display: block;
+}
+
+.review-card[data-test-case="true"] {
+  border-color: color-mix(in srgb, var(--info) 45%, var(--border));
+}
+
+.review-testcase {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-5);
+  border-bottom: 1px solid color-mix(in srgb, var(--info) 30%, var(--border));
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  background: var(--info-soft);
+  color: var(--info);
+  font-size: var(--fs-13);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .review-testcase {
+    padding-left: var(--sp-4);
+    padding-right: var(--sp-4);
+  }
 }

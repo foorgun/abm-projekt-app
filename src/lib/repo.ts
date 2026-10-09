@@ -93,4 +93,7 @@ export interface Repo {
   resolveReview(attachmentId: string, resolution: ReviewResolution): Promise<void>;
   /** Automatisch abgelegter Anhang war falsch: zurück in die Prüfliste (zählt gegen die Trefferquote). */
   reportWrongFiling(attachmentId: string): Promise<void>;
+
+  /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
+  resetDemo?(): Promise<void>;
 }

@@ -1,8 +1,11 @@
-import { NavLink } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, Settings, UserRound } from "lucide-react";
+import { useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
+import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, RotateCcw, Settings, UserRound } from "lucide-react";
 import logo from "../../assets/abm-logo.png";
 import { ROLE_LABEL, useSession, type AppRole } from "../../lib/session";
-import { Avatar, Badge, IconButton, Menu } from "../ui";
+import { useData } from "../../lib/store";
+import { useToast } from "../Toast";
+import { Avatar, Badge, Button, Dialog, IconButton, Menu } from "../ui";
 import { COUNT_HINT, NAV, type CountKey } from "./nav";
 
 export function Sidebar({
@@ -17,7 +20,22 @@ export function Sidebar({
   counts: Partial<Record<CountKey, number>>;
 }) {
   const { user, setRole, demo } = useSession();
+  const { repo, mutate } = useData();
+  const toast = useToast();
+  const navigate = useNavigate();
+  const [confirmReset, setConfirmReset] = useState(false);
   const roles: AppRole[] = ["admin", "mitarbeiter", "freiberufler"];
+  const canReset = repo.mode === "demo" && Boolean(repo.resetDemo);
+
+  async function resetDemo() {
+    setConfirmReset(false);
+    const res = await mutate((r) => r.resetDemo!());
+    if (!res.ok) return toast(res.error, "danger");
+    setRole("admin");
+    navigate("/");
+    onNavigate();
+    toast("Demo zurückgesetzt: alle Änderungen verworfen");
+  }
 
   return (
     <aside className="sidebar" aria-label="Hauptnavigation">
@@ -105,11 +123,14 @@ export function Sidebar({
           side="top"
           align="left"
           header={demo ? <div className="menu-label">Rolle ansehen als (Demo)</div> : undefined}
-          items={roles.map((r) => ({
-            label: `${ROLE_LABEL[r]}${r === user.role ? " ✓" : ""}`,
-            icon: <UserRound size={14} />,
-            onSelect: () => setRole(r),
-          }))}
+          items={[
+            ...roles.map((r) => ({
+              label: `${ROLE_LABEL[r]}${r === user.role ? " ✓" : ""}`,
+              icon: <UserRound size={14} />,
+              onSelect: () => setRole(r),
+            })),
+            ...(canReset ? (["sep", { label: "Demo zurücksetzen", icon: <RotateCcw size={14} />, onSelect: () => setConfirmReset(true) }] as const) : []),
+          ]}
           trigger={(p) => (
             <button type="button" className="user-card" {...p} aria-label={`${user.name}, ${ROLE_LABEL[user.role]}. Benutzermenü`}>
               <Avatar name={user.name} />
@@ -121,8 +142,24 @@ export function Sidebar({
             </button>
           )}
         />
-        <div className="sidebar-version">v0.1 – Prototyp</div>
+        <div className="sidebar-version">v0.1 – Prototyp{repo.mode === "demo" ? " · Demo-Daten" : ""}</div>
       </div>
+      {confirmReset && (
+        <Dialog
+          title="Demo zurücksetzen?"
+          onClose={() => setConfirmReset(false)}
+          footer={
+            <>
+              <Button onClick={() => setConfirmReset(false)}>Abbrechen</Button>
+              <Button variant="primary" icon={<RotateCcw size={15} />} onClick={() => void resetDemo()}>
+                Zurücksetzen
+              </Button>
+            </>
+          }
+        >
+          <p>Alle Änderungen dieser Vorführung werden verworfen: gesetzte Schritte, hochgeladene Dateien, Aufgaben, Agent-Läufe und Regeln. Die erfundenen Ausgangsdaten werden neu geladen.</p>
+        </Dialog>
+      )}
     </aside>
   );
 }

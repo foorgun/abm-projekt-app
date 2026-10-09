@@ -6,7 +6,7 @@ import { PageHead } from "../components/layout/PageHead";
 import { useNewProject } from "../components/NewProjectDialog";
 import { Button, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
-import { formatDate, formatMonth } from "../lib/format";
+import { formatDate, formatDue, formatMonth } from "../lib/format";
 import {
   DEFAULT_FILTERS,
   filterProjects,
@@ -126,7 +126,12 @@ export function Projects({ tab }: { tab: ProjectTab }) {
           return (
             <span className="next-task" data-overdue={overdue} title={`${t.title}${t.dueOn ? `\n${overdue ? "überfällig seit" : "fällig"} ${formatDate(t.dueOn)}` : ""}`}>
               <span className="next-task-title">{t.title}</span>
-              {t.dueOn && <span className="cell-sub">{overdue ? "überfällig seit " : "fällig "}{formatDate(t.dueOn)}</span>}
+              {t.dueOn && (
+                <span className="cell-sub">
+                  {overdue ? "überfällig seit " : "fällig "}
+                  {formatDue(t.dueOn, today)}
+                </span>
+              )}
             </span>
           );
         }

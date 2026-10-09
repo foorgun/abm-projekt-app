@@ -4,7 +4,7 @@ import { AlertOctagon, Bot, CheckCircle2, ClipboardCheck, Inbox, Mail, RefreshCw
 import { BarChart, Legend } from "../../components/charts/BarChart";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
-import { Button, Card, CardBody, CardHead, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Select, Skeleton, Switch, type Column } from "../../components/ui";
+import { Button, Card, CardBody, CardHead, CellTip, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Select, Skeleton, Switch, type Column } from "../../components/ui";
 import { agentStats } from "../../agent/stats";
 import { displayPath } from "../../lib/folders";
 import { formatBytes, formatRelative } from "../../lib/format";
@@ -119,24 +119,54 @@ export function AgentDashboard() {
       key: "from",
       header: "Absender · Betreff",
       render: (r) => (
-        <span className="agent-mail" title={`${r.item.fromName} <${r.item.fromEmail}>\n${r.item.subject}`}>
+        <CellTip
+          className="agent-mail"
+          content={
+            <>
+              {r.item.subject}
+              <span className="muted">
+                {r.item.fromName} &lt;{r.item.fromEmail}&gt;
+              </span>
+            </>
+          }
+        >
           <span className="cell-main">{r.item.fromName}</span>
           <span className="cell-sub">{r.item.subject}</span>
-        </span>
+        </CellTip>
       ),
     },
-    { key: "file", header: "Datei", render: (r) => <span className="agent-file" title={r.att.fileName}>{r.att.fileName}</span> },
+    {
+      key: "file",
+      header: "Datei",
+      render: (r) => (
+        <CellTip className="agent-file" content={r.att.fileName}>
+          {r.att.fileName}
+        </CellTip>
+      ),
+    },
     {
       key: "target",
       header: "Ziel",
       render: (r) => {
         const p = r.att.projectId ? projects.get(r.att.projectId) : null;
         if (!p || !r.att.folderPath) return <span className="muted">–</span>;
+        const full = displayPath(r.att.folderPath);
         return (
-          <span className="agent-target" title={`${projectTitle(p)} › ${displayPath(r.att.folderPath)}`}>
+          <CellTip
+            className="agent-target"
+            content={
+              <>
+                {projectTitle(p)}
+                <span className="muted">{full}</span>
+              </>
+            }
+          >
             <span className="cell-main">{projectTitle(p)}</span>
-            <span className="cell-sub">{displayPath(r.att.folderPath).split(" › ").slice(-2).join(" › ")}</span>
-          </span>
+            <span className="cell-sub" aria-hidden>
+              {full.split(" › ").slice(-2).join(" › ")}
+            </span>
+            <span className="sr-only">{full}</span>
+          </CellTip>
         );
       },
     },
