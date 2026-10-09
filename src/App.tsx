@@ -5,11 +5,13 @@ import { createRepo } from "./lib/createRepo";
 import { SessionProvider } from "./lib/session";
 import { DataProvider } from "./lib/store";
 import { Dashboard } from "./pages/Dashboard";
+import { Invoices } from "./pages/Invoices";
 import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
 import { Projects } from "./pages/Projects";
 import { ProjectDetail } from "./pages/project/ProjectDetail";
 import { Styleguide } from "./pages/Styleguide";
+import { Tasks } from "./pages/Tasks";
 
 export function App() {
   const [repo] = useState(createRepo);
@@ -25,8 +27,8 @@ export function App() {
               <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
               <Route path="projekte/:id" element={<ProjectDetail />} />
               <Route path="pipeline" element={<Pipeline />} />
-              <Route path="aufgaben" element={<Placeholder title="Aufgaben" step="Schritt 6" />} />
-              <Route path="rechnungen" element={<Placeholder title="Rechnungen" step="Schritt 3–6" />} />
+              <Route path="aufgaben" element={<Tasks />} />
+              <Route path="rechnungen" element={<Invoices />} />
               <Route path="agent" element={<Placeholder title="Agent-Dashboard" step="Schritt 7" />} />
               <Route path="agent/pruefung" element={<Placeholder title="Prüfliste" step="Schritt 7" />} />
               <Route path="agent/postfaecher" element={<Placeholder title="Postfächer" step="Schritt 7" />} />

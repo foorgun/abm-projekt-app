@@ -2228,9 +2228,44 @@ a.list-item:hover {
 
 .task-due {
   flex-shrink: 0;
+  min-width: 156px;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
   font-size: var(--fs-12);
   color: var(--text-2);
   font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.task-due:not(:disabled):hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.task-due:disabled {
+  cursor: default;
+}
+
+.task-due-input {
+  width: 140px;
+  height: 28px;
+  font-size: var(--fs-12);
+  padding: 0 6px;
+}
+
+.task-assignee {
+  flex-shrink: 0;
+  width: 112px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: var(--fs-12);
 }
 
 .task-due[data-overdue="true"] {
@@ -2796,5 +2831,80 @@ a.list-item:hover {
   .docs-files-head {
     flex-direction: column;
     align-items: stretch;
+  }
+}
+
+.tasks-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tasks-selects {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.tasks-selects .select-wrap {
+  width: 200px;
+}
+
+.task-group {
+  padding: var(--sp-3) var(--sp-5) var(--sp-2);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-2);
+  border-top: 1px solid var(--border);
+}
+
+.task-group:first-child {
+  border-top: 0;
+}
+
+.task-group[data-bucket="ueberfaellig"] {
+  color: var(--danger);
+}
+
+.task-form-wrap .task-form {
+  border-top: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.task-list:first-child .task-row:first-child,
+.task-form-wrap + .task-list .task-row:first-child,
+.task-group + .task-list .task-row:first-child {
+  border-top: 0;
+}
+
+@media (max-width: 640px) {
+  .tasks-toolbar,
+  .tasks-selects {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tasks-selects .select-wrap {
+    width: 100%;
+  }
+
+  .task-row {
+    flex-wrap: wrap;
+  }
+
+  .task-main {
+    flex-basis: calc(100% - 20px - var(--sp-3));
+  }
+
+  .task-assignee {
+    margin-left: calc(20px + var(--sp-3));
+  }
+
+  .task-group {
+    padding-left: var(--sp-4);
   }
 }

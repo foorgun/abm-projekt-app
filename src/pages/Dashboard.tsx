@@ -48,7 +48,7 @@ const ALERT_LIMIT = 6;
 
 export function Dashboard() {
   const { user } = useSession();
-  const { data, loading, error, reload, alerts, today, dueTaskCount, reviewCount, mutate } = useData();
+  const { data, loading, error, reload, alerts, allAlerts, today, dueTaskCount, reviewCount, mutate } = useData();
   const navigate = useNavigate();
   const toast = useToast();
   const [filter, setFilter] = useState<ActivityFilter>("alle");
@@ -80,8 +80,9 @@ export function Dashboard() {
   const lastMonth = months[months.length - 2].count;
   const openTasks = data.tasks.filter((t) => t.status === "offen");
   const overdue = openTasks.filter((t) => t.dueOn && t.dueOn < today).length;
-  const unsentAlerts = alerts.filter((a) => a.kind === "invoice_unsent");
-  const unsentSum = unsentInvoiceTotal(alerts, data);
+  // Geldsumme aus allen Warnungen: eine erledigte Aufgabe soll offenes Geld nicht unsichtbar machen
+  const unsentAlerts = allAlerts.filter((a) => a.kind === "invoice_unsent");
+  const unsentSum = unsentInvoiceTotal(allAlerts, data);
   const phases = projectsByPhase(data.projects, data.stepDefinitions);
 
   async function markSent(a: Alert) {

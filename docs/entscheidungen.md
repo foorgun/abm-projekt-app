@@ -168,3 +168,23 @@ Neueste Einträge unten.
   Platz dafür: Bauvoranfragen zeigen "BVA" (Tooltip), Spalte "Fortschritt" heißt "Schritte".
 - **Demo-Aufgaben passen zur Phase** (`TASK_TEMPLATES` mit Bedingung je Aufgabe, per Test geprüft): z. B. Behördenrückfrage nur
   zwischen Übergabe Baugesuch und Genehmigung, Bauanlaufgespräch erst nach Baufreigabe.
+
+## Schritt 6 – Aufgaben
+
+- **Aufgaben aus Warnungen** (`src/lib/taskSync.ts`): genau eine Aufgabe je Warnung, `source_key` = Warnungs-ID + Dringlichkeit.
+  Titel je Art ("Rechnung versenden: …", "Vertrag bei der Bauherrschaft nachfassen", "Beim Amt den Stand der Genehmigung erfragen"),
+  fällig heute (dringend), in 3 Tagen (Hinweis) bzw. 7 Tagen (Info), zugewiesen an den Architekten des Projekts.
+- **"Erledigen blendet die Warnung aus, solange die Ursache fehlt"** ist so umgesetzt: Eine erledigte Warnungsaufgabe blendet die Warnung
+  in Handlungsbedarf, Glocke, Bannern und Warn-Icons aus. Verschärft sich die Warnung (Hinweis → Dringend), erscheint sie wieder mit
+  neuer Aufgabe. Ist die Ursache behoben (z. B. Rechnung versendet), wird die offene Aufgabe automatisch erledigt.
+  **Ausnahme Geld:** Die Summe "Offene Rechnungen" auf Dashboard und Rechnungsseite zählt weiter alle nicht versendeten Rechnungen,
+  damit Abhaken kein offenes Geld unsichtbar macht.
+- **Wo der Abgleich läuft:** im Demo-Modus nach jedem Laden im Store (nur Mitarbeiter). Im Supabase-Modus soll dieselbe Logik
+  serverseitig laufen (Datenbankfunktion oder Cron, Schritt 8), damit Aufgaben auch ohne geöffnete App entstehen.
+- **Filter:** Heute · Diese Woche (heute bis Sonntag) · Überfällig · Alle offenen (gruppiert: Überfällig, Heute, Diese Woche, Später,
+  Ohne Termin) · Erledigt; dazu Person (auch "Niemand zugewiesen") und Projekt. Alles in der URL.
+- **In der Zeile:** abhaken, Fälligkeit ändern (Klick aufs Datum), Person zuweisen. Neue Aufgabe über Kopfzeile ("Neue Aufgabe" im
+  Dropdown), die Seite oder den Projekt-Tab.
+- **Demo-Aufgabe "Vertrag nachfassen"** entfernt, sie entsteht jetzt automatisch aus der Warnung (sonst doppelt).
+- **Rechnungen-Seite** (BUILD.md Abschnitt 5, bisher Platzhalter) mitgebaut: Summen oben (jetzt fällig, geplant, versendet, bezahlt),
+  Tabs Nicht versendet · Versendet · Bezahlt · Alle, "Als versendet markieren". Jetzt fällige zuerst.

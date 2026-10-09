@@ -7,6 +7,7 @@ import { todayIso } from "./format";
 import type { Repo } from "./repo";
 import { useSession } from "./session";
 import { setStepDefinitions } from "./steps";
+import { planAlertTaskSync, visibleAlerts } from "./taskSync";
 import type { Dataset } from "./types";
 
 interface DataValue {
@@ -15,7 +16,10 @@ interface DataValue {
   loading: boolean;
   error: string | null;
   today: string;
+  /** Sichtbare Warnungen (ohne die, deren Aufgabe erledigt ist) */
   alerts: Alert[];
+  /** Alle Warnungen, auch ausgeblendete (z. B. für Geldsummen) */
+  allAlerts: Alert[];
   /** Offene Aufgaben, die heute fällig oder überfällig sind. */
   dueTaskCount: number;
   /** Offene Prüfungen des Agenten (Anhänge mit Status "pruefen"). */
@@ -39,8 +43,18 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
     const mine = ++seq.current;
     setError(null);
     try {
-      const d = await repo.load(user);
+      let d = await repo.load(user);
       if (mine !== seq.current) return; // veraltete Antwort (z. B. nach Rollenwechsel)
+      // Aufgaben aus Warnungen abgleichen (nur Mitarbeiter dürfen Aufgaben schreiben)
+      if (user.role !== "freiberufler") {
+        const plan = planAlertTaskSync(computeAlerts(d, today), d.tasks, d.projects, today);
+        if (plan.create.length || plan.close.length) {
+          for (const t of plan.create) await repo.createTask(t);
+          for (const id of plan.close) await repo.updateTask(id, { status: "erledigt" });
+          d = await repo.load(user);
+          if (mine !== seq.current) return;
+        }
+      }
       setStepDefinitions(d.stepDefinitions);
       setData(d);
     } catch (e) {
@@ -48,7 +62,7 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
     } finally {
       if (mine === seq.current) setLoading(false);
     }
-  }, [repo, user]);
+  }, [repo, user, today]);
 
   useEffect(() => {
     setLoading(true);
@@ -69,10 +83,11 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
   );
 
   const value = useMemo<DataValue>(() => {
-    const alerts = data ? computeAlerts(data, today) : [];
+    const allAlerts = data ? computeAlerts(data, today) : [];
+    const alerts = data ? visibleAlerts(allAlerts, data.tasks) : [];
     const dueTaskCount = data ? data.tasks.filter((t) => t.status === "offen" && t.dueOn && t.dueOn <= today).length : 0;
     const reviewCount = data ? data.inboxAttachments.filter((a) => a.status === "pruefen").length : 0;
-    return { repo, data, loading, error, today, alerts, dueTaskCount, reviewCount, reload, mutate };
+    return { repo, data, loading, error, today, alerts, allAlerts, dueTaskCount, reviewCount, reload, mutate };
   }, [repo, data, loading, error, today, reload, mutate]);
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;

@@ -158,7 +158,6 @@ export interface TaskTemplate {
 
 /** Erfundene Aufgaben, jeweils nur bei Projekten in passender Phase (keine Behördenrückfrage vor dem Baugesuch usw.). */
 export const TASK_TEMPLATES: TaskTemplate[] = [
-  { title: "Vertrag bei der Bauherrschaft nachfassen", due: -2, fits: (p) => has(p, "vertrag_versendet") && !has(p, "vertrag_zurueck") },
   { title: "Vorabzug an Bauherrschaft senden", due: -3, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "vorabzug_versendet") },
   { title: "Rückfrage Landratsamt zu Stellplätzen beantworten", due: -1, fits: (p) => has(p, "baugesuch_uebergabe") && !has(p, "baugenehmigung") },
   { title: "Unterschriften Bauantragspläne einholen", due: -6, fits: (p) => has(p, "vorabzug_versendet") && !has(p, "baugesuch_uebergabe") },

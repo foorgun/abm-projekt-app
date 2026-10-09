@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { Bot, Check, Plus, ShieldAlert } from "lucide-react";
 import { formatDate } from "../lib/format";
 import { projectTitle } from "../lib/projects";
-import type { NewTask } from "../lib/repo";
+import type { NewTask, TaskPatch } from "../lib/repo";
 import type { Project, Task, TeamMember } from "../lib/types";
 import { Button, Input, Select } from "./ui";
 
@@ -14,6 +14,7 @@ export function TaskList({
   today,
   projects,
   onToggle,
+  onUpdate,
   canEdit,
 }: {
   tasks: Task[];
@@ -22,8 +23,11 @@ export function TaskList({
   /** Wenn gesetzt, wird je Aufgabe das Projekt verlinkt. */
   projects?: Map<string, Project>;
   onToggle: (task: Task) => void;
+  /** Wenn gesetzt: Fälligkeit und Zuständigkeit sind direkt in der Zeile änderbar. */
+  onUpdate?: (task: Task, patch: TaskPatch) => void;
   canEdit: boolean;
 }) {
+  const [editingDue, setEditingDue] = useState<string | null>(null);
   return (
     <ul className="task-list">
       {tasks.map((t) => {
@@ -63,12 +67,54 @@ export function TaskList({
                     <Bot size={12} aria-hidden /> vom Agenten
                   </span>
                 )}
-                {who && <span>{who.code ?? who.name}</span>}
+                {who && !onUpdate && <span>{who.code ?? who.name}</span>}
               </span>
             </div>
-            <span className="task-due" data-overdue={overdue} data-today={dueToday}>
-              {done ? `erledigt${t.doneAt ? ` ${formatDate(t.doneAt.slice(0, 10))}` : ""}` : t.dueOn ? (overdue ? `überfällig · ${formatDate(t.dueOn)}` : dueToday ? "heute" : formatDate(t.dueOn)) : "ohne Termin"}
-            </span>
+            {onUpdate && canEdit && !done && (
+              <select
+                className="task-assignee"
+                aria-label={`Zuständig für ${t.title}`}
+                value={t.assigneeId ?? ""}
+                onChange={(e) => onUpdate(t, { assigneeId: e.target.value || null })}
+              >
+                <option value="">Niemand</option>
+                {team.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.code ?? m.name}
+                  </option>
+                ))}
+              </select>
+            )}
+            {onUpdate && canEdit && !done && editingDue === t.id ? (
+              <input
+                type="date"
+                className="input task-due-input"
+                defaultValue={t.dueOn ?? ""}
+                autoFocus
+                aria-label={`Fällig am für ${t.title}`}
+                onBlur={(e) => {
+                  setEditingDue(null);
+                  const v = e.currentTarget.value || null;
+                  if (v !== t.dueOn) onUpdate(t, { dueOn: v });
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                  if (e.key === "Escape") setEditingDue(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                className="task-due"
+                data-overdue={overdue}
+                data-today={dueToday}
+                disabled={!onUpdate || !canEdit || done}
+                onClick={() => setEditingDue(t.id)}
+                title={onUpdate && canEdit && !done ? "Fälligkeit ändern" : undefined}
+              >
+                {done ? `erledigt${t.doneAt ? ` ${formatDate(t.doneAt.slice(0, 10))}` : ""}` : t.dueOn ? (overdue ? `überfällig · ${formatDate(t.dueOn)}` : dueToday ? "heute" : formatDate(t.dueOn)) : "ohne Termin"}
+              </button>
+            )}
           </li>
         );
       })}
