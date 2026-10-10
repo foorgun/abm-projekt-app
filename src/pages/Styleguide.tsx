@@ -1,8 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Bot, CircleAlert, ClipboardCheck, Download, FolderOpen, ListTodo, Plus, Receipt, Search, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, ArrowRight, Bot, CircleAlert, ClipboardCheck, Download, FolderOpen, ListTodo, Mail, Receipt, Search, SlidersHorizontal, Trash2 } from "lucide-react";
 import { BarChart, Legend } from "../components/charts/BarChart";
 import { HBarChart } from "../components/charts/HBarChart";
-import { LineChart } from "../components/charts/LineChart";
+import { AreaChart, TrendPill } from "../components/charts/AreaChart";
+import { trendPercent } from "../components/charts/scale";
+import { useToast } from "../components/Toast";
 import { PageHead } from "../components/layout/PageHead";
 import {
   Badge,
@@ -24,6 +26,7 @@ import {
   Pill,
   Progress,
   Select,
+  SettingRow,
   Skeleton,
   Stepper,
   Switch,
@@ -70,6 +73,8 @@ const MONTHS = [
   ["Sep", "September 2026", 7],
   ["Okt", "Oktober 2026", 4],
 ] as const;
+
+const AREA_VALUES = [18500, 24000, 21500, 31000, 27500, 36000, 33500, 41000];
 
 const PHASES = [
   { label: "Plangespräch", value: 6 },
@@ -129,6 +134,7 @@ export function Styleguide() {
   const [seg, setSeg] = useState<"heute" | "woche" | "ueberfaellig" | "alle">("heute");
   const [on, setOn] = useState(true);
   const [dialog, setDialog] = useState(false);
+  const toast = useToast();
   const [steps, setSteps] = useState<StepperItem[]>([
     { key: "plangespraech", label: "Plangespräch", date: "2026-01-12" },
     { key: "vertrag_versendet", label: "Vertrag versendet", date: "2026-01-20" },
@@ -205,7 +211,7 @@ export function Styleguide() {
         </Section>
 
         <div className="grid-2">
-          <Section title="Diagramme: gestapelt und Linie">
+          <Section title="Diagramme: gestapelt und Fläche">
             <Legend series={[{ name: "Automatisch abgelegt" }, { name: "Zur Prüfung" }]} />
             <BarChart
               caption="Verarbeitete Anhänge pro Tag"
@@ -221,26 +227,41 @@ export function Styleguide() {
                 ["So", 0, 1],
               ].map(([l, a, b]) => ({ label: String(l), values: [Number(a), Number(b)] }))}
             />
-            <LineChart
-              caption="Trefferquote"
-              name="Abgelegte Anhänge"
-              height={180}
-              data={[3, 7, 6, 11, 9, 14, 12].map((v, i) => ({ label: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"][i], value: v }))}
+<div className="sg-row">
+              <strong>Rechnungsvolumen</strong>
+              <TrendPill percent={trendPercent(AREA_VALUES[AREA_VALUES.length - 2], AREA_VALUES[AREA_VALUES.length - 1])} />
+            </div>
+            <AreaChart
+              caption="Beispiel Flächendiagramm"
+              height={200}
+              labels={MONTHS.slice(4).map(([label, title]) => ({ label, title }))}
+              series={[{ name: "Versendet", values: AREA_VALUES }]}
+              format={(v) => `${v.toLocaleString("de-DE")} €`}
             />
           </Section>
 
           <div className="stack">
-            <Section title="Buttons">
+            <Section title="Buttons (Familie)">
               <div className="sg-row">
-                <Button variant="primary" icon={<Plus size={16} />}>
-                  Neues Projekt
+                <Button variant="primary" iconRight={<ArrowRight size={15} />}>
+                  Los geht's
                 </Button>
-                <Button>Abbrechen</Button>
+                <Button variant="secondary">Secondary</Button>
+                <Button variant="outline">Outline</Button>
                 <Button variant="ghost">Ghost</Button>
-                <Button variant="danger">Ignorieren</Button>
-                <Button size="sm">Klein</Button>
-                <IconButton label="Suchen" variant="default">
-                  <Search size={16} />
+              </div>
+              <div className="sg-row">
+                <Button variant="destructive" icon={<Trash2 size={15} />}>
+                  Löschen
+                </Button>
+                <Button size="sm" icon={<Mail size={13} />}>
+                  Klein
+                </Button>
+                <Button size="lg" variant="secondary" iconRight={<Download size={16} />}>
+                  Groß
+                </Button>
+                <IconButton label="Weiter" variant="outline">
+                  <ArrowRight size={16} />
                 </IconButton>
                 <Button disabled>Deaktiviert</Button>
               </div>
@@ -255,9 +276,20 @@ export function Styleguide() {
                   trigger={(p) => <Button {...p}>Menü öffnen</Button>}
                 />
                 <Button onClick={() => setDialog(true)}>Dialog öffnen</Button>
+                <Button variant="secondary" onClick={() => toast("Gespeichert", "ok", "Die Änderung wurde übernommen.")}>
+                  Toast zeigen
+                </Button>
                 <Tooltip content="Tooltip mit kurzem Hinweis">
-                  <Button variant="ghost">Tooltip (Hover/Fokus)</Button>
+                  <Button variant="ghost">Tooltip</Button>
                 </Tooltip>
+              </div>
+            </Section>
+
+            <Section title="Einstellungszeilen und Schalter">
+              <div className="card sg-settings">
+                <SettingRow icon={<Mail size={16} />} title="Sammelpostfach" description="Neue Mails werden gelesen" action={<Switch checked={on} onChange={setOn} label="Sammelpostfach lesen" />} />
+                <SettingRow icon={<SlidersHorizontal size={16} />} title="Schwellenwerte" description="Automatisch ab 90 %" action={<Button size="sm">Anpassen</Button>} />
+                <SettingRow icon={<Bot size={16} />} title="Agent" description="Postfächer jetzt prüfen" action={<Button size="sm" variant="primary">Prüfen</Button>} />
               </div>
             </Section>
 

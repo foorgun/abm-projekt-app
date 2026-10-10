@@ -101,7 +101,7 @@ export function Invoices() {
         isOpen(i) ? (
           <Button
             size="sm"
-            variant={due.has(i.id) ? "primary" : "default"}
+            variant={due.has(i.id) ? "primary" : "outline"}
             icon={<Send size={13} />}
             onClick={() => void markSent(i)}
             aria-label={`${i.label} als versendet markieren`}

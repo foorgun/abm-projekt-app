@@ -103,7 +103,15 @@ export function Dashboard() {
       },
       sortValue: (a) => (a.projectId ? projects.get(a.projectId)?.bauherrLabel ?? "" : ""),
     },
-    { key: "event", header: "Ereignis", render: (a) => a.text },
+    {
+      key: "event",
+      header: "Ereignis",
+      render: (a) => (
+        <span className="event-text" title={a.text}>
+          {a.text}
+        </span>
+      ),
+    },
     {
       key: "kind",
       header: "Art",

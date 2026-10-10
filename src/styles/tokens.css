@@ -1,35 +1,50 @@
 /*
- * Design-Tokens. Komponenten verwenden ausschließlich diese Variablen, keine Hex-Werte.
- * Dark ist Standard. Light-Werte sind vorbereitet ([data-theme="light"]), werden aber nicht ausgeliefert:
- * es gibt keinen Schalter in der Oberfläche.
+ * Design-Tokens, Design v2 (Beschreibung: docs/design-v2.md).
+ * Komponenten verwenden ausschließlich diese Variablen, keine Hex-Werte.
+ * Dark ist Standard. Light-Werte sind vorbereitet ([data-theme="light"]), werden aber nicht ausgeliefert.
+ *
+ * Grundregel: neutrale Flächen, keine farbig getönten Flächen.
+ * Teal (--accent) nur für Diagramme, aktive Zustände und den Fokusring.
  */
 :root {
   color-scheme: dark;
 
-  /* Flächen */
-  --bg: #0c0e12;
-  --surface: #161b23;
-  --surface-2: #1d232d;
-  --surface-3: #252c38;
-  --sidebar: #0a0c0f;
-  --overlay: rgba(4, 6, 9, 0.64);
+  /* Flächen (neutral, fast schwarz) */
+  --bg: #0a0a0b;
+  --surface: #111113;
+  --surface-2: #141416;
+  --surface-3: #1c1c1f;
+  --sidebar: var(--bg);
+  --overlay: rgba(0, 0, 0, 0.66);
 
   /* Linien */
-  --border: #29303c;
-  --border-strong: #363f4e;
+  --border: #262629;
+  --border-strong: #34343a;
 
   /* Text */
-  --text: #e8ebf1;
-  --text-2: #b7beca;
-  --muted: #8d96a6;
-  --faint: #7a8394; /* noch AA-tauglich für 12-px-Text auf --sidebar und --surface */
+  --text: #f4f4f5;
+  --text-2: #c4c4ca;
+  --muted: #8e8e96;
+  --faint: #7e7e86; /* ≥ 4,5:1 auf --bg, --surface, --surface-2 */
 
-  /* Akzent (Hauptaktionen, aktive Navigation, Diagramm-Hauptserie) */
+  /* Teal: Diagramme, aktive Zustände, Fokus */
   --accent: #2bb3a3;
   --accent-hover: #34c4b3;
-  --accent-soft: rgba(43, 179, 163, 0.14);
-  --accent-text: #5fd0c2;
+  /* früher getönte Teal-Fläche; in v2 bewusst neutral, damit keine Teal-Flächen entstehen */
+  --accent-soft: rgba(255, 255, 255, 0.06);
+  /* früher Teal-Text; in v2 hell (Links, Hervorhebungen) */
+  --accent-text: var(--text);
   --on-accent: #06211e;
+
+  /* Primär-Button: hell mit dunkler Schrift */
+  --primary-bg: #f4f4f5;
+  --primary-bg-hover: #ffffff;
+  --on-primary: #0a0a0b;
+
+  /* Destructive: dunkleres Korallrot, damit weiße Schrift 4,5:1 erreicht */
+  --destructive: #cf3f3f;
+  --destructive-hover: #db4a4a;
+  --on-destructive: #ffffff;
 
   /* Status: immer mit Text oder Icon, nie Farbe allein */
   --ok: #4cc38a;
@@ -40,18 +55,21 @@
   --danger-soft: rgba(239, 107, 99, 0.14);
   --info: #6ea8ff;
   --info-soft: rgba(110, 168, 255, 0.14);
-  --neutral-soft: rgba(141, 150, 166, 0.14);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
 
   /* Diagramme */
-  --chart-1: #25a294; /* Akzent, eine Stufe dunkler: besteht die Farbprüfung für Diagramme auf --surface */
+  --chart-1: #25a294; /* Teal, eine Stufe dunkler: besteht die Farbprüfung für Diagrammflächen */
+  --chart-1-line: var(--accent);
   --chart-2: #8b7cf6;
-  /* Gedämpfte Hauptserie: Vergangenheit/Vergleich, nur die aktuelle Periode in --chart-1 */
+  /* zweite Serie im Flächendiagramm: hell/neutral */
+  --chart-neutral: #c9c9d1;
   --chart-1-muted: #33706b; /* 3:1 gegen --surface */
-  --chart-grid: #262d38;
+  --chart-grid: #1b1b1e;
   --chart-axis: var(--muted);
 
   /* Fokus */
-  --focus: #7fe3d6;
+  --focus: var(--accent);
+  --focus-ring: rgba(43, 179, 163, 0.35);
 
   /* Typografie */
   --font: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
@@ -74,9 +92,9 @@
   --sp-10: 40px;
 
   /* Radien */
-  --r-card: 10px;
-  --r-ctl: 8px;
-  --r-sm: 6px;
+  --r-card: 14px;
+  --r-ctl: 10px;
+  --r-sm: 8px;
   --r-pill: 999px;
 
   /* Layout */
@@ -84,34 +102,40 @@
   --sidebar-w-collapsed: 64px;
   --header-h: 60px;
   --ctl-h: 36px;
-  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.45);
+  --ctl-h-sm: 30px;
+  --ctl-h-lg: 42px;
+  /* keine Schatten in v2: Trennung über Ränder und das Abdunkeln dahinter */
+  --shadow-pop: none;
 }
 
 /* Vorbereitet, nicht ausgeliefert. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f6f7f9;
+  --bg: #fafafa;
   --surface: #ffffff;
-  --surface-2: #f1f3f6;
-  --surface-3: #e8ebf0;
-  --sidebar: #f1f3f6;
-  --overlay: rgba(15, 20, 30, 0.4);
-  --border: #e2e6ec;
-  --border-strong: #cfd5de;
-  --text: #141821;
-  --text-2: #3b4352;
-  --muted: #5d6676;
-  --faint: #8790a0;
+  --surface-2: #f4f4f5;
+  --surface-3: #ebebed;
+  --sidebar: var(--bg);
+  --overlay: rgba(10, 10, 11, 0.4);
+  --border: #e4e4e7;
+  --border-strong: #d1d1d6;
+  --text: #0a0a0b;
+  --text-2: #3f3f46;
+  --muted: #63636b;
+  --faint: #71717a;
   --accent: #1d8f82;
   --accent-hover: #187a6f;
-  --accent-soft: rgba(29, 143, 130, 0.12);
-  --accent-text: #15776c;
-  --on-accent: #ffffff;
+  --accent-soft: rgba(0, 0, 0, 0.05);
+  --accent-text: var(--text);
+  --primary-bg: #18181b;
+  --primary-bg-hover: #27272a;
+  --on-primary: #ffffff;
   --ok: #23955f;
   --warn: #b7791f;
   --danger: #d1453b;
   --info: #2f6fd6;
-  --chart-grid: #eceff3;
+  --chart-grid: #f0f0f2;
+  --chart-neutral: #52525b;
   --focus: #1d8f82;
-  --shadow-pop: 0 12px 32px rgba(20, 30, 50, 0.14);
+  --focus-ring: rgba(29, 143, 130, 0.3);
 }

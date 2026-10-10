@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useData } from "../../lib/store";
 import { NewProjectProvider, useNewProject } from "../NewProjectDialog";
 import { ToastProvider } from "../Toast";
@@ -64,7 +64,6 @@ function ShellLayout({
 }) {
   const { alerts, dueTaskCount, reviewCount } = useData();
   const openNewProject = useNewProject();
-  const navigate = useNavigate();
   return (
     <div className="app" data-collapsed={collapsed} data-drawer={drawer ? "open" : "closed"}>
       <Sidebar
@@ -79,7 +78,6 @@ function ShellLayout({
           onOpenDrawer={() => setDrawer(true)}
           alerts={alerts}
           onNewProject={openNewProject}
-          onNewTask={() => navigate("/aufgaben?neu=1")}
         />
         <main className="app-content" id="inhalt">
           <Outlet />

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronDown, ChevronRight, CircleAlert, FolderX, 
 import { StatusPill } from "../../components/ProjectBits";
 import { TaskForm, TaskList } from "../../components/TaskList";
 import { useToast } from "../../components/Toast";
-import { Button, Card, CardBody, CardHead, EmptyState, ErrorState, Menu, Skeleton, Stepper, Tabs } from "../../components/ui";
+import { Button, buttonClass, Card, CardBody, CardHead, EmptyState, ErrorState, Menu, Skeleton, Stepper, Tabs } from "../../components/ui";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { formatDate } from "../../lib/format";
 import { missingSteps, nextStep, phaseOf, progressOf, projectTitle } from "../../lib/projects";
@@ -49,7 +49,7 @@ export function ProjectDetail() {
           title="Projekt nicht gefunden"
           text="Das Projekt existiert nicht oder ist für deine Rolle nicht freigegeben."
           action={
-            <Link to="/projekte" className="btn btn-sm">
+            <Link to="/projekte" className={buttonClass("outline", "sm")}>
               Zur Projektliste
             </Link>
           }

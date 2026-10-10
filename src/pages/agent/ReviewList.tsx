@@ -4,7 +4,7 @@ import { AlertOctagon, Check, ClipboardCheck, FileText, FlaskConical, ListPlus, 
 import { FolderPicker } from "../../components/FolderPicker";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
-import { Button, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from "../../components/ui";
+import { Button, buttonClass, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from "../../components/ui";
 import { concretePath, DATE_TOKEN, displayPath } from "../../lib/folders";
 import { formatBytes, formatDate, formatRelative } from "../../lib/format";
 import { projectTitle } from "../../lib/projects";
@@ -89,7 +89,7 @@ export function ReviewList() {
               title="Keine offenen Prüfungen"
               text="Der Agent hat alle Anhänge sicher zugeordnet."
               action={
-                <Link to="/agent" className="btn btn-sm">
+                <Link to="/agent" className={buttonClass("outline", "sm")}>
                   Zum Agent-Dashboard
                 </Link>
               }

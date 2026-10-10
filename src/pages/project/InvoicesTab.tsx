@@ -42,7 +42,7 @@ export function InvoicesTab({ invoices }: { invoices: Invoice[] }) {
       align: "right",
       render: (i) =>
         i.status === "geplant" || i.status === "faellig" ? (
-          <Button size="sm" variant={due.has(i.id) ? "primary" : "default"} onClick={() => void markSent(i)}>
+          <Button size="sm" variant={due.has(i.id) ? "primary" : "outline"} onClick={() => void markSent(i)}>
             Als versendet markieren
           </Button>
         ) : null,

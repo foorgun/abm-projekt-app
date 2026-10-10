@@ -127,18 +127,19 @@
   text-decoration: none;
 }
 
+/* Aktiver Menüpunkt: neutrale Fläche + hellere Schrift; Teal nur als schmaler Balken links */
 .nav-item.active {
-  background: var(--accent-soft);
+  background: var(--surface-3);
   color: var(--text);
   font-weight: 600;
 }
 
 .nav-item.active:hover {
-  background: var(--accent-soft);
+  background: var(--surface-3);
 }
 
 .nav-item.active svg {
-  color: var(--accent);
+  color: var(--text);
 }
 
 .nav-item.active::before {
@@ -537,4 +538,28 @@
     align-items: flex-start;
     margin-bottom: var(--sp-5);
   }
+}
+
+/* Glocke (Ghost-Icon-Button) mit kleinem Zähler */
+.header .bell {
+  color: var(--text-2);
+}
+
+.bell-count {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: var(--r-pill);
+  background: var(--danger);
+  color: var(--bg);
+  /* Ring in Seitenfarbe trennt den Zähler vom Icon */
+  box-shadow: 0 0 0 2px var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }

@@ -1,23 +1,21 @@
 import { useEffect, useState } from "react";
-import { Bell, ChevronDown, FilePlus2, ListTodo, Menu as MenuIcon, Plus } from "lucide-react";
+import { Bell, Menu as MenuIcon, Plus } from "lucide-react";
 import { HeaderSearch } from "./HeaderSearch";
 import { Link } from "react-router-dom";
 import type { Alert } from "../../lib/alerts";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { projectTitle } from "../../lib/projects";
 import { useData } from "../../lib/store";
-import { Badge, Button, IconButton, Menu, Popover } from "../ui";
+import { Button, IconButton, Popover } from "../ui";
 
 export function Header({
   onOpenDrawer,
   alerts,
   onNewProject,
-  onNewTask,
 }: {
   onOpenDrawer: () => void;
   alerts: Alert[];
   onNewProject: () => void;
-  onNewTask: () => void;
 }) {
   const narrow = useNarrow();
   const { data } = useData();
@@ -29,7 +27,7 @@ export function Header({
         <MenuIcon size={18} />
       </IconButton>
 
-      <HeaderSearch placeholder={narrow ? "Suchen" : "Projekte, Bauherren, ABM-Nr. durchsuchen"} />
+      <HeaderSearch placeholder={narrow ? "Suchen" : "Projekte, Bauherren, ABM-Nr. durchsuchen"} onNewProject={onNewProject} />
 
       <div className="header-spacer" />
 
@@ -37,11 +35,11 @@ export function Header({
         <Popover
           label="Warnungen"
           trigger={(p) => (
-            <IconButton {...p} label={alertCount ? `Warnungen: ${alertCount}` : "Keine Warnungen"} variant="default">
-              <Bell size={17} />
+            <IconButton {...p} label={alertCount ? `Warnungen: ${alertCount}` : "Keine Warnungen"} variant="ghost" className="bell">
+              <Bell size={18} />
               {alertCount > 0 && (
-                <span className="icon-dot">
-                  <Badge tone="danger">{alertCount}</Badge>
+                <span className="bell-count" aria-hidden>
+                  {alertCount > 9 ? "9+" : alertCount}
                 </span>
               )}
             </IconButton>
@@ -78,22 +76,10 @@ export function Header({
             </>
           )}
         </Popover>
-        <div className="btn-split">
-          <Button variant="primary" icon={<Plus size={16} />} onClick={onNewProject} aria-label="Neues Projekt">
-            <span className="header-new-label">Neues Projekt</span>
-          </Button>
-          <Menu
-            items={[
-              { label: "Neues Projekt", icon: <FilePlus2 size={14} />, onSelect: onNewProject },
-              { label: "Neue Aufgabe", icon: <ListTodo size={14} />, onSelect: onNewTask },
-            ]}
-            trigger={(p) => (
-              <Button variant="primary" {...p} aria-label="Weitere Aktionen">
-                <ChevronDown size={16} />
-              </Button>
-            )}
-          />
-        </div>
+        {/* Ein einziger Hauptbutton; "Neue Aufgabe" gibt es auf der Aufgabenseite und per Strg+K */}
+        <Button variant="primary" icon={<Plus size={16} />} onClick={onNewProject} aria-label="Neues Projekt">
+          <span className="header-new-label">Neues Projekt</span>
+        </Button>
       </div>
     </header>
   );

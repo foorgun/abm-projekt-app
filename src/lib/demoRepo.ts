@@ -8,6 +8,7 @@ import type { ClassifyContext } from "../agent/types";
 import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
+import { validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
 import {
   PermissionError,
@@ -184,26 +185,30 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
 
     async createProject(input: NewProject) {
       requireStaff();
+      // Dieselben Regeln wie im Formular (in der Datenbank zusätzlich per Constraint)
+      const errors = validateNewProject(input, db.projects);
+      const first = Object.values(errors)[0];
+      if (first) throw new Error(first);
       const p: Project = {
         id: newId("p"),
-        abmNr: input.abmNr,
-        hausbauNr: null,
+        abmNr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr?.trim() || null,
+        hausbauNr: input.hausbauNr?.trim() || null,
         kind: input.kind,
         status: "aktiv",
         companyId: input.companyId,
-        salespersonId: null,
+        salespersonId: input.salespersonId,
         bauherrLabel: input.bauherrLabel.trim(),
-        location: input.location,
+        location: input.location?.trim() || null,
         architectId: input.architectId,
-        planerId: null,
+        planerId: input.planerId,
         baubetreuung: null,
         intakeMonth: input.intakeMonth,
         notes: null,
         steps: {},
       };
-      if (!p.bauherrLabel) throw new Error("Bauherr fehlt");
       db.projects.unshift(p);
       log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
+      if (input.createFolders) log({ projectId: p.id, kind: "projekt", text: `Projektordner aus der Vorlage angelegt (${db.folderTemplates.length} Ordner)` });
       return done(structuredClone(p));
     },
 
@@ -258,7 +263,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       };
       if (!t.title) throw new Error("Titel fehlt");
       db.tasks.push(t);
-      log({ projectId: t.projectId, kind: "aufgabe", text: `Aufgabe angelegt: ${t.title}` });
+      // Automatisch aus Warnungen erzeugte Aufgaben nicht als Aktivität protokollieren (sonst verdrängen sie echte Ereignisse)
+      if (t.source !== "warnung") log({ projectId: t.projectId, kind: "aufgabe", text: `Aufgabe angelegt: ${t.title}` });
       return done(structuredClone(t));
     },
 

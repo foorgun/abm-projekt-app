@@ -1,17 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
+import { FilePlus2, ListTodo, Search } from "lucide-react";
 import { matchesQuery } from "../../lib/projectFilters";
 import { phaseOf, projectTitle } from "../../lib/projects";
 import { useData } from "../../lib/store";
 
 const MAX = 6;
 
+interface Command {
+  id: string;
+  label: string;
+  hint: string;
+  icon: typeof ListTodo;
+  /** Wörter, auf die der Befehl beim Tippen reagiert */
+  words: string[];
+}
+
+const COMMANDS: Command[] = [
+  { id: "task", label: "Neue Aufgabe", hint: "Aufgabe anlegen", icon: ListTodo, words: ["neue", "aufgabe", "task", "todo"] },
+  { id: "project", label: "Neues Projekt", hint: "Formular öffnen", icon: FilePlus2, words: ["neues", "projekt", "anlegen"] },
+];
+
 /**
- * Projektsuche in der Kopfzeile (Strg+K). Zeigt beim Tippen bis zu 6 Treffer (Pfeiltasten + Enter),
- * Enter ohne Auswahl öffnet die gefilterte Projektliste.
+ * Projektsuche und Befehle in der Kopfzeile (Strg+K). Ohne Eingabe stehen die Befehle oben ("Neue Aufgabe", "Neues Projekt"),
+ * beim Tippen bis zu 6 Projekte plus passende Befehle (Pfeiltasten + Enter). Enter ohne Auswahl öffnet die gefilterte Projektliste.
  */
-export function HeaderSearch({ placeholder }: { placeholder: string }) {
+export function HeaderSearch({ placeholder, onNewProject }: { placeholder: string; onNewProject: () => void }) {
   const { data } = useData();
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -35,6 +49,19 @@ export function HeaderSearch({ placeholder }: { placeholder: string }) {
   const hits = q.trim()
     ? (data?.projects ?? []).filter((p) => matchesQuery(p, q, p.companyId ? companyName.get(p.companyId) : null)).slice(0, MAX)
     : [];
+  const term = q.trim().toLowerCase();
+  const commands = term ? COMMANDS.filter((c) => c.words.some((w) => w.startsWith(term) || term.split(/\s+/).every((t) => c.words.some((x) => x.startsWith(t))))) : COMMANDS;
+  // Reihenfolge der Auswahl: Befehle, dann Projekte
+  const options = [...commands.map((c) => ({ kind: "cmd" as const, c })), ...hits.map((p) => ({ kind: "project" as const, p }))];
+
+  function runCommand(c: Command) {
+    setOpen(false);
+    setQ("");
+    setActive(-1);
+    inputRef.current?.blur();
+    if (c.id === "task") navigate("/aufgaben?filter=alle&neu=1");
+    else onNewProject();
+  }
 
   function go(path: string) {
     setOpen(false);
@@ -47,12 +74,14 @@ export function HeaderSearch({ placeholder }: { placeholder: string }) {
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
-      if (!hits.length) return;
+      if (!options.length) return;
       setOpen(true);
-      setActive((i) => (e.key === "ArrowDown" ? (i + 1) % hits.length : (i - 1 + hits.length) % hits.length));
+      setActive((i) => (e.key === "ArrowDown" ? (i + 1) % options.length : (i - 1 + options.length) % options.length));
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (active >= 0 && hits[active]) go(`/projekte/${hits[active].id}`);
+      const opt = active >= 0 ? options[active] : null;
+      if (opt?.kind === "cmd") runCommand(opt.c);
+      else if (opt?.kind === "project") go(`/projekte/${opt.p.id}`);
       else if (q.trim()) go(`/projekte?q=${encodeURIComponent(q.trim())}${data?.projects.some((p) => p.status === "storno" && matchesQuery(p, q)) ? "&storno=1" : ""}`);
     } else if (e.key === "Escape") {
       setOpen(false);
@@ -70,7 +99,7 @@ export function HeaderSearch({ placeholder }: { placeholder: string }) {
         placeholder={placeholder}
         aria-label="Projekte, Bauherren, ABM-Nr. durchsuchen"
         role="combobox"
-        aria-expanded={open && Boolean(q.trim())}
+        aria-expanded={open}
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={active >= 0 ? `${listId}-${active}` : undefined}
@@ -85,43 +114,81 @@ export function HeaderSearch({ placeholder }: { placeholder: string }) {
         onKeyDown={onKeyDown}
       />
       <kbd aria-hidden>Strg K</kbd>
-      {open && q.trim() && (
-        <div className="search-results" id={listId} role="listbox" aria-label="Suchergebnisse">
-          {hits.length ? (
-            hits.map((p, i) => (
+      {open && (
+        <div className="search-results" id={listId} role="listbox" aria-label="Suchergebnisse und Befehle">
+          {commands.length > 0 && (
+            <>
+              <div className="search-group">Befehle</div>
+              {commands.map((c, i) => {
+                const Icon = c.icon;
+                return (
+                  <div
+                    key={c.id}
+                    id={`${listId}-${i}`}
+                    role="option"
+                    aria-selected={i === active}
+                    className="search-hit"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      runCommand(c);
+                    }}
+                    onMouseEnter={() => setActive(i)}
+                  >
+                    <span className="search-cmd-icon" aria-hidden>
+                      <Icon size={14} />
+                    </span>
+                    <span className="list-item-main">
+                      <span className="list-item-title">{c.label}</span>
+                      <span className="list-item-sub">{c.hint}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </>
+          )}
+          {q.trim() && (
+            <>
+              <div className="search-group">Projekte</div>
+              {hits.length ? (
+                hits.map((p, j) => {
+                  const i = commands.length + j;
+                  return (
+                    <div
+                      key={p.id}
+                      id={`${listId}-${i}`}
+                      role="option"
+                      aria-selected={i === active}
+                      className="search-hit"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        go(`/projekte/${p.id}`);
+                      }}
+                      onMouseEnter={() => setActive(i)}
+                    >
+                      <span className="list-item-main">
+                        <span className="list-item-title">{projectTitle(p)}</span>
+                        <span className="list-item-sub">
+                          {[p.location, p.companyId ? companyName.get(p.companyId) : null, data ? phaseOf(p, data.stepDefinitions).label : null].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                      {p.status !== "aktiv" && <span className="muted">{p.status === "storno" ? "Storno" : "Abgeschlossen"}</span>}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="popover-empty">Kein Projekt gefunden.</p>
+              )}
               <div
-                key={p.id}
-                id={`${listId}-${i}`}
-                role="option"
-                aria-selected={i === active}
-                className="search-hit"
+                className="search-all"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  go(`/projekte/${p.id}`);
+                  go(`/projekte?q=${encodeURIComponent(q.trim())}`);
                 }}
-                onMouseEnter={() => setActive(i)}
               >
-                <span className="list-item-main">
-                  <span className="list-item-title">{projectTitle(p)}</span>
-                  <span className="list-item-sub">
-                    {[p.location, p.companyId ? companyName.get(p.companyId) : null, data ? phaseOf(p, data.stepDefinitions).label : null].filter(Boolean).join(" · ")}
-                  </span>
-                </span>
-                {p.status !== "aktiv" && <span className="muted">{p.status === "storno" ? "Storno" : "Abgeschlossen"}</span>}
+                Alle Treffer in der Projektliste <kbd>Enter</kbd>
               </div>
-            ))
-          ) : (
-            <p className="popover-empty">Kein Projekt gefunden.</p>
+            </>
           )}
-          <div
-            className="search-all"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              go(`/projekte?q=${encodeURIComponent(q.trim())}`);
-            }}
-          >
-            Alle Treffer in der Projektliste <kbd>Enter</kbd>
-          </div>
         </div>
       )}
     </div>

@@ -237,3 +237,35 @@ Neueste Einträge unten.
   Überfällig: rot, plus "überfällig" für Screenreader und im Tooltip.
 - **Demo zurücksetzen** im Benutzermenü, nur im Demo-Modus (`Repo.resetDemo` ist optional, `supabaseRepo` hat es nicht), mit Rückfrage.
   Setzt Daten, Agent-Postfächer und Rolle (Admin) zurück. Unten links steht im Demo-Modus "Demo-Daten".
+
+## Design v2, Etappe A
+
+Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
+
+- **Tokens:** neutral und fast schwarz (`#0a0a0b`, Flächen `#111113`/`#141416`/`#1c1c1f`, Rand `#262629`, Text `#f4f4f5`, gedämpft `#8e8e96`).
+  Leiser Text `#7e7e86` statt eines dunkleren Grautons, damit er überall 4,5:1 erreicht. Radien 14/10/8 px, keine Schatten.
+- **Keine Teal-Flächen:** `--accent-soft` ist jetzt neutral, `--accent-text` hell. Teal bleibt für Diagramme, den Balken am aktiven
+  Menüpunkt, Tab-Unterstrich, Prozessschritte/Fortschritt und den Fokusring. Links sind hell. Häkchen und Schieberegler hell wie der Schalter.
+- **Button-Familie:** `primary` (hell), `secondary`, `outline` (Standard), `ghost`, `destructive`, Größen sm/md/lg, `iconRight` für den Pfeil.
+  Die alten Varianten `default`/`danger` gibt es nicht mehr. **Destructive ist `#cf3f3f`**, dunkler als das Status-Rot: weiße Schrift auf dem
+  helleren Koralle der Vorlage erreicht nur 3:1. "Falsch zugeordnet" ist `outline`, weil nichts gelöscht wird.
+- **Kennzahl-Kacheln:** Icon-Kachel neutral, Statusfarbe nur am Icon. Status-Pill "Aktiv" neutral mit Teal-Punkt. Badge "Aufgaben" hell.
+- **Toast:** Titel + optionale Beschreibung (`toast(titel, ton, beschreibung)`), unten rechts.
+- **Einstellungskarten** (`SettingRow`): Postfächer als einzelne Karten; Schwellenwerte, Regeln und Ignorier-Liste als Karten, deren
+  Button den Editor aufklappt. Postfach-Liste im Agent-Dashboard im selben Stil.
+- **Kopfzeile:** Glocke als Ghost-Icon-Button mit kleinem Zähler, ein primärer Button "+ Neues Projekt". Der geteilte Button entfällt.
+  "Neue Aufgabe" und "Neues Projekt" stehen als Befehle in der Strg+K-Suche (ohne Eingabe sofort sichtbar).
+- **Formular "Neues Projekt"** war unvollständig und ist neu: Art, Bauherr, Hausbaufirma, Verkäufer (nach Firma gefiltert), ABM-Nr. (optional,
+  Vorschlag = nächste freie Nummer der Firma), Hausbau-Nr., Bauort, Eingangsmonat (Standard aktueller Monat, nicht in der Zukunft), Architekt,
+  Planer, Häkchen "Projektordner aus der Vorlage anlegen". Regeln in `src/lib/projectForm.ts` (auch im Repo geprüft): Bauherr Pflicht ohne Ziffern,
+  Bauort Pflicht, Firma Pflicht bei Neubau, ABM-Nr. im Format `8161-123` und nicht doppelt (Storno ausgenommen), Hausbau-Nr. im Format `HB-26118`.
+  Fehlermeldungen stehen am Feld, der Fokus springt ins erste fehlerhafte Feld.
+- **"Projektordner anlegen":** Der Ordnerbaum kommt in der App immer aus der Vorlage. Das Häkchen steuert, ob die Ordner im Speicher
+  angelegt werden (Schritt 8); im Demo-Modus wird es nur als Aktivität protokolliert.
+- **AreaChart** (`src/components/charts/AreaChart.tsx`): monotone Interpolation nach Fritsch-Carlson (per Test: kein Überschwingen, nie unter 0),
+  Verlauf Teal → transparent, Leuchten per `drop-shadow`, Punkte mit Ring, zweite Serie hell/neutral, Tooltip, Tabellenansicht,
+  Animation nur bei `prefers-reduced-motion: no-preference`. `TrendPill` zeigt die Veränderung gegenüber der Vorperiode, neutral ohne
+  Wertung über Farbe. Der Verlauf unter der Linie ist die eine bewusste Ausnahme von "keine Verläufe" aus BUILD.md.
+  Zählwerte (Dashboard) bleiben Säulen. Bisher nur im Styleguide zu sehen, Einsatz in Etappe B (Rechnungen).
+- **Aktivitäten:** automatisch aus Warnungen erzeugte Aufgaben werden nicht mehr als Aktivität protokolliert (sie verdrängten echte Ereignisse).
+- **Stepper:** 2 px Innenabstand je Schritt; geprüft an allen 46 Demo-Projekten bei 1280 px (vorher nur an einem gemessen, das war zu wenig).

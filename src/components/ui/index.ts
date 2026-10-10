@@ -14,3 +14,4 @@ export * from "./Tabs";
 export * from "./Tooltip";
 export * from "./Popover";
 export * from "./CellTip";
+export * from "./SettingRow";

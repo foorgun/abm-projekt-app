@@ -8,11 +8,17 @@ import type { AgentRule, AgentSettings, Dataset, Mailbox, MailboxStatus, Project
 export interface NewProject {
   bauherrLabel: string;
   abmNr: string | null;
+  hausbauNr: string | null;
   kind: Project["kind"];
   companyId: string | null;
+  salespersonId: string | null;
   location: string | null;
   architectId: string | null;
+  planerId: string | null;
+  /** Erster Tag des Eingangsmonats */
   intakeMonth: string | null;
+  /** Projektordner aus der Vorlage anlegen (im Echtbetrieb im Speicher; im Demo-Modus protokolliert) */
+  createFolders: boolean;
 }
 
 export interface NewTask {

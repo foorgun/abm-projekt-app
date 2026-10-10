@@ -1,24 +1,31 @@
 import { useState, type FormEvent } from "react";
-import { Ban, Pencil, Plus, ShieldCheck, SlidersHorizontal, Trash2, Workflow } from "lucide-react";
+import { Ban, Mail, Pencil, Plus, ShieldCheck, SlidersHorizontal, Trash2, Workflow } from "lucide-react";
 import { FolderPicker } from "../../components/FolderPicker";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
-import { Button, Card, CardBody, CardHead, DataTable, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Pill, Select, Skeleton, Switch, type Column } from "../../components/ui";
+import { Button, Card, CardBody, CardHead, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Pill, Select, SettingRow, Skeleton, Switch } from "../../components/ui";
 import { displayPath } from "../../lib/folders";
 import { formatRelative } from "../../lib/format";
 import { projectTitle } from "../../lib/projects";
 import type { MailboxInput } from "../../lib/repo";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
-import type { AgentRule, Mailbox, MailboxProvider } from "../../lib/types";
+import type { AgentRule, MailboxProvider } from "../../lib/types";
 import { MAILBOX_STATUS, PROVIDER_LABEL } from "./agentUi";
 
-/** Postfächer, Regeln, Schwellenwerte und Ignorier-Liste. Im Demo-Modus nur lokale Änderungen. */
+type Panel = "schwellen" | "regeln" | "ignorieren";
+
+/**
+ * Postfächer und Einstellungen des Agenten als Listen-/Einstellungskarten (Design v2):
+ * Icon-Kachel, Titel + Beschreibung, Aktion rechts; Schwellen, Regeln und Ignorier-Liste klappen auf.
+ * Im Demo-Modus nur lokale Änderungen.
+ */
 export function Mailboxes() {
   const { data, loading, error, reload, mutate, repo } = useData();
   const { user } = useSession();
   const toast = useToast();
   const [editing, setEditing] = useState<MailboxInput | null>(null);
+  const [openPanel, setOpenPanel] = useState<Panel | null>(null);
   const staff = user.role !== "freiberufler";
   const admin = user.role === "admin";
 
@@ -65,62 +72,89 @@ export function Mailboxes() {
     );
   }
 
-  const columns: Column<Mailbox>[] = [
-    {
-      key: "name",
-      header: "Postfach",
-      strong: true,
-      render: (m) => (
-        <>
-          <span className="cell-main">{m.label}</span>
-          <span className="cell-sub">{m.address}</span>
-        </>
-      ),
-    },
-    { key: "provider", header: "Anbieter", render: (m) => PROVIDER_LABEL[m.provider] },
-    { key: "folder", header: "Überwachter Ordner", render: (m) => m.watchFolder },
-    { key: "status", header: "Status", render: (m) => <Pill tone={MAILBOX_STATUS[m.status].tone}>{MAILBOX_STATUS[m.status].label}</Pill> },
-    { key: "checked", header: "Zuletzt geprüft", render: (m) => (m.lastCheckedAt ? formatRelative(m.lastCheckedAt) : "noch nie") },
-    {
-      key: "actions",
-      header: <span className="sr-only">Aktionen</span>,
-      align: "right",
-      render: (m) => (
-        <span className="row-actions">
-          <Switch
-            checked={m.status === "verbunden"}
-            label={m.status === "verbunden" ? `${m.label} pausieren` : `${m.label} fortsetzen`}
-            onChange={async (on) => {
-              const res = await mutate((r) => r.setMailboxStatus(m.id, on ? "verbunden" : "pausiert"));
-              if (!res.ok) toast(res.error, "danger");
-            }}
-          />
-          <IconButton label={`${m.label} bearbeiten`} size="sm" onClick={() => setEditing({ id: m.id, label: m.label, address: m.address, provider: m.provider, watchFolder: m.watchFolder })}>
-            <Pencil size={14} />
-          </IconButton>
-        </span>
-      ),
-    },
-  ];
+  const toggle = (k: Panel) => setOpenPanel((o) => (o === k ? null : k));
+  const panelButton = (k: Panel, label: string) => (
+    <Button size="sm" variant={openPanel === k ? "secondary" : "outline"} onClick={() => toggle(k)} aria-expanded={openPanel === k}>
+      {openPanel === k ? "Schließen" : label}
+    </Button>
+  );
+  const s = data.agentSettings;
+  const ruleCount = data.agentRules.filter((r) => r.kind !== "ignorieren").length;
+  const ignoreCount = data.agentRules.filter((r) => r.kind === "ignorieren").length;
 
   return (
     <>
       {head}
       <div className="stack">
-        <Card>
-          <CardHead title="Postfächer" sub="Der Agent liest neue Mails seit der letzten Prüfung. Pausierte Postfächer werden nicht gelesen." />
-          <div className="card-body flush">
-            <DataTable label="Postfächer" rows={data.mailboxes} columns={columns} rowKey={(m) => m.id} compact />
+        <section className="stack-sm" aria-labelledby="mb-head">
+          <div className="section-head">
+            <h2 id="mb-head">Postfächer</h2>
+            <p>Der Agent liest neue Mails seit der letzten Prüfung. Pausierte Postfächer werden nicht gelesen.</p>
           </div>
-        </Card>
+          <div className="setting-list">
+            {data.mailboxes.map((m) => (
+              <SettingRow
+                key={m.id}
+                card
+                icon={<Mail size={16} />}
+                title={m.label}
+                description={`${m.address} · ${PROVIDER_LABEL[m.provider]} · Ordner „${m.watchFolder}“ · ${m.lastCheckedAt ? `geprüft ${formatRelative(m.lastCheckedAt)}` : "noch nie geprüft"}`}
+                action={
+                  <>
+                    <Pill tone={MAILBOX_STATUS[m.status].tone}>{MAILBOX_STATUS[m.status].label}</Pill>
+                    <Switch
+                      checked={m.status === "verbunden"}
+                      label={m.status === "verbunden" ? `${m.label} pausieren` : `${m.label} fortsetzen`}
+                      onChange={async (on) => {
+                        const res = await mutate((r) => r.setMailboxStatus(m.id, on ? "verbunden" : "pausiert"));
+                        if (!res.ok) toast(res.error, "danger");
+                        else toast(on ? `${m.label} wird gelesen` : `${m.label} pausiert`, "ok", on ? "Neue Mails kommen beim nächsten Lauf." : "Mails bleiben im Postfach liegen, bis es wieder läuft.");
+                      }}
+                    />
+                    <IconButton label={`${m.label} bearbeiten`} size="sm" variant="outline" onClick={() => setEditing({ id: m.id, label: m.label, address: m.address, provider: m.provider, watchFolder: m.watchFolder })}>
+                      <Pencil size={14} />
+                    </IconButton>
+                  </>
+                }
+              />
+            ))}
+          </div>
+        </section>
 
-        <div className="grid-2">
-          <RulesCard />
-          <div className="stack">
-            <ThresholdCard canEdit={admin} />
-            <IgnoreCard />
+        <section className="stack-sm" aria-labelledby="agent-settings-head">
+          <div className="section-head">
+            <h2 id="agent-settings-head">Einstellungen des Agenten</h2>
           </div>
-        </div>
+          <div className="setting-list">
+            <SettingRow
+              card
+              icon={<SlidersHorizontal size={16} />}
+              title="Schwellenwerte"
+              description={`Automatisch ablegen ab ${Math.round(s.autoFileThreshold * 100)} %, Vorschlag in der Prüfliste ab ${Math.round(s.suggestThreshold * 100)} %`}
+              action={panelButton("schwellen", admin ? "Anpassen" : "Ansehen")}
+            >
+              {openPanel === "schwellen" && <ThresholdEditor canEdit={admin} />}
+            </SettingRow>
+            <SettingRow
+              card
+              icon={<Workflow size={16} />}
+              title="Regeln"
+              description={`${ruleCount} ${ruleCount === 1 ? "Regel" : "Regeln"} · haben Vorrang vor Schlüsselwörtern und KI`}
+              action={panelButton("regeln", "Verwalten")}
+            >
+              {openPanel === "regeln" && <RulesEditor />}
+            </SettingRow>
+            <SettingRow
+              card
+              icon={<Ban size={16} />}
+              title="Ignorier-Liste"
+              description={`${ignoreCount} Absender · Newsletter und Werbung; Signaturbilder ignoriert der Agent automatisch`}
+              action={panelButton("ignorieren", "Verwalten")}
+            >
+              {openPanel === "ignorieren" && <IgnoreEditor />}
+            </SettingRow>
+          </div>
+        </section>
 
         <Card>
           <CardHead title="Was der Agent darf" icon={<ShieldCheck size={16} />} />
@@ -152,7 +186,7 @@ function MailboxDialog({ initial, onClose }: { initial: MailboxInput; onClose: (
     e.preventDefault();
     const res = await mutate((r) => r.saveMailbox(v));
     if (!res.ok) return setErr(res.error);
-    toast(initial.id ? "Postfach gespeichert" : "Postfach angelegt (pausiert, bis die Verbindung eingerichtet ist)");
+    toast(initial.id ? "Postfach gespeichert" : "Postfach angelegt", "ok", initial.id ? undefined : "Es bleibt pausiert, bis die Verbindung eingerichtet ist.");
     onClose();
   }
 
@@ -203,7 +237,7 @@ function MailboxDialog({ initial, onClose }: { initial: MailboxInput; onClose: (
   );
 }
 
-function RulesCard() {
+function RulesEditor() {
   const { data, mutate } = useData();
   const toast = useToast();
   const [kind, setKind] = useState<"absender_projekt" | "absender_ordner">("absender_ordner");
@@ -217,15 +251,14 @@ function RulesCard() {
     e.preventDefault();
     const res = await mutate((r) => r.saveAgentRule({ kind, match, projectId: kind === "absender_projekt" ? projectId || null : null, folderPath: kind === "absender_ordner" ? folder : null }));
     if (!res.ok) return toast(res.error, "danger");
-    toast("Regel gespeichert. Sie wirkt ab dem nächsten Lauf.");
+    toast("Regel gespeichert", "ok", "Sie wirkt ab dem nächsten Lauf des Agenten.");
     setMatch("");
   }
 
   const valid = match.trim().length > 2 && (kind === "absender_projekt" ? Boolean(projectId) : Boolean(folder));
 
   return (
-    <Card>
-      <CardHead title="Regeln" icon={<Workflow size={16} />} sub="Regeln haben Vorrang vor Schlüsselwörtern und KI." />
+    <div className="editor-panel">
       {rules.length ? (
         <ul className="rule-list">
           {rules.map((r) => (
@@ -233,7 +266,7 @@ function RulesCard() {
           ))}
         </ul>
       ) : (
-        <EmptyState title="Noch keine Regeln" text="Regeln entstehen auch in der Prüfliste über „Regel merken“." />
+        <p className="muted">Noch keine Regeln. Regeln entstehen auch in der Prüfliste über „Regel merken“.</p>
       )}
       <form className="rule-form" onSubmit={add}>
         <div className="dialog-row">
@@ -267,12 +300,12 @@ function RulesCard() {
           </Field>
         )}
         <div>
-          <Button type="submit" icon={<Plus size={15} />} disabled={!valid}>
+          <Button type="submit" variant="secondary" icon={<Plus size={15} />} disabled={!valid}>
             Regel anlegen
           </Button>
         </div>
       </form>
-    </Card>
+    </div>
   );
 }
 
@@ -303,7 +336,7 @@ function RuleRow({ rule, target }: { rule: AgentRule; target: string }) {
   );
 }
 
-function ThresholdCard({ canEdit }: { canEdit: boolean }) {
+function ThresholdEditor({ canEdit }: { canEdit: boolean }) {
   const { data, mutate } = useData();
   const toast = useToast();
   const s = data!.agentSettings;
@@ -313,56 +346,53 @@ function ThresholdCard({ canEdit }: { canEdit: boolean }) {
   const valid = suggest >= 0 && suggest < auto && auto <= 100;
 
   return (
-    <Card>
-      <CardHead title="Schwellenwerte" icon={<SlidersHorizontal size={16} />} sub={canEdit ? "Sicherheit = kleinerer Wert aus Projekt- und Ordnererkennung." : "Nur Admins können die Schwellen ändern."} />
-      <CardBody>
-        <div className="thresholds">
-          <Field label={`Automatisch ablegen ab ${auto} %`} htmlFor="th-auto">
-            <input id="th-auto" type="range" min={50} max={100} value={auto} disabled={!canEdit} onChange={(e) => setAuto(Number(e.target.value))} className="range" />
-          </Field>
-          <Field label={`Vorschlag in der Prüfliste ab ${suggest} %`} htmlFor="th-suggest" hint="Darunter: Prüfliste ohne Vorschlag.">
-            <input id="th-suggest" type="range" min={0} max={95} value={suggest} disabled={!canEdit} onChange={(e) => setSuggest(Number(e.target.value))} className="range" />
-          </Field>
-          <div className="threshold-scale" aria-hidden>
-            <span style={{ width: `${suggest}%` }} className="seg seg-none" />
-            <span style={{ width: `${Math.max(0, auto - suggest)}%` }} className="seg seg-review" />
-            <span style={{ width: `${100 - auto}%` }} className="seg seg-auto" />
-          </div>
-          <div className="threshold-legend">
-            <span>ohne Vorschlag</span>
-            <span>Prüfliste</span>
-            <span>automatisch</span>
-          </div>
-          {!valid && <p className="form-error">Der Vorschlag muss unter der Auto-Ablage liegen.</p>}
-          {canEdit && (
-            <div>
-              <Button
-                variant="primary"
-                size="sm"
-                disabled={!dirty || !valid}
-                onClick={async () => {
-                  const res = await mutate((r) => r.saveAgentSettings({ autoFileThreshold: auto / 100, suggestThreshold: suggest / 100 }));
-                  toast(res.ok ? "Schwellen gespeichert" : res.error, res.ok ? "ok" : "danger");
-                }}
-              >
-                Speichern
-              </Button>
-            </div>
-          )}
+    <div className="editor-panel">
+      <p className="muted">{canEdit ? "Sicherheit = kleinerer Wert aus Projekt- und Ordnererkennung." : "Nur Admins können die Schwellen ändern."}</p>
+      <div className="thresholds">
+        <Field label={`Automatisch ablegen ab ${auto} %`} htmlFor="th-auto">
+          <input id="th-auto" type="range" min={50} max={100} value={auto} disabled={!canEdit} onChange={(e) => setAuto(Number(e.target.value))} className="range" />
+        </Field>
+        <Field label={`Vorschlag in der Prüfliste ab ${suggest} %`} htmlFor="th-suggest" hint="Darunter: Prüfliste ohne Vorschlag.">
+          <input id="th-suggest" type="range" min={0} max={95} value={suggest} disabled={!canEdit} onChange={(e) => setSuggest(Number(e.target.value))} className="range" />
+        </Field>
+        <div className="threshold-scale" aria-hidden>
+          <span style={{ width: `${suggest}%` }} className="seg seg-none" />
+          <span style={{ width: `${Math.max(0, auto - suggest)}%` }} className="seg seg-review" />
+          <span style={{ width: `${100 - auto}%` }} className="seg seg-auto" />
         </div>
-      </CardBody>
-    </Card>
+        <div className="threshold-legend">
+          <span>ohne Vorschlag</span>
+          <span>Prüfliste</span>
+          <span>automatisch</span>
+        </div>
+        {!valid && <p className="form-error">Der Vorschlag muss unter der Auto-Ablage liegen.</p>}
+        {canEdit && (
+          <div>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!dirty || !valid}
+              onClick={async () => {
+                const res = await mutate((r) => r.saveAgentSettings({ autoFileThreshold: auto / 100, suggestThreshold: suggest / 100 }));
+                toast(res.ok ? "Schwellen gespeichert" : res.error, res.ok ? "ok" : "danger", res.ok ? `Automatisch ab ${auto} %, Vorschlag ab ${suggest} %.` : undefined);
+              }}
+            >
+              Speichern
+            </Button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
-function IgnoreCard() {
+function IgnoreEditor() {
   const { data, mutate } = useData();
   const toast = useToast();
   const [match, setMatch] = useState("");
   const list = data!.agentRules.filter((r) => r.kind === "ignorieren");
   return (
-    <Card>
-      <CardHead title="Ignorier-Liste" icon={<Ban size={16} />} sub="Newsletter und Werbung. Signaturbilder ignoriert der Agent automatisch." />
+    <div className="editor-panel">
       {list.length > 0 && (
         <ul className="rule-list">
           {list.map((r) => (
@@ -381,10 +411,10 @@ function IgnoreCard() {
         }}
       >
         <Input aria-label="Absender ignorieren" placeholder="@newsletter.example oder Adresse" value={match} onChange={(e) => setMatch(e.target.value)} />
-        <Button type="submit" icon={<Plus size={15} />} disabled={match.trim().length < 3}>
+        <Button type="submit" variant="secondary" icon={<Plus size={15} />} disabled={match.trim().length < 3}>
           Hinzufügen
         </Button>
       </form>
-    </Card>
+    </div>
   );
 }

@@ -4,7 +4,7 @@ import { AlertOctagon, Bot, CheckCircle2, ClipboardCheck, Inbox, Mail, RefreshCw
 import { BarChart, Legend } from "../../components/charts/BarChart";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
-import { Button, Card, CardBody, CardHead, CellTip, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Select, Skeleton, Switch, type Column } from "../../components/ui";
+import { Button, buttonClass, Card, CardBody, CardHead, CellTip, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Select, SettingRow, Skeleton, Switch, type Column } from "../../components/ui";
 import { agentStats } from "../../agent/stats";
 import { displayPath } from "../../lib/folders";
 import { formatBytes, formatRelative } from "../../lib/format";
@@ -62,13 +62,13 @@ export function AgentDashboard() {
     if (!res.ok) return toast(res.error, "danger");
     const s = res.value;
     if (!s.fetched) {
-      toast(s.waitingPaused ? `Keine neuen Mails. ${s.waitingPaused} Mail wartet in einem pausierten Postfach.` : "Keine neuen Mails.");
+      toast("Keine neuen Mails", "ok", s.waitingPaused ? `${s.waitingPaused} Mail wartet in einem pausierten Postfach.` : "Alle Postfächer sind auf dem neuesten Stand.");
       return;
     }
     const parts = [`${s.filed} abgelegt`, `${s.toReview} zur Prüfung`, `${s.ignored} ignoriert`];
     if (s.errors) parts.push(`${s.errors} Fehler`);
     if (s.duplicates) parts.push(`${s.duplicates} Dublette übersprungen`);
-    toast(`${s.fetched} Mails gelesen: ${parts.join(", ")}`);
+    toast(`${s.fetched} Mails gelesen`, "ok", parts.join(" · "));
   }
 
   if (!staff) {
@@ -200,29 +200,31 @@ export function AgentDashboard() {
 
         <div className="grid-2 agent-grid">
           <Card>
-            <CardHead title="Postfächer" icon={<Mail size={16} />} actions={<Link to="/agent/postfaecher" className="btn btn-sm btn-ghost">Verwalten</Link>} />
-            <ul className="mailbox-list">
+            <CardHead title="Postfächer" icon={<Mail size={16} />} actions={<Link to="/agent/postfaecher" className={buttonClass("ghost", "sm")}>Verwalten</Link>} />
+            <div className="mailbox-settings">
               {data.mailboxes.map((m) => (
-                <li key={m.id} className="mailbox-row">
-                  <div className="mailbox-main">
-                    <span className="cell-main">{m.label}</span>
-                    <span className="cell-sub">{m.address}</span>
-                  </div>
-                  <div className="mailbox-state">
-                    <Pill tone={MAILBOX_STATUS[m.status].tone}>{MAILBOX_STATUS[m.status].label}</Pill>
-                    <span className="cell-sub">{m.lastCheckedAt ? `geprüft ${formatRelative(m.lastCheckedAt)}` : "noch nie geprüft"}</span>
-                  </div>
-                  <Switch
-                    checked={m.status === "verbunden"}
-                    label={m.status === "verbunden" ? `${m.label} pausieren` : `${m.label} fortsetzen`}
-                    onChange={async (on) => {
-                      const res = await mutate((r) => r.setMailboxStatus(m.id, on ? "verbunden" : "pausiert"));
-                      toast(res.ok ? (on ? `${m.label} wird wieder gelesen` : `${m.label} pausiert`) : res.error, res.ok ? "ok" : "danger");
-                    }}
-                  />
-                </li>
+                <SettingRow
+                  key={m.id}
+                  icon={<Mail size={16} />}
+                  title={m.label}
+                  description={`${m.address} · ${m.lastCheckedAt ? `geprüft ${formatRelative(m.lastCheckedAt)}` : "noch nie geprüft"}`}
+                  action={
+                    <>
+                      <Pill tone={MAILBOX_STATUS[m.status].tone}>{MAILBOX_STATUS[m.status].label}</Pill>
+                      <Switch
+                        checked={m.status === "verbunden"}
+                        label={m.status === "verbunden" ? `${m.label} pausieren` : `${m.label} fortsetzen`}
+                        onChange={async (on) => {
+                          const res = await mutate((r) => r.setMailboxStatus(m.id, on ? "verbunden" : "pausiert"));
+                          if (!res.ok) toast(res.error, "danger");
+                          else toast(on ? `${m.label} wird gelesen` : `${m.label} pausiert`, "ok", on ? "Neue Mails kommen beim nächsten Lauf." : "Mails bleiben im Postfach liegen, bis es wieder läuft.");
+                        }}
+                      />
+                    </>
+                  }
+                />
               ))}
-            </ul>
+            </div>
             <p className="agent-safety">
               <ShieldCheck size={14} aria-hidden /> Nur lesen: Der Agent verschiebt, löscht und beantwortet keine Mails.
             </p>
@@ -277,10 +279,10 @@ export function AgentDashboard() {
                       <div className="agent-detail-actions">
                         {r.att.status === "abgelegt" && r.att.projectId && (
                           <>
-                            <Link to={`/projekte/${r.att.projectId}?tab=dokumente`} className="btn btn-sm">
+                            <Link to={`/projekte/${r.att.projectId}?tab=dokumente`} className={buttonClass("outline", "sm")}>
                               Im Projekt ansehen
                             </Link>
-                            <Button size="sm" variant="danger" onClick={() => void reportWrong(r.att)}>
+                            <Button size="sm" variant="outline" onClick={() => void reportWrong(r.att)}>
                               Falsch zugeordnet
                             </Button>
                           </>

@@ -34,6 +34,13 @@ Für die Vorführung vor Geschäftsführung und IT. Alle Daten sind erfunden; ni
 | 9:40 | Benutzermenü | Rolle **Freiberufler** | "So sieht ein freier Mitarbeiter die App: nur seine Projekte, keine Rechnungen, keine Kontaktdaten der Bauherren." |
 | 10:00 | | Rolle zurück auf Admin | Abschluss: "Das ist der klickbare Prototyp. Nächster Schritt: echte Datenbank in Frankfurt, dann mit IT der Testlauf mit einem Postfach." |
 
+Gut zu wissen (Design v2):
+
+- Oben rechts gibt es nur noch einen Hauptbutton **+ Neues Projekt** (öffnet direkt das Formular mit allen Feldern).
+  Bei Bedarf kurz zeigen: Bauherr leer lassen → Meldung direkt am Feld; Firma wechseln → ABM-Nr. wird vorgeschlagen.
+- **Neue Aufgabe** geht über die Aufgabenseite oder schnell per **Strg+K** → "Neue Aufgabe" (Strg+K zeigt Befehle und sucht Projekte).
+- Rückmeldungen erscheinen unten rechts als kleine Karte mit Titel und Erklärung.
+
 ## Fragen, die kommen könnten
 
 **Geschäftsführung**

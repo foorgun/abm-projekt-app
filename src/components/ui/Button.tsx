@@ -1,25 +1,31 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 
-type Variant = "default" | "primary" | "ghost" | "danger";
+/** Button-Familie (docs/design-v2.md): primary hell, secondary dunkelgrau gefüllt, outline, ghost, destructive korallrot. */
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "destructive";
+export type ButtonSize = "sm" | "md" | "lg";
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant;
-  size?: "md" | "sm";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Icon links vom Text */
   icon?: ReactNode;
+  /** Icon rechts vom Text (z. B. Pfeil bei Primäraktionen) */
+  iconRight?: ReactNode;
 }
 
-function cls(variant: Variant, size: "md" | "sm", extra?: string) {
-  return ["btn", variant !== "default" && `btn-${variant}`, size === "sm" && "btn-sm", extra].filter(Boolean).join(" ");
+export function buttonClass(variant: ButtonVariant = "outline", size: ButtonSize = "md", extra?: string) {
+  return ["btn", `btn-${variant}`, size !== "md" && `btn-${size}`, extra].filter(Boolean).join(" ");
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "default", size = "md", icon, className, children, type = "button", ...rest },
+  { variant = "outline", size = "md", icon, iconRight, className, children, type = "button", ...rest },
   ref,
 ) {
   return (
-    <button ref={ref} type={type} className={cls(variant, size, className)} {...rest}>
+    <button ref={ref} type={type} className={buttonClass(variant, size, className)} {...rest}>
       {icon}
       {children}
+      {iconRight}
     </button>
   );
 });
@@ -27,8 +33,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Pflicht: Icon-Buttons brauchen einen zugänglichen Namen. */
   label: string;
-  variant?: Variant;
-  size?: "md" | "sm";
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }
 
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
@@ -36,14 +42,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   ref,
 ) {
   return (
-    <button
-      ref={ref}
-      type={type}
-      aria-label={label}
-      title={label}
-      className={cls(variant, size, ["btn-icon", className].filter(Boolean).join(" "))}
-      {...rest}
-    >
+    <button ref={ref} type={type} aria-label={label} title={label} className={buttonClass(variant, size, ["btn-icon", className].filter(Boolean).join(" "))} {...rest}>
       {children}
     </button>
   );
