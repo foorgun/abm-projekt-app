@@ -5,6 +5,7 @@ import { createRepo } from "./lib/createRepo";
 import { SessionProvider } from "./lib/session";
 import { DataProvider } from "./lib/store";
 import { Dashboard } from "./pages/Dashboard";
+import { Documents } from "./pages/Documents";
 import { AgentDashboard } from "./pages/agent/AgentDashboard";
 import { Mailboxes } from "./pages/agent/Mailboxes";
 import { ReviewList } from "./pages/agent/ReviewList";
@@ -31,6 +32,7 @@ export function App() {
               <Route path="projekte/:id" element={<ProjectDetail />} />
               <Route path="pipeline" element={<Pipeline />} />
               <Route path="aufgaben" element={<Tasks />} />
+              <Route path="dokumente" element={<Documents />} />
               <Route path="rechnungen" element={<Invoices />} />
               <Route path="agent" element={<AgentDashboard />} />
               <Route path="agent/pruefung" element={<ReviewList />} />

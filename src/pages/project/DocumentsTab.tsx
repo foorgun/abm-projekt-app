@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type DragEvent } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, Mail, Upload } from "lucide-react";
 import { useToast } from "../../components/Toast";
 import { Button, Checkbox, Dialog, EmptyState, Field, Input, Pill, Select } from "../../components/ui";
@@ -30,8 +31,12 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
 
   // Start: Ordner der zuletzt abgelegten Datei, sonst der erste Hauptordner
   const latest = useMemo(() => [...documents].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0], [documents]);
-  const [selected, setSelected] = useState<string>(() => latest?.folderPath ?? tree[0]?.path ?? "");
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(latest ? ancestorPaths(tree, latest.folderPath) : []));
+  // ?ordner=<Pfad> (z. B. von der Seite "Dokumente": "Im Ordner anzeigen") wählt den Ordner vor
+  const [params] = useSearchParams();
+  const wanted = params.get("ordner");
+  const initial = wanted && findNode(tree, wanted) ? wanted : latest?.folderPath ?? tree[0]?.path ?? "";
+  const [selected, setSelected] = useState<string>(initial);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial ? ancestorPaths(tree, initial) : []));
   const [hideEmpty, setHideEmpty] = useState(false);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingUpload | null>(null);

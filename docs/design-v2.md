@@ -84,3 +84,11 @@ gedämpfte Fußzeile.
 
 Suche links (Strg+K, auch Befehle wie "Neue Aufgabe"), rechts die Glocke als Ghost-Icon-Button mit kleinem roten Zähler und
 ein einzelner primärer Button "+ Neues Projekt". Kein geteilter Button, keine Teal-Fläche.
+
+## Seitenpanel und Filter-Chips
+
+- **Seitenpanel (`Drawer`)**: von rechts, 440 px breit (mobil volle Breite), Fläche `--surface`, Kopf mit Titel und Schließen, Fuß mit
+  höchstens zwei Buttons (Outline + Primär). Escape und Klick daneben schließen, der Fokus kehrt zur Zeile zurück.
+  Für Details zu einer Tabellenzeile, wenn eine eigene Seite zu viel wäre.
+- **Chips**: Pillenform, Rahmen `--border`, Nummer in Mono; gewählt: helle Fläche wie der primäre Button. Für kurze, feste Mengen
+  (Hauptordner 01–11); bei wenig Platz scrollt die Reihe waagerecht.

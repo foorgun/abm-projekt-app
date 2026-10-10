@@ -90,6 +90,6 @@ export function stageMoveTarget(project: Project, steps: StepDefinition[]): { st
   return { stage: next, step, skipped };
 }
 
-export function projectTitle(p: Project): string {
+export function projectTitle(p: Pick<Project, "abmNr" | "bauherrLabel">): string {
   return p.abmNr && p.abmNr !== "Bauvoranfrage" ? `${p.abmNr} · ${p.bauherrLabel}` : `${p.bauherrLabel} (Bauvoranfrage)`;
 }

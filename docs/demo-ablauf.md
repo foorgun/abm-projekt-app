@@ -39,6 +39,11 @@ Optional, wenn nach Geld gefragt wird (1 Minute): **Rechnungen** öffnen. Oben s
 Sagen: "Das Diagramm zeigt, was pro Monat verschickt und bezahlt wurde. Beträge und Auslöser sind hier erfunden,
 die echten Regeln legen wir gemeinsam fest."
 
+Optional, wenn gefragt wird "Wo finde ich eine Datei?" (1 Minute): **Dokumente** öffnen (Menü ARBEIT). Im Suchfeld "bodenlabor"
+tippen → die Datei wird über den Absender der Mail gefunden. Suche leeren, Chip **08 Bauantrag** und Quelle **Agent** wählen,
+eine Zeile anklicken → rechts steht, aus welcher Mail die Datei kommt und warum sie dort liegt. **Im Ordner anzeigen** springt ins Projekt.
+Sagen: "Alle Dateien über alle Projekte an einer Stelle. Öffnen lassen sie sich erst im Echtbetrieb, die Demo speichert keine Inhalte."
+
 Gut zu wissen (Design v2):
 
 - Oben rechts gibt es nur noch einen Hauptbutton **+ Neues Projekt** (öffnet direkt das Formular mit allen Feldern).

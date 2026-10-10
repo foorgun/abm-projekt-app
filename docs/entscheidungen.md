@@ -307,3 +307,25 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Reiterleisten** (alle, `Tabs`): scrollen waagerecht und blenden am Rand aus, solange dort noch Reiter folgen; der gewählte Reiter rückt ins Bild.
 - **Fälligkeitsdatum:** fällige Rechnungen ohne eingetragenes Datum (fällig durch den erreichten Schritt) zeigen das Datum, seit dem sie fällig sind.
   Button "Als versendet" mit Tooltip "Als versendet markieren" und vollständigem Aria-Label (auch im Projekt-Tab).
+
+## Design v2, Etappe C – Seite Dokumente
+
+- **Neue Repo-Methode `listDocuments(filter)`**: liefert Zeilen (Datei, Projekt-Kurzangaben, Mailangaben), Gesamtzahl und Kennzahlen.
+  Filtern und Blättern passieren im Repo, nicht in der Oberfläche; die reine Logik liegt in `src/lib/documentFilters.ts` (getestet) und wird
+  vom `demoRepo` benutzt. Im `supabaseRepo` ist die Methode wie alle anderen noch ein Platzhalter (Schritt 8).
+- **Filter stehen in der URL** (`?q=…&projekt=…&ordner=08&quelle=agent&typ=pdf&zeitraum=7`), damit sich eine Ansicht verlinken lässt und
+  „Zurück“ funktioniert. Alle Filter sind kombinierbar. Die Suche findet Dateiname, Projekt (ABM-Nr., Bauherr, Ort) und Absender der Mail.
+- **Kennzahlen:** „Diese Woche abgelegt“ zählt seit Montag (nicht die letzten 7 Tage), „Davon vom Agenten“ bezieht sich auf diese Woche.
+  Die Kennzahlen gelten für alle sichtbaren Dateien und ändern sich nicht mit den Filtern. „Zur Prüfung“ führt in die Prüfliste.
+- **Hauptordner als Chips 01–11** aus der Ordnervorlage, einer wählbar, erneuter Klick hebt die Auswahl auf.
+- **Seitenpanel (`Drawer`)** statt eigener Detailseite: Metadaten, bei Agent-Dateien Betreff, Absender, Sicherheit und Begründung.
+  „Im Ordner anzeigen“ öffnet das Projekt mit vorgewähltem Ordner (`/projekte/:id?tab=dokumente&ordner=<pfad>`).
+  Ältere Demo-Dateien des Agenten haben keine gespeicherte Mail; das Panel sagt das dann.
+- **Kein Download und keine Vorschau im Demo-Modus:** die Demo speichert nur Angaben zur Datei, keine Inhalte. Das Panel erklärt das.
+- **Hochladen:** Dialog mit Projekt, Zielordner (derselbe `FolderPicker` wie in der Prüfliste), bei Datumsordnern ein Datum, mehrere Dateien.
+  CAD- und Programmdateien werden in der Liste durchgestrichen und nicht abgelegt (gleiche Prüfung wie im Projekt, `files.ts`).
+- **Freiberufler:** Menüpunkt sichtbar, aber nur Dateien zugewiesener Projekte, keine Kachel „Zur Prüfung“ und keine Mailangaben
+  (Posteingang ist Mitarbeitern vorbehalten). Das `demoRepo` bildet das wie die RLS-Regeln nach. Für Schritt 8 heißt das:
+  keine neue Tabelle nötig, die bestehenden Policies auf `documents` und den Posteingangstabellen müssen genau das leisten (RLS-Test ergänzen).
+- **Unter 640 px** Kartenliste statt Tabelle, 40 je Schritt („Weitere anzeigen“).
+- Zeitraum ohne Einschränkung heißt „Jederzeit“ (nicht „Alle“), damit er sich vom Quelle-Schalter „Alle“ unterscheidet.

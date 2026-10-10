@@ -6,6 +6,7 @@ import { classify } from "../agent/classify";
 import { buildDemoMailQueue, demoAi, type QueuedMail } from "../agent/demoMailSource";
 import type { ClassifyContext } from "../agent/types";
 import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
+import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { validateNewProject } from "./projectForm";
@@ -240,6 +241,25 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const doc = storeDocument({ projectId, folderPath, file, source: "upload", sourceItemId: null, receivedOn: todayIso() });
       log({ projectId, kind: "datei", text: `${file.name} abgelegt` });
       return done(structuredClone(doc));
+    },
+
+    async listDocuments(filter: DocumentFilter) {
+      // Sichtbarkeit wie RLS: Freiberufler nur Dokumente zugewiesener Projekte, ohne Maildaten (Posteingang ist Mitarbeitern vorbehalten)
+      const visible = visibleFor(db, user);
+      const projects = new Map(visible.projects.map((p) => [p.id, p]));
+      const atts = new Map(visible.inboxAttachments.map((a) => [a.id, a]));
+      const items = new Map(visible.inboxItems.map((i) => [i.id, i]));
+      const rows: DocumentRow[] = visible.documents.map((doc) => {
+        const p = projects.get(doc.projectId);
+        const item = doc.sourceItemId ? items.get(atts.get(doc.sourceItemId)?.itemId ?? "") : undefined;
+        const att = doc.sourceItemId ? atts.get(doc.sourceItemId) : undefined;
+        return {
+          doc,
+          project: p ? { id: p.id, abmNr: p.abmNr, bauherrLabel: p.bauherrLabel, location: p.location } : null,
+          mail: item ? { subject: item.subject, fromName: item.fromName, fromEmail: item.fromEmail, receivedAt: item.receivedAt, reason: item.reason, confidence: att?.confidence ?? null } : null,
+        };
+      });
+      return done(structuredClone(filterDocuments(rows, filter, todayIso())));
     },
 
     async createTask(input: NewTask) {

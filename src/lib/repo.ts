@@ -2,6 +2,7 @@
 // demoRepo (erfundene Daten im Speicher) und supabaseRepo (ab Schritt 8) implementieren es gleich.
 // Die UI spricht nie direkt mit Supabase.
 
+import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { AgentRule, AgentSettings, Dataset, Mailbox, MailboxStatus, Project, ProjectDocument, Task } from "./types";
 
@@ -84,6 +85,11 @@ export interface Repo {
   setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;
   markInvoiceSent(invoiceId: string, sentOn: string): Promise<void>;
   uploadDocument(input: UploadInput): Promise<ProjectDocument>;
+  /**
+   * Alle Dokumente, die der Benutzer sehen darf, mit Filtern (Seite "Dokumente").
+   * Liefert je Dokument Projekt und, bei Herkunft Agent, die zugehörige Mail (Betreff, Absender, Begründung).
+   */
+  listDocuments(filter: DocumentFilter): Promise<DocumentListResult>;
 
   createTask(input: NewTask): Promise<Task>;
   updateTask(id: string, patch: TaskPatch): Promise<Task>;

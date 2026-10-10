@@ -4,6 +4,7 @@ import {
   Bot,
   ClipboardCheck,
   Columns3,
+  Files,
   FolderCheck,
   FolderOpen,
   Folders,
@@ -53,6 +54,8 @@ export const NAV: NavGroup[] = [
     label: "Arbeit",
     items: [
       { to: "/aufgaben", label: "Aufgaben", icon: ListTodo, count: "tasks", hiddenFor: ["freiberufler"] },
+      // Dokumente sehen auch Freiberufler (nur die ihrer zugewiesenen Projekte)
+      { to: "/dokumente", label: "Dokumente", icon: Files },
       { to: "/rechnungen", label: "Rechnungen", icon: Receipt, hiddenFor: ["freiberufler"] },
     ],
   },

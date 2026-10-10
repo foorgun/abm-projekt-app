@@ -15,6 +15,7 @@ export function createSupabaseRepo(): Repo {
     setProjectStatus: fail,
     markInvoiceSent: fail,
     uploadDocument: fail,
+    listDocuments: fail,
     createTask: fail,
     updateTask: fail,
     setMailboxStatus: fail,
