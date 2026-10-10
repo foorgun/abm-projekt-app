@@ -11,7 +11,7 @@ export interface KpiCardProps {
   trend?: ReactNode;
   foot?: ReactNode;
   tone?: "accent" | "danger" | "warn" | "info" | "ok";
-  /** Wert selbst einfärben (nur für echte Warnwerte, z. B. offene Rechnungssumme). */
+  /** Wert selbst einfärben (nur für echte Warnwerte, z. B. Summe nicht versendeter Rechnungen). */
   valueTone?: "danger";
   to?: string;
 }

@@ -292,3 +292,18 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   Fälligkeit, Zahlung 8 bis 28 Tage nach Versand; Beträge 1.800 bis 12.000 €. Zwei weitere fällige, nicht versendete Rechnungen
   (5 und 18 Tage) für die Altersverteilung; der 10.000-€-Fall bleibt die oberste Warnung. Der Seitenkopf sagt, dass Beträge und Auslöser Annahmen sind.
 - **Demo-Uhrzeiten:** alle erfundenen Einträge von heute liegen vor 8 Uhr (per Test), damit nichts "in der Zukunft" erscheint.
+
+### Korrekturen zu Etappe B
+
+- **Sprachregel:** "offen" heißt bei Rechnungen nur noch "versendet, aber nicht bezahlt". Fällige, nicht versendete Rechnungen heißen
+  "nicht versendet". Die Dashboard-Kachel heißt deshalb "Nicht versendet" (vorher "Offene Rechnungen", so auch in älteren Einträgen oben),
+  Untertitel "5 fällige Rechnungen", Klick führt auf `/rechnungen?reiter=nicht-versendet`. Im Projekt-Tab stehen die Summen als
+  "Noch nicht versendet" und "Versendet, offen".
+- **Reiter und Altersfilter der Rechnungsseite stehen in der URL** (`?reiter=…&alter=…`), damit Kacheln und Links direkt dorthin führen.
+- **Laufender Monat im AreaChart** (`partialLast`): letzter Abschnitt gestrichelt, Punkt hohl, Beschriftung gedämpft/kursiv, die gefüllte
+  Fläche endet beim letzten vollständigen Monat; Tooltip und Tabelle nennen "laufender Monat, unvollständig". Die Tangenten der Linie werden
+  über alle Punkte berechnet und erst danach geteilt, damit die Form gleich bleibt. Die Linie war schon monoton (Fritsch-Carlson, per Test).
+- **Unter 640 px** zeigt die Rechnungsseite eine Kartenliste statt der Tabelle (Projekt, Betrag, Rechnung, Status, Datum, Aktion), 15 je Schritt.
+- **Reiterleisten** (alle, `Tabs`): scrollen waagerecht und blenden am Rand aus, solange dort noch Reiter folgen; der gewählte Reiter rückt ins Bild.
+- **Fälligkeitsdatum:** fällige Rechnungen ohne eingetragenes Datum (fällig durch den erreichten Schritt) zeigen das Datum, seit dem sie fällig sind.
+  Button "Als versendet" mit Tooltip "Als versendet markieren" und vollständigem Aria-Label (auch im Projekt-Tab).

@@ -159,12 +159,12 @@ export function Dashboard() {
               <KpiCard
                 icon={<Receipt size={16} />}
                 tone="danger"
-                label="Offene Rechnungen"
+                label="Nicht versendet"
                 value={formatMoney(unsentSum)}
                 valueTone={unsentSum > 0 ? "danger" : undefined}
-                foot={`${unsentAlerts.length} ${unsentAlerts.length === 1 ? "Rechnung" : "Rechnungen"} nicht versendet`}
-                info="Fällige Rechnungen, die noch nicht versendet wurden."
-                to="/rechnungen"
+                foot={`${unsentAlerts.length} ${unsentAlerts.length === 1 ? "fällige Rechnung" : "fällige Rechnungen"}`}
+                info="Fällige Rechnungen, die noch nicht versendet wurden. „Offen“ heißt in der App: versendet, aber noch nicht bezahlt."
+                to="/rechnungen?reiter=nicht-versendet"
               />
               <KpiCard
                 icon={<Bot size={16} />}

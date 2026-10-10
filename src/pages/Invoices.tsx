@@ -1,20 +1,24 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { BadgeCheck, Hourglass, Info, MailWarning, Receipt, Send, Timer, X } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { BadgeCheck, Hourglass, Info, MailWarning, Receipt, Timer, X } from "lucide-react";
 import { BarChart } from "../components/charts/BarChart";
 import { InvoiceVolumeCard } from "../components/InvoiceVolumeCard";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Skeleton, TableSkeleton, Tabs, type Column } from "../components/ui";
-import { formatDate, formatMoney } from "../lib/format";
+import { addDays, formatDate, formatMoney } from "../lib/format";
 import { AGE_BUCKETS, ageBucketOf, agingBuckets, invoiceKpis, unsentAges, type AgeBucket } from "../lib/invoiceStats";
 import { projectTitle } from "../lib/projects";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
+import { NARROW, useMediaQuery } from "../lib/useMedia";
 import type { Invoice } from "../lib/types";
 import { INVOICE_STATUS } from "./project/InvoicesTab";
 
 type Tab = "alle" | "unsent" | "versendet" | "bezahlt";
+
+// Reiter und Altersfilter stehen in der URL (?reiter=nicht-versendet&alter=30+), damit z. B. die Dashboard-Kachel direkt dorthin führt
+const TAB_PARAM: Record<Tab, string> = { alle: "", unsent: "nicht-versendet", versendet: "versendet", bezahlt: "bezahlt" };
 
 /**
  * Rechnungen (nur Mitarbeiter): Kennzahlen, Volumen pro Monat, nicht versendete nach Alter und die Tabelle.
@@ -25,8 +29,18 @@ export function Invoices() {
   const { data, loading, error, reload, allAlerts, today, mutate } = useData();
   const { user } = useSession();
   const toast = useToast();
-  const [tab, setTab] = useState<Tab>("alle");
-  const [age, setAge] = useState<AgeBucket | null>(null);
+  const [params, setParams] = useSearchParams();
+  const tab = ((Object.keys(TAB_PARAM) as Tab[]).find((t) => TAB_PARAM[t] && TAB_PARAM[t] === params.get("reiter")) ?? "alle") as Tab;
+  const age = tab === "unsent" ? (AGE_BUCKETS.find((b) => b.key === params.get("alter"))?.key ?? null) : null;
+  const setView = (t: Tab, a: AgeBucket | null) => {
+    const next = new URLSearchParams();
+    if (TAB_PARAM[t]) next.set("reiter", TAB_PARAM[t]);
+    if (a && t === "unsent") next.set("alter", a);
+    setParams(next, { replace: true });
+  };
+  const setAge = (a: AgeBucket | null) => setView(a ? "unsent" : tab, a);
+  const narrow = useMediaQuery(NARROW);
+  const [cardLimit, setCardLimit] = useState(15);
   const projects = useMemo(() => new Map((data?.projects ?? []).map((p) => [p.id, p])), [data]);
   const ages = useMemo(() => unsentAges(allAlerts), [allAlerts]);
 
@@ -85,6 +99,25 @@ export function Invoices() {
   const k = invoiceKpis(invoices, allAlerts, today);
   const buckets = agingBuckets(invoices, allAlerts);
   const isUnsent = (i: Invoice) => ages.has(i.id);
+  /**
+   * Fälligkeitsdatum zur Anzeige. Fällige Rechnungen ohne eingetragenes Datum (fällig durch den erreichten Schritt)
+   * bekommen das Datum, seit dem sie fällig sind, damit "x Tage fällig" nie ohne Datum dasteht.
+   */
+  const dueDate = (i: Invoice) => i.dueOn ?? (isUnsent(i) ? addDays(today, -ages.get(i.id)!) : null);
+  const statusPill = (i: Invoice) =>
+    isUnsent(i) ? (
+      <Pill tone={ages.get(i.id)! > 7 ? "danger" : "warn"}>
+        {ages.get(i.id)} {ages.get(i.id) === 1 ? "Tag" : "Tage"} fällig
+      </Pill>
+    ) : (
+      <Pill tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Pill>
+    );
+  const sendButton = (i: Invoice) =>
+    i.status === "geplant" || i.status === "faellig" ? (
+      <Button size="sm" variant={isUnsent(i) ? "primary" : "outline"} onClick={() => void markSent(i)} aria-label={`${i.label} als versendet markieren`} title="Als versendet markieren">
+        Als versendet
+      </Button>
+    ) : null;
   const match = (i: Invoice) => {
     if (tab === "unsent") return isUnsent(i) && (!age || ageBucketOf(ages.get(i.id)!) === age);
     if (tab === "versendet") return i.status === "versendet";
@@ -106,9 +139,7 @@ export function Invoices() {
   }
 
   function selectAge(index: number | null) {
-    const next = index == null ? null : AGE_BUCKETS[index].key;
-    setAge(next);
-    if (next) setTab("unsent");
+    setAge(index == null ? null : AGE_BUCKETS[index].key);
   }
 
   const columns: Column<Invoice>[] = [
@@ -142,29 +173,17 @@ export function Invoices() {
     {
       key: "status",
       header: "Status",
-      render: (i) =>
-        isUnsent(i) ? (
-          <Pill tone={ages.get(i.id)! > 7 ? "danger" : "warn"}>
-            {ages.get(i.id)} {ages.get(i.id) === 1 ? "Tag" : "Tage"} fällig
-          </Pill>
-        ) : (
-          <Pill tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Pill>
-        ),
+      render: statusPill,
       sortValue: (i) => (isUnsent(i) ? `0${String(999 - ages.get(i.id)!).padStart(3, "0")}` : i.status),
     },
-    { key: "due", header: "Fällig", render: (i) => formatDate(i.dueOn), sortValue: (i) => i.dueOn ?? "" },
+    { key: "due", header: "Fällig", render: (i) => formatDate(dueDate(i)), sortValue: (i) => dueDate(i) ?? "" },
     { key: "sent", header: "Versendet", render: (i) => formatDate(i.sentOn), sortValue: (i) => i.sentOn ?? "" },
     { key: "paid", header: "Bezahlt", render: (i) => formatDate(i.paidOn), sortValue: (i) => i.paidOn ?? "" },
     {
       key: "action",
       header: <span className="sr-only">Aktion</span>,
       align: "right",
-      render: (i) =>
-        i.status === "geplant" || i.status === "faellig" ? (
-          <Button size="sm" variant={isUnsent(i) ? "primary" : "outline"} icon={<Send size={13} />} onClick={() => void markSent(i)} aria-label={`${i.label} als versendet markieren`} title="Als versendet markieren">
-            Versendet
-          </Button>
-        ) : null,
+      render: sendButton,
     },
   ];
 
@@ -222,10 +241,7 @@ export function Invoices() {
           <Tabs<Tab>
             label="Rechnungen filtern"
             value={tab}
-            onChange={(t) => {
-              setTab(t);
-              if (t !== "unsent") setAge(null);
-            }}
+            onChange={(t) => setView(t, null)}
             items={[
               { key: "alle", label: "Alle", count: invoices.length },
               { key: "unsent", label: "Nicht versendet", count: k.unsentCount },
@@ -244,7 +260,45 @@ export function Invoices() {
         </div>
 
         <Card>
-          {list.length ? (
+          {list.length && narrow ? (
+            // Unter 640 px: Kartenliste statt Tabelle
+            <>
+              <ul className="invoice-cards" aria-label="Rechnungen">
+                {list.slice(0, cardLimit).map((i) => {
+                  const p = projects.get(i.projectId);
+                  return (
+                    <li key={i.id} className="invoice-card">
+                      <div className="invoice-card-top">
+                        {p ? (
+                          <Link to={`/projekte/${p.id}?tab=rechnungen`} className="invoice-card-project">
+                            {projectTitle(p)}
+                          </Link>
+                        ) : (
+                          <span className="invoice-card-project">–</span>
+                        )}
+                        <span className="invoice-card-amount">{formatMoney(i.amountCents)}</span>
+                      </div>
+                      <div className="invoice-card-label">{i.label}</div>
+                      <div className="invoice-card-meta">
+                        {statusPill(i)}
+                        <span className="muted">
+                          {i.paidOn ? `bezahlt ${formatDate(i.paidOn)}` : i.sentOn ? `versendet ${formatDate(i.sentOn)}` : dueDate(i) ? `fällig ${formatDate(dueDate(i))}` : "noch nicht fällig"}
+                        </span>
+                      </div>
+                      {sendButton(i) && <div className="invoice-card-action">{sendButton(i)}</div>}
+                    </li>
+                  );
+                })}
+              </ul>
+              {list.length > cardLimit && (
+                <div className="card-foot">
+                  <Button variant="ghost" size="sm" onClick={() => setCardLimit((n) => n + 15)}>
+                    Weitere anzeigen ({cardLimit} von {list.length})
+                  </Button>
+                </div>
+              )}
+            </>
+          ) : list.length ? (
             <DataTable label="Rechnungen" rows={list} columns={columns} rowKey={(i) => i.id} stickyFirst compact pageSize={25} />
           ) : (
             <EmptyState icon={<Receipt size={18} />} title="Keine Rechnungen in dieser Ansicht" action={age ? <Button size="sm" onClick={() => setAge(null)}>Altersfilter entfernen</Button> : undefined} />

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Bell, Menu as MenuIcon, Plus } from "lucide-react";
 import { HeaderSearch } from "./HeaderSearch";
 import { Link } from "react-router-dom";
@@ -6,6 +5,7 @@ import type { Alert } from "../../lib/alerts";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { projectTitle } from "../../lib/projects";
 import { useData } from "../../lib/store";
+import { NARROW, useMediaQuery } from "../../lib/useMedia";
 import { Button, IconButton, Popover } from "../ui";
 
 export function Header({
@@ -17,7 +17,7 @@ export function Header({
   alerts: Alert[];
   onNewProject: () => void;
 }) {
-  const narrow = useNarrow();
+  const narrow = useMediaQuery(NARROW);
   const { data } = useData();
   const alertCount = alerts.length;
 
@@ -83,17 +83,4 @@ export function Header({
       </div>
     </header>
   );
-}
-
-/** true unter 640 px Breite (kürzerer Platzhalter in der Suche). */
-function useNarrow() {
-  const query = "(max-width: 640px)";
-  const [narrow, setNarrow] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const on = () => setNarrow(mq.matches);
-    mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
-  }, []);
-  return narrow;
 }

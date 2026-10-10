@@ -1,7 +1,8 @@
 import { Receipt } from "lucide-react";
 import { useToast } from "../../components/Toast";
 import { Button, Card, DataTable, EmptyState, Pill, type Column, type Tone } from "../../components/ui";
-import { formatDate, formatMoney } from "../../lib/format";
+import { addDays, formatDate, formatMoney } from "../../lib/format";
+import { unsentAges } from "../../lib/invoiceStats";
 import { useData } from "../../lib/store";
 import type { Invoice, InvoiceStatus } from "../../lib/types";
 
@@ -17,7 +18,10 @@ export function InvoicesTab({ invoices }: { invoices: Invoice[] }) {
   const { data, mutate, today, alerts } = useData();
   const toast = useToast();
   const stepLabel = (k: string | null) => data?.stepDefinitions.find((s) => s.key === k)?.label ?? "–";
-  const due = new Set(alerts.filter((a) => a.kind === "invoice_unsent").map((a) => a.invoiceId));
+  // Alter in Tagen je fälliger, nicht versendeter Rechnung (wie auf der Seite Rechnungen)
+  const ages = unsentAges(alerts);
+  const due = { has: (id: string) => ages.has(id) };
+  const dueDate = (i: Invoice) => i.dueOn ?? (ages.has(i.id) ? addDays(today, -ages.get(i.id)!) : null);
 
   async function markSent(i: Invoice) {
     const res = await mutate((r) => r.markInvoiceSent(i.id, today));
@@ -31,9 +35,16 @@ export function InvoicesTab({ invoices }: { invoices: Invoice[] }) {
     {
       key: "status",
       header: "Status",
-      render: (i) => (due.has(i.id) && i.status === "geplant" ? <Pill tone="warn">Jetzt fällig</Pill> : <Pill tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Pill>),
+      render: (i) =>
+        ages.has(i.id) ? (
+          <Pill tone={ages.get(i.id)! > 7 ? "danger" : "warn"}>
+            {ages.get(i.id)} {ages.get(i.id) === 1 ? "Tag" : "Tage"} fällig
+          </Pill>
+        ) : (
+          <Pill tone={INVOICE_STATUS[i.status].tone}>{INVOICE_STATUS[i.status].label}</Pill>
+        ),
     },
-    { key: "due", header: "Fällig", render: (i) => formatDate(i.dueOn) },
+    { key: "due", header: "Fällig", render: (i) => formatDate(dueDate(i)) },
     { key: "sent", header: "Versendet", render: (i) => formatDate(i.sentOn) },
     { key: "paid", header: "Bezahlt", render: (i) => formatDate(i.paidOn) },
     {
@@ -42,8 +53,8 @@ export function InvoicesTab({ invoices }: { invoices: Invoice[] }) {
       align: "right",
       render: (i) =>
         i.status === "geplant" || i.status === "faellig" ? (
-          <Button size="sm" variant={due.has(i.id) ? "primary" : "outline"} onClick={() => void markSent(i)}>
-            Als versendet markieren
+          <Button size="sm" variant={due.has(i.id) ? "primary" : "outline"} onClick={() => void markSent(i)} aria-label={`${i.label} als versendet markieren`} title="Als versendet markieren">
+            Als versendet
           </Button>
         ) : null,
     },
@@ -60,7 +71,10 @@ export function InvoicesTab({ invoices }: { invoices: Invoice[] }) {
               Gesamt <strong>{sum(() => true)}</strong>
             </span>
             <span>
-              Offen <strong>{sum((i) => i.status === "geplant" || i.status === "faellig")}</strong>
+              Noch nicht versendet <strong>{sum((i) => i.status === "geplant" || i.status === "faellig")}</strong>
+            </span>
+            <span>
+              Versendet, offen <strong>{sum((i) => i.status === "versendet")}</strong>
             </span>
             <span>
               Bezahlt <strong>{sum((i) => i.status === "bezahlt")}</strong>

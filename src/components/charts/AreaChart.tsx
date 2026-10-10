@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { TrendingDown, TrendingUp } from "lucide-react";
 import { ChartTable } from "./ChartTable";
-import { compact, monotonePath, niceTicks, type Pt } from "./scale";
+import { compact, monotoneSegments, niceTicks, type Pt } from "./scale";
 import { useWidth } from "./useWidth";
 
 export interface AreaSeries {
@@ -32,6 +32,8 @@ export function AreaChart({
   height = 240,
   format = (v) => v.toLocaleString("de-DE"),
   axisFormat = compact,
+  partialLast = false,
+  partialNote = "laufend, unvollständig",
 }: {
   labels: AreaLabel[];
   series: AreaSeries[];
@@ -40,6 +42,13 @@ export function AreaChart({
   /** Werte im Tooltip und in der Tabelle */
   format?: (v: number) => string;
   axisFormat?: (v: number) => string;
+  /**
+   * Die letzte Periode läuft noch (z. B. der aktuelle Monat): Ihr Abschnitt wird gestrichelt gezeichnet, der Punkt hohl,
+   * und die gefüllte Fläche endet bei der letzten vollständigen Periode. So wirkt ein halber Monat nicht wie ein Einbruch.
+   */
+  partialLast?: boolean;
+  /** Zusatz im Tooltip und in der Tabelle für die unvollständige Periode */
+  partialNote?: string;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -62,11 +71,21 @@ export function AreaChart({
     setHover(Math.max(0, Math.min(n - 1, Math.round((e.clientX - rect.left) / (step || 1)))));
   }
 
+  const rnd = (v: number) => Math.round(v * 100) / 100;
+  const partial = partialLast && n > 2;
+  // Index des letzten vollständigen Punkts
+  const solidEnd = partial ? n - 2 : n - 1;
   const paths = series.map((s) => {
     const pts: Pt[] = s.values.map((v, i) => ({ x: x(i), y: y(v) }));
-    const line = monotonePath(pts);
-    return { s, pts, line, area: pts.length ? `${line}L${x(n - 1)},${base}L${x(0)},${base}Z` : "" };
+    // Tangenten über ALLE Punkte berechnen (monoton, kein Überschwingen), erst danach in "fest" und "gestrichelt" teilen
+    const segs = monotoneSegments(pts);
+    const seg = (g: (typeof segs)[number]) => `C${rnd(g.c1.x)},${rnd(g.c1.y)} ${rnd(g.c2.x)},${rnd(g.c2.y)} ${rnd(g.to.x)},${rnd(g.to.y)}`;
+    const start = pts.length ? `M${rnd(pts[0].x)},${rnd(pts[0].y)}` : "";
+    const line = start + segs.slice(0, solidEnd).map(seg).join("");
+    const dashed = partial ? `M${rnd(pts[solidEnd].x)},${rnd(pts[solidEnd].y)}${seg(segs[solidEnd])}` : "";
+    return { s, pts, line, dashed, area: pts.length ? `${line}L${x(solidEnd)},${base}L${x(0)},${base}Z` : "" };
   });
+  const noteFor = (i: number) => (partial && i === n - 1 ? ` (${partialNote})` : "");
 
   return (
     <div className="chart area-chart" ref={ref}>
@@ -90,21 +109,33 @@ export function AreaChart({
           </text>
         ))}
         {/* neutrale Serie zuerst, Hauptserie (Teal) liegt oben */}
-        {[...paths].reverse().map(({ s, line, area }, ri) => {
+        {[...paths].reverse().map(({ s, line, dashed, area }, ri) => {
           const si = series.length - 1 - ri;
           return (
             <g key={s.name} data-tone={s.tone ?? "teal"} className="area-series">
               <path className="area-fill" d={area} fill={`url(#${uid}-g${si})`} />
               <path className="area-line" d={line} pathLength={1} />
+              {dashed && <path className="area-line-partial" d={dashed} />}
             </g>
           );
         })}
         {paths.map(({ s, pts }) =>
-          pts.map((p, i) => <circle key={`${s.name}-${i}`} className="area-dot" data-tone={s.tone ?? "teal"} data-active={hover === i} cx={p.x} cy={p.y} r={hover === i ? 4.5 : 3.5} />),
+          pts.map((p, i) => (
+            <circle
+              key={`${s.name}-${i}`}
+              className="area-dot"
+              data-tone={s.tone ?? "teal"}
+              data-active={hover === i}
+              data-partial={partial && i === n - 1}
+              cx={p.x}
+              cy={p.y}
+              r={hover === i ? 4.5 : 3.5}
+            />
+          )),
         )}
         {labels.map((l, i) =>
           (n - 1 - i) % labelEvery === 0 ? (
-            <text key={l.label + i} className="chart-cat" data-current={i === n - 1} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}>
+            <text key={l.label + i} className="chart-cat" data-current={!partial && i === n - 1} data-partial={partial && i === n - 1} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"}>
               {l.label}
             </text>
           ) : null,
@@ -114,7 +145,10 @@ export function AreaChart({
       </svg>
       {hover != null && (
         <div className="chart-tooltip" style={{ left: Math.min(Math.max(x(hover), 90), width - 90), top: Math.min(...series.map((s) => y(s.values[hover] ?? 0))) }}>
-          <div className="chart-tooltip-title">{labels[hover].title ?? labels[hover].label}</div>
+          <div className="chart-tooltip-title">
+            {labels[hover].title ?? labels[hover].label}
+            {noteFor(hover)}
+          </div>
           {series.map((s) => (
             <div className="chart-tooltip-row" key={s.name}>
               <span className="swatch" data-tone={s.tone ?? "teal"} />
@@ -124,7 +158,7 @@ export function AreaChart({
           ))}
         </div>
       )}
-      <ChartTable caption={caption} head={[" ", ...series.map((s) => s.name)]} rows={labels.map((l, i) => [l.title ?? l.label, ...series.map((s) => format(s.values[i] ?? 0))])} />
+      <ChartTable caption={caption} head={[" ", ...series.map((s) => s.name)]} rows={labels.map((l, i) => [`${l.title ?? l.label}${noteFor(i)}`, ...series.map((s) => format(s.values[i] ?? 0))])} />
     </div>
   );
 }

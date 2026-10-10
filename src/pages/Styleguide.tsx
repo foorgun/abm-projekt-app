@@ -162,7 +162,7 @@ export function Styleguide() {
         <div className="grid-kpi">
           <KpiCard icon={<FolderOpen size={16} />} label="Aktive Projekte" value="38" trend={<Trend value={4} good />} foot="4 mehr als im Vormonat" info="Projekte mit Status aktiv" />
           <KpiCard icon={<ListTodo size={16} />} label="Offene Aufgaben" value="17" tone="warn" foot="davon 3 überfällig" />
-          <KpiCard icon={<Receipt size={16} />} label="Offene Rechnungen" value="13.500 €" tone="danger" valueTone="danger" foot="2 Rechnungen nicht versendet" />
+          <KpiCard icon={<Receipt size={16} />} label="Nicht versendet" value="13.500 €" tone="danger" valueTone="danger" foot="2 fällige Rechnungen" />
           <KpiCard icon={<Bot size={16} />} label="Zur Prüfung" value="5" tone="info" trend={<Trend value={-2} good />} foot="Posteingang-Agent, seit gestern" />
         </div>
 

@@ -24,7 +24,7 @@ export function InvoiceVolumeCard({ invoices, today, height = 250 }: { invoices:
             <TrendPill percent={trend.percent} against={trend.against} label={`${trend.month} ggü. ${trend.against}`} />
           </>
         }
-        sub="Letzte 12 Monate, nach Versand- bzw. Zahlungsmonat. Der laufende Monat ist noch unvollständig."
+        sub={`Letzte 12 Monate, nach Versand- bzw. Zahlungsmonat. ${volume[volume.length - 1].title.split(" ")[0]} läuft noch (gestrichelt).`}
         actions={<AreaLegend series={series} />}
       />
       <CardBody>
@@ -33,6 +33,8 @@ export function InvoiceVolumeCard({ invoices, today, height = 250 }: { invoices:
           height={height}
           labels={volume.map((m) => ({ label: m.label, title: m.title }))}
           series={series}
+          partialLast
+          partialNote="laufender Monat, unvollständig"
           format={(v) => formatMoney(Math.round(v * 100))}
         />
       </CardBody>

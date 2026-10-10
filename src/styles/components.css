@@ -3977,3 +3977,114 @@ a.list-item:hover {
 .card-title {
   flex-wrap: wrap;
 }
+
+/* Unvollständige letzte Periode: gestrichelter Abschnitt, Hohlpunkt, gedämpfte Beschriftung */
+.area-line-partial {
+  fill: none;
+  stroke: var(--series);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 2 6;
+  opacity: 0.75;
+}
+
+.area-dot[data-partial="true"] {
+  fill: var(--surface);
+  stroke-dasharray: 2.5 2.5;
+  stroke-width: 1.5;
+}
+
+.area-dot[data-partial="true"][data-active="true"] {
+  fill: var(--surface);
+}
+
+.chart-cat[data-partial="true"] {
+  fill: var(--faint);
+  font-style: italic;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .area-line-partial {
+    opacity: 0;
+    animation: area-fade-partial 0.4s ease-out 0.9s forwards;
+  }
+}
+
+@keyframes area-fade-partial {
+  to {
+    opacity: 0.75;
+  }
+}
+
+/* Reiter: Ausblenden am Rand, solange dort noch Inhalt folgt (vom Nutzer gewünschter Verlauf als Scroll-Hinweis) */
+.tabs[data-fade="end"],
+.segmented[data-fade="end"] {
+  mask-image: linear-gradient(to right, black calc(100% - 40px), transparent);
+}
+
+.tabs[data-fade="start"],
+.segmented[data-fade="start"] {
+  mask-image: linear-gradient(to left, black calc(100% - 40px), transparent);
+}
+
+.tabs[data-fade="both"],
+.segmented[data-fade="both"] {
+  mask-image: linear-gradient(to right, transparent, #000 40px, black calc(100% - 40px), transparent);
+}
+
+/* Rechnungen unter 640 px: Kartenliste statt Tabelle */
+.invoice-cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.invoice-card {
+  display: grid;
+  gap: 6px;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.invoice-card:first-child {
+  border-top: 0;
+}
+
+.invoice-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.invoice-card-project {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-card-amount {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.invoice-card-label {
+  font-size: var(--fs-13);
+  color: var(--text-2);
+}
+
+.invoice-card-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-12);
+}
+
+.invoice-card-action .btn {
+  width: 100%;
+}

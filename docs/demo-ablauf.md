@@ -15,7 +15,7 @@ Für die Vorführung vor Geschäftsführung und IT. Alle Daten sind erfunden; ni
 |---|---|---|---|
 | 0:00 | **Dashboard** | nichts | "Das ist die Startseite, die jeder morgens öffnet. Sie beantwortet: Wo steht jedes Projekt, was muss ich heute tun, liegt alles richtig?" |
 | 0:45 | Dashboard · **Handlungsbedarf** | auf die oberste Zeile zeigen | "Ganz oben: Genehmigung seit 8 Wochen da, Rechnung über 10.000 € nie verschickt. Genau dieser Fall ist uns passiert. Die App merkt das von selbst." |
-| 1:15 | Dashboard | Kachel **Offene Rechnungen** zeigen, dann zurück | "Alle Kacheln sind klickbar. Rot heißt: Geld liegt herum." |
+| 1:15 | Dashboard | Kachel **Nicht versendet** zeigen (führt zu Rechnungen, Reiter „Nicht versendet“), dann zurück | "Alle Kacheln sind klickbar. Rot heißt: Geld liegt herum." |
 | 1:30 | **Projekt Reinhardt** | oberste Warnung anklicken | "Ein Klick, und ich bin im Projekt." |
 | 1:45 | Projekt · **Prozess** | Schritte zeigen; beim nächsten Schritt aufs Datum klicken und ein Datum setzen | "Jeder Schritt mit Datum, wie in der Excel, aber man sieht sofort, was fehlt. Das Datum ändert man direkt hier." |
 | 2:30 | Projekt · Banner | **Als versendet markieren** | "Rechnung verschickt, Warnung weg." |
