@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 
 export interface Column<T> {
@@ -27,6 +27,7 @@ export function DataTable<T>({
   groupBy,
   stickyFirst,
   compact,
+  pageSize,
 }: {
   rows: T[];
   columns: Column<T>[];
@@ -42,9 +43,14 @@ export function DataTable<T>({
   stickyFirst?: boolean;
   /** Engere Zellenabstände für breite Tabellen. */
   compact?: boolean;
+  /** Lange Listen: zunächst so viele Zeilen zeigen, weitere per Button. */
+  pageSize?: number;
 }) {
   const [sort, setSort] = useState(initialSort ?? null);
   const [open, setOpen] = useState<string | null>(null);
+  const [limit, setLimit] = useState(pageSize ?? Infinity);
+  // Anderer Filter (andere Zeilenzahl): wieder von vorn
+  useEffect(() => setLimit(pageSize ?? Infinity), [pageSize, rows.length]);
 
   const sorted = useMemo(() => {
     if (!sort) return rows;
@@ -70,15 +76,16 @@ export function DataTable<T>({
 
   // Gruppen: stabil nach erstem Auftreten, innerhalb der Gruppe bleibt die Sortierung erhalten
   const grouped = useMemo(() => {
-    if (!groupBy) return [{ key: "", rows: sorted }];
+    const visible = sorted.slice(0, limit);
+    if (!groupBy) return [{ key: "", rows: visible }];
     const map = new Map<string, T[]>();
-    for (const r of sorted) {
+    for (const r of visible) {
       const k = groupBy(r);
       if (!map.has(k)) map.set(k, []);
       map.get(k)!.push(r);
     }
     return [...map.entries()].map(([key, rows]) => ({ key, rows }));
-  }, [sorted, groupBy]);
+  }, [sorted, groupBy, limit]);
 
   function renderRow(row: T) {
     const k = rowKey(row);
@@ -155,6 +162,13 @@ export function DataTable<T>({
           ))}
         </tbody>
       </table>
+      {sorted.length > limit && (
+        <div className="card-foot table-more">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLimit((n) => n + (pageSize ?? 25))}>
+            Weitere anzeigen ({Math.min(limit, sorted.length)} von {sorted.length})
+          </button>
+        </div>
+      )}
     </div>
   );
 }

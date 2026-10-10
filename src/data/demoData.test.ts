@@ -38,6 +38,11 @@ describe("Demo-Daten", () => {
     expect(computeAlerts(later, "2027-03-15")[0]).toMatchObject({ kind: "invoice_unsent", days: 42 });
   });
 
+  it("Einträge von heute liegen vor 8 Uhr (nichts in der Zukunft, wenn die Demo morgens läuft)", () => {
+    const stamps = [...db.activities.map((a) => a.at), ...db.documents.map((d) => d.createdAt), ...db.inboxItems.map((i) => i.receivedAt)];
+    for (const t of stamps.filter((x) => x.startsWith(TODAY))) expect(t.slice(11, 16) < "08:00", t).toBe(true);
+  });
+
   it("hat keine Daten in der Zukunft", () => {
     for (const p of db.projects) for (const d of Object.values(p.steps)) expect(d! <= TODAY).toBe(true);
     for (const d of db.documents) expect(d.receivedOn! <= TODAY).toBe(true);

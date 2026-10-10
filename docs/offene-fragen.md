@@ -20,3 +20,6 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Agent: Sollen Mails ohne Anhang mit Projektbezug (z. B. Rückfrage vom Amt) als Aufgabe oder in der Prüfliste landen?
 - Agent: Passen die Sicherheitswerte (z. B. Nachname + Ort = 85 %, also immer Prüfliste)? Nach dem Testlauf mit 20 echten Mails anpassen.
 - Agent: Wer darf Regeln anlegen und Schwellen ändern (im Prototyp: Regeln alle Mitarbeiter, Schwellen nur Admin)?
+- Rechnungen: Ab wann gilt eine Rechnung als fällig zum Versand (im Prototyp 7 Tage nach dem auslösenden Schritt)? Welche Rechnungen
+  gibt es je Projekt (im Prototyp: Abschlag Vorplanung, Genehmigungsplanung, Ausführungsplanung/Baubegleitung, Schlussrechnung)?
+- Rechnungen: Soll auch "bezahlt" in der App gepflegt werden, oder kommt das später aus der Buchhaltung?

@@ -34,6 +34,10 @@ export function BarChart({
   unit = "",
   highlight,
   showValues = false,
+  format = (v) => v.toLocaleString("de-DE"),
+  axisFormat = compact,
+  selected,
+  onSelect,
 }: {
   data: BarDatum[];
   series: BarSeries[];
@@ -44,6 +48,13 @@ export function BarChart({
   highlight?: number;
   /** Summe über jeder Säule anzeigen (nur sinnvoll bei wenigen Kategorien). */
   showValues?: boolean;
+  /** Werte über den Säulen, im Tooltip (Achse: axisFormat) */
+  format?: (v: number) => string;
+  axisFormat?: (v: number) => string;
+  /** Gewählte Kategorie (z. B. als Filter für eine Tabelle); alle anderen werden gedämpft. */
+  selected?: number | null;
+  /** Macht die Säulen anklickbar (Maus und Tastatur). Erneuter Klick auf die gewählte Säule hebt die Auswahl auf. */
+  onSelect?: (index: number | null) => void;
 }) {
   const [ref, width] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<number | null>(null);
@@ -60,6 +71,9 @@ export function BarChart({
   const labelEvery = band < 30 ? 2 : 1;
 
   const h = hover != null ? data[hover] : null;
+  // Hervorgehoben ist die gewählte Säule, sonst die per Prop markierte (z. B. aktueller Monat)
+  const emphasis = selected ?? highlight;
+  const toggle = (i: number) => onSelect?.(selected === i ? null : i);
 
   return (
     <div className="chart" ref={ref}>
@@ -71,7 +85,7 @@ export function BarChart({
         </g>
         {ticks.map((t) => (
           <text key={t} className="chart-tick" x={PAD.left - 8} y={y(t)} dy="0.32em" textAnchor="end">
-            {compact(t)}
+            {axisFormat(t)}
           </text>
         ))}
         {hover != null && (
@@ -91,7 +105,7 @@ export function BarChart({
                 // Fuge: jedes Segment über dem ersten endet GAP über dem darunterliegenden
                 const bottom = si === 0 ? y0 : y0 - GAP;
                 const hh = Math.max(1, bottom - top);
-                const muted = highlight != null && highlight !== i && hover !== i;
+                const muted = emphasis != null && emphasis !== i && hover !== i;
                 return si === last ? (
                   <path key={si} className="bar" data-series={si + 1} data-muted={muted} d={topRounded(x, top, barW, hh)} />
                 ) : (
@@ -99,23 +113,41 @@ export function BarChart({
                 );
               })}
               {showValues && totals[i] > 0 && (
-                <text className="chart-value" data-current={highlight === i} x={x + barW / 2} y={y(totals[i]) - 6} textAnchor="middle">
-                  {totals[i].toLocaleString("de-DE")}
+                <text className="chart-value" data-current={emphasis === i} x={x + barW / 2} y={y(totals[i]) - 6} textAnchor="middle">
+                  {format(totals[i])}
                 </text>
               )}
               {(data.length - 1 - i) % labelEvery === 0 && (
-                <text className="chart-cat" data-current={highlight === i} x={x + barW / 2} y={height - 8} textAnchor="middle">
+                <text className="chart-cat" data-current={emphasis === i} x={x + barW / 2} y={height - 8} textAnchor="middle">
                   {d.label}
                 </text>
               )}
               <rect
                 className="chart-hit"
+                data-clickable={Boolean(onSelect)}
                 x={PAD.left + band * i}
                 y={PAD.top}
                 width={band}
-                height={innerH}
+                height={innerH + PAD.bottom}
                 onMouseEnter={() => setHover(i)}
                 onMouseLeave={() => setHover(null)}
+                {...(onSelect
+                  ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-pressed": selected === i,
+                      "aria-label": `${d.title ?? d.label}: ${format(totals[i])}${selected === i ? ", Filter aktiv" : ", als Filter wählen"}`,
+                      onClick: () => toggle(i),
+                      onFocus: () => setHover(i),
+                      onBlur: () => setHover(null),
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          toggle(i);
+                        }
+                      },
+                    }
+                  : {})}
               />
             </g>
           );
@@ -130,7 +162,7 @@ export function BarChart({
               {series.length > 1 && <span className="swatch" data-series={si + 1} />}
               {s.name}
               <strong>
-                {h.values[si].toLocaleString("de-DE")}
+                {format(h.values[si])}
                 {unit}
               </strong>
             </div>
@@ -138,7 +170,7 @@ export function BarChart({
           {series.length > 1 && (
             <div className="chart-tooltip-row">
               Summe
-              <strong>{totals[hover].toLocaleString("de-DE")}</strong>
+              <strong>{format(totals[hover])}</strong>
             </div>
           )}
         </div>

@@ -269,3 +269,26 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   Zählwerte (Dashboard) bleiben Säulen. Bisher nur im Styleguide zu sehen, Einsatz in Etappe B (Rechnungen).
 - **Aktivitäten:** automatisch aus Warnungen erzeugte Aufgaben werden nicht mehr als Aktivität protokolliert (sie verdrängten echte Ereignisse).
 - **Stepper:** 2 px Innenabstand je Schritt; geprüft an allen 46 Demo-Projekten bei 1280 px (vorher nur an einem gemessen, das war zu wenig).
+
+## Design v2, Etappe B – Rechnungen mit Charts
+
+- **Begriff "nicht versendet"** = fällig und noch nicht versendet (es gibt dazu eine Warnung). Geplante Rechnungen, deren Auslöser noch
+  nicht erreicht ist, zählen nicht mit und stehen nur im Reiter "Alle". Reiter: Alle (Standard) · Nicht versendet · Versendet · Bezahlt.
+- **Kennzahlen** (`src/lib/invoiceStats.ts`): Nicht versendet (Summe + Anzahl, rot) · Versendet und offen · Bezahlt in den letzten 30 Tagen ·
+  Durchschnitt Tage von Fälligkeit bis Versand über 12 Monate. **Vor der Fälligkeit versendete Rechnungen zählen als 0 Tage**, nicht negativ.
+- **Rechnungsvolumen pro Monat** (`InvoiceVolumeCard`): AreaChart, versendet (Teal) nach Versandmonat, bezahlt (hell) nach Zahlungsmonat.
+  **Trend-Pill vergleicht den letzten vollständigen Monat mit dem davor** (z. B. "September ggü. August"), weil der laufende Monat
+  unvollständig ist und fast immer einen Einbruch zeigen würde. Die Karte steht auch auf dem Dashboard, als zusätzliche Karte in voller
+  Breite unter den zwei Diagrammen (nur Mitarbeiter); keine bestehende Kachel wurde ersetzt.
+- **Farben der zwei Serien:** Teal + helles Neutralgrau. Geprüft: unterscheidbar bei Farbfehlsichtigkeit und normalem Sehen, Kontrast zur
+  Fläche ≥ 3:1. Die Prüfung meldet für das Grau "liest sich grau": gewollt (Vorgabe "hell/neutral"), dazu Legende und Tooltip.
+- **Nicht versendet nach Alter:** Säulen mit Summe in Euro für 0–7, 8–30 und über 30 Tage seit Fälligkeit (Anzahl im Tooltip und in der
+  Tabellenansicht). Klick oder Enter auf eine Säule wechselt zum Reiter "Nicht versendet" und filtert; erneuter Klick oder das ✕ am
+  Filter-Chip hebt den Filter auf. `BarChart` hat dafür `onSelect`/`selected` (Säulen sind per Tastatur erreichbar).
+- **Tabelle:** nicht versendete zuerst (älteste oben), Status-Pill "42 Tage fällig" (rot ab 8 Tagen, darunter orange),
+  25 Zeilen, weitere per "Weitere anzeigen" (neue Option `pageSize` der Tabelle).
+- **Demo-Daten:** 14 ältere, abgeschlossene Projekte (Eingang vor 13 bis 24 Monaten) ergänzt, damit die 12-Monats-Verläufe nicht bei null
+  beginnen; insgesamt 150 erfundene Rechnungen. **Annahmen:** fällig 7 Tage nach dem auslösenden Schritt, Versand −4 bis +9 Tage um die
+  Fälligkeit, Zahlung 8 bis 28 Tage nach Versand; Beträge 1.800 bis 12.000 €. Zwei weitere fällige, nicht versendete Rechnungen
+  (5 und 18 Tage) für die Altersverteilung; der 10.000-€-Fall bleibt die oberste Warnung. Der Seitenkopf sagt, dass Beträge und Auslöser Annahmen sind.
+- **Demo-Uhrzeiten:** alle erfundenen Einträge von heute liegen vor 8 Uhr (per Test), damit nichts "in der Zukunft" erscheint.

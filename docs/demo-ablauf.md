@@ -34,6 +34,11 @@ Für die Vorführung vor Geschäftsführung und IT. Alle Daten sind erfunden; ni
 | 9:40 | Benutzermenü | Rolle **Freiberufler** | "So sieht ein freier Mitarbeiter die App: nur seine Projekte, keine Rechnungen, keine Kontaktdaten der Bauherren." |
 | 10:00 | | Rolle zurück auf Admin | Abschluss: "Das ist der klickbare Prototyp. Nächster Schritt: echte Datenbank in Frankfurt, dann mit IT der Testlauf mit einem Postfach." |
 
+Optional, wenn nach Geld gefragt wird (1 Minute): **Rechnungen** öffnen. Oben steht, was fällig und nicht versendet ist
+(rot), rechts die Verteilung nach Alter: Balken "über 30 Tage" anklicken → die Tabelle zeigt nur diese Rechnung(en).
+Sagen: "Das Diagramm zeigt, was pro Monat verschickt und bezahlt wurde. Beträge und Auslöser sind hier erfunden,
+die echten Regeln legen wir gemeinsam fest."
+
 Gut zu wissen (Design v2):
 
 - Oben rechts gibt es nur noch einen Hauptbutton **+ Neues Projekt** (öffnet direkt das Formular mit allen Feldern).

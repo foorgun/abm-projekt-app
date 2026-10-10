@@ -55,7 +55,8 @@ const SURNAMES = [
   "Albrecht", "Baumann", "Brenner", "Dietrich", "Eberle", "Fischer", "Graf", "Haas", "Hofmann", "Huber", "Jäger",
   "Kaiser", "Keller", "Kraus", "Lehmann", "Maier", "Moser", "Neumann", "Ott", "Pfeiffer", "Rapp", "Roth", "Sauter",
   "Schäfer", "Schmid", "Seitz", "Sommer", "Stark", "Vogt", "Wagner", "Walter", "Weber", "Winkler", "Wolf", "Zeller",
-  "Bühler", "Frank", "Lutz", "Mayer", "Reiß",
+  "Bühler", "Frank", "Lutz", "Mayer", "Reiß", "Arnold", "Beck", "Dreher", "Ernst", "Geiger", "Haug", "Jung", "Kurz",
+  "Lang", "Metzger", "Nagel", "Pfister", "Rieger", "Schuler", "Thoma", "Ulmer", "Veit", "Wieland", "Ziegler", "Gebhardt",
 ];
 
 const TOWNS: [string, string][] = [
@@ -135,6 +136,8 @@ const SPECIAL: ProjectSpec[] = [
 ];
 
 const RANDOM_COUNT = 34;
+/** Ältere Projekte (Eingang vor 13 bis 24 Monaten), inzwischen abgeschlossen: liefern Rechnungen für die 12-Monats-Verläufe. */
+const OLD_COUNT = 14;
 
 function daysAgo(today: string, iso: string) {
   return Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000);
@@ -184,6 +187,13 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const steps = allStepDefinitions();
   const folderTemplates = buildFolderTemplates();
 
+  /** Uhrzeit für Demo-Einträge: heute nur früh (6 bis 8 Uhr), damit nichts "in der Zukunft" liegt, wenn die Demo morgens läuft. */
+  const clock = (date: string) => {
+    const hour = r.int(8, 17);
+    const minute = r.int(0, 59);
+    return `${date}T${pad(date === today ? 6 + (hour % 2) : hour, 2)}:${pad(minute, 2)}:00`;
+  };
+
   // ---------------------------------------------------------------- Projekte
   const specs: ProjectSpec[] = [...SPECIAL];
   for (let i = 0; i < RANDOM_COUNT; i++) {
@@ -196,6 +206,10 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       status: r.chance(0.04) ? "storno" : undefined,
       kind: r.chance(0.05) ? "bauvoranfrage" : "neubau",
     });
+  }
+
+  for (let i = 0; i < OLD_COUNT; i++) {
+    specs.push({ stage: 0, lastAgo: 0, intakeAgo: 385 + Math.round(((i + r.next()) / OLD_COUNT) * 330), kind: "neubau" });
   }
 
   const usedNames = new Set(SPECIAL.map((s) => s.name));
@@ -292,13 +306,27 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const inv = (p: Project, label: string, euros: number, trigger: string, status: Invoice["status"], dueOn: string | null, sentOn: string | null, paidOn: string | null) =>
     invoices.push({ id: `i-${pad(invNo++)}`, projectId: p.id, label, amountCents: euros * 100, triggerStep: trigger, status, dueOn, sentOn, paidOn });
 
+  // Annahmen für die Demo (mit ABM abzustimmen, docs/offene-fragen.md):
+  // fällig 7 Tage nach dem auslösenden Schritt, versendet meist wenige Tage um die Fälligkeit, bezahlt 8 bis 28 Tage nach Versand.
+  const DUE_AFTER = 7;
+  function billed(p: Project, label: string, euros: number, trigger: string, stepDate: string, alwaysPaid = false) {
+    const due = addDays(stepDate, DUE_AFTER);
+    if (due > today) return inv(p, label, euros, trigger, "geplant", due, null, null);
+    let sent = addDays(due, r.int(-4, 9));
+    if (sent < stepDate) sent = stepDate;
+    if (sent > today) sent = today; // keine ungeplanten "nicht versendet"-Warnungen
+    const paid = alwaysPaid || r.chance(0.78) ? addDays(sent, r.int(8, 28)) : null;
+    const isPaid = paid != null && paid <= today;
+    inv(p, label, euros, trigger, isPaid ? "bezahlt" : "versendet", due, sent, isPaid ? paid : null);
+  }
+
   projects.forEach((p, idx) => {
     if (p.kind === "bauvoranfrage") {
-      if (p.steps.vertrag_zurueck) inv(p, "Bauvoranfrage pauschal", 1800, "vertrag_zurueck", "versendet", addDays(p.steps.vertrag_zurueck, 14), addDays(p.steps.vertrag_zurueck, 5), null);
+      if (p.steps.vertrag_zurueck) billed(p, "Bauvoranfrage pauschal", 1800, "vertrag_zurueck", p.steps.vertrag_zurueck);
       return;
     }
     const back = p.steps.vertrag_zurueck;
-    if (back) inv(p, "Abschlag Vorplanung", 3500, "vertrag_zurueck", "bezahlt", addDays(back, 14), addDays(back, 3), addDays(back, 17));
+    if (back) billed(p, "Abschlag Vorplanung", r.pick([2800, 3500, 3500, 4200]), "vertrag_zurueck", back, true);
     else if (p.status === "aktiv" && p.steps.vertrag_versendet) inv(p, "Abschlag Vorplanung", 3500, "vertrag_zurueck", "geplant", null, null, null);
 
     const permit = p.steps.baugenehmigung;
@@ -308,9 +336,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     } else if (idx === 6) {
       inv(p, "Abschlag Genehmigungsplanung", 8500, "baugenehmigung", "geplant", null, null, null);
     } else if (permit) {
-      const sent = addDays(permit, r.int(2, 9));
-      const paid = r.chance(0.7) ? addDays(sent, r.int(10, 25)) : null;
-      inv(p, "Abschlag Genehmigungsplanung", r.pick([8500, 9500, 10000, 12000]), "baugenehmigung", paid && paid <= today ? "bezahlt" : "versendet", addDays(permit, 14), sent, paid && paid <= today ? paid : null);
+      billed(p, "Abschlag Genehmigungsplanung", r.pick([8500, 9500, 10000, 12000]), "baugenehmigung", permit, p.status === "abgeschlossen");
     } else if (p.status === "aktiv") {
       inv(p, "Abschlag Genehmigungsplanung", r.pick([8500, 9500, 10000]), "baugenehmigung", "geplant", null, null, null);
     }
@@ -318,22 +344,21 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     if (idx === 7) {
       inv(p, "Abschlag Baubegleitung", 2400, "baufreigabe", "faellig", addDays(today, -12), null, null);
     } else if (p.steps.hausaufstellung) {
-      inv(p, "Schlussrechnung", r.pick([2500, 3200, 4000]), "hausaufstellung", "bezahlt", addDays(p.steps.hausaufstellung, 14), addDays(p.steps.hausaufstellung, 4), addDays(p.steps.hausaufstellung, 20));
+      billed(p, "Schlussrechnung", r.pick([2500, 3200, 4000]), "hausaufstellung", p.steps.hausaufstellung, p.status === "abgeschlossen");
     } else if (p.status === "aktiv" && p.steps.baufreigabe) {
       inv(p, "Schlussrechnung", r.pick([2500, 3200]), "hausaufstellung", "geplant", null, null, null);
     }
   });
-  // Bezahlt nie in der Zukunft
-  for (const i of invoices) {
-    if (i.paidOn && i.paidOn > today) {
-      i.paidOn = null;
-      i.status = "versendet";
-    }
-    if (i.sentOn && i.sentOn > today) {
-      i.sentOn = null;
-      i.status = "geplant";
-    }
-  }
+
+  // Zwei weitere fällige, nicht versendete Rechnungen (für die Verteilung nach Alter): 5 und 18 Tage überfällig
+  const lateCandidates = projects.filter((p, idx) => idx >= SPECIAL.length && p.status === "aktiv" && p.kind === "neubau" && p.steps.baufreigabe && p.steps.baufreigabe < addDays(today, -30));
+  [
+    { days: 5, euros: 4200 },
+    { days: 18, euros: 3600 },
+  ].forEach((x, i) => {
+    const p = lateCandidates[i];
+    if (p) inv(p, "Abschlag Ausführungsplanung", x.euros, "baufreigabe", "faellig", addDays(today, -x.days), null, null);
+  });
 
   // ---------------------------------------------------------------- Dokumente
   const documents: ProjectDocument[] = [];
@@ -353,7 +378,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       sourceItemId,
       receivedOn: date,
       uploadedBy: source === "upload" ? r.pick(TEAM).name : null,
-      createdAt: `${date}T${pad(r.int(8, 17), 2)}:${pad(r.int(0, 59), 2)}:00`,
+      createdAt: clock(date),
     });
   };
 
@@ -439,7 +464,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   for (const p of projects) {
     for (const [k, d] of Object.entries(p.steps)) {
       if (!d || d < addDays(today, -60)) continue;
-      act({ projectId: p.id, kind: "schritt", text: `${label(k)} erledigt`, actor: r.pick(TEAM).name, at: `${d}T${pad(r.int(8, 17), 2)}:${pad(r.int(0, 59), 2)}:00` });
+      act({ projectId: p.id, kind: "schritt", text: `${label(k)} erledigt`, actor: r.pick(TEAM).name, at: clock(d) });
     }
   }
   for (const d of documents) {
@@ -448,7 +473,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   }
   for (const i of invoices) {
     if (!i.sentOn || i.sentOn < addDays(today, -60)) continue;
-    act({ projectId: i.projectId, kind: "rechnung", text: `Rechnung versendet: ${i.label}`, actor: "Mehmet Cetin", at: `${i.sentOn}T10:15:00` });
+    act({ projectId: i.projectId, kind: "rechnung", text: `Rechnung versendet: ${i.label}`, actor: "Mehmet Cetin", at: i.sentOn === today ? `${i.sentOn}T07:50:00` : `${i.sentOn}T10:15:00` });
   }
   activities.sort((a, b) => b.at.localeCompare(a.at));
 

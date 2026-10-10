@@ -147,7 +147,7 @@ export function AreaLegend({ series }: { series: AreaSeries[] }) {
  * Trend-Pill für den Kartenkopf: Pfeil und Prozent gegenüber der Vorperiode.
  * Neutral gehalten (keine Wertung über Farbe); der Text sagt, womit verglichen wird.
  */
-export function TrendPill({ percent, against = "Vormonat" }: { percent: number | null; against?: string }) {
+export function TrendPill({ percent, against = "Vormonat", label }: { percent: number | null; against?: string; /** sichtbarer Zusatz, z. B. "Sep ggü. Aug" */ label?: string }) {
   if (percent == null) return null;
   const up = percent >= 0;
   const Icon = up ? TrendingUp : TrendingDown;
@@ -155,7 +155,8 @@ export function TrendPill({ percent, against = "Vormonat" }: { percent: number |
     <span className="trend-pill" title={`${up ? "+" : "−"}${Math.abs(percent)} % gegenüber ${against}`}>
       <Icon size={14} aria-hidden />
       {up ? "+" : "−"}
-      {Math.abs(percent)} %<span className="sr-only"> gegenüber {against}</span>
+      {Math.abs(percent)} %
+      {label ? <span className="trend-pill-label">{label}</span> : <span className="sr-only"> gegenüber {against}</span>}
     </span>
   );
 }

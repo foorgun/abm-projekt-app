@@ -4,6 +4,7 @@ import { Bot, CheckCircle2, Clock, FileText, FolderOpen, ListTodo, Receipt, Shie
 import { AlertList } from "../components/AlertList";
 import { BarChart } from "../components/charts/BarChart";
 import { HBarChart } from "../components/charts/HBarChart";
+import { InvoiceVolumeCard } from "../components/InvoiceVolumeCard";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import {
@@ -228,6 +229,9 @@ export function Dashboard() {
             </CardBody>
           </Card>
         </div>
+
+        {/* Rechnungsvolumen: zusätzliche Karte in voller Breite, nur für Mitarbeiter (Freiberufler sehen keine Rechnungen) */}
+        {staff && <InvoiceVolumeCard invoices={data.invoices} today={today} height={220} />}
 
         {staff && (
           <Card>
