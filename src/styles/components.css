@@ -4393,3 +4393,86 @@ li:first-child > .doc-card {
     flex-wrap: wrap;
   }
 }
+
+/* ---------------------------------------------------------------- Anmeldung */
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--sp-5);
+  padding: var(--sp-6) var(--sp-4);
+  background: var(--bg);
+}
+
+.auth-card {
+  width: min(400px, 100%);
+  display: grid;
+  gap: var(--sp-5);
+  padding: var(--sp-8) var(--sp-6) var(--sp-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-card);
+}
+
+.auth-logo {
+  height: 52px;
+  width: auto;
+  justify-self: start;
+  /* Logo ist weiß auf Schwarz: Schwarz verschwindet auf der dunklen Fläche */
+  mix-blend-mode: screen;
+}
+
+.auth-title {
+  font-size: var(--fs-20);
+}
+
+.auth-form {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.auth-form .btn {
+  margin-top: var(--sp-1);
+}
+
+.auth-error {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--danger);
+  border-radius: var(--r-ctl);
+  color: var(--danger);
+  font-size: var(--fs-13);
+}
+
+.auth-hint,
+.auth-foot {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-text {
+  font-size: var(--fs-14);
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.auth-text svg {
+  vertical-align: -3px;
+  color: var(--warn);
+}
+
+/* Dateiname als Knopf (Echtbetrieb: öffnet die Datei) */
+.file-open {
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.file-open:hover {
+  text-decoration: underline;
+}

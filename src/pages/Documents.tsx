@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Bot, CalendarDays, ClipboardCheck, File, FileImage, FileText, Files, FolderInput, Info, Mail, Search, Upload, X } from "lucide-react";
+import { Bot, CalendarDays, ClipboardCheck, ExternalLink, File, FileImage, FileText, Files, FolderInput, Info, Mail, Search, Upload, X } from "lucide-react";
 import { FolderPicker } from "../components/FolderPicker";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
@@ -10,6 +10,7 @@ import { checkFile, fileKind } from "../lib/files";
 import { concretePath, DATE_TOKEN, displayPath } from "../lib/folders";
 import { formatBytes, formatDate, formatRelative } from "../lib/format";
 import { projectTitle } from "../lib/projects";
+import { useOpenDocument } from "../components/useOpenDocument";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import { NARROW, useMediaQuery } from "../lib/useMedia";
@@ -306,6 +307,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function DocumentPanel({ row, demo, onClose }: { row: DocumentRow; demo: boolean; onClose: () => void }) {
   const { doc, project, mail } = row;
   const staff = useSession().user.role !== "freiberufler";
+  const open = useOpenDocument();
   const kind = fileKind(doc.name, doc.mime);
   const KIND_TEXT = { pdf: "PDF", bild: "Bild", office: "Office-Dokument", mail: "Mail", datei: "Datei" };
   return (
@@ -369,11 +371,16 @@ function DocumentPanel({ row, demo, onClose }: { row: DocumentRow; demo: boolean
         </section>
       )}
 
+      {open && (
+        <Button variant="outline" icon={<ExternalLink size={15} />} onClick={() => open(doc)}>
+          Datei öffnen
+        </Button>
+      )}
       <p className="drawer-note">
         <Info size={14} aria-hidden />
         {demo
           ? "Vorschau und Download gibt es im Demo-Modus nicht: Die Demo speichert nur Angaben zur Datei (Name, Größe, Ordner), keine Inhalte. Im Echtbetrieb liegen die Dateien im privaten Speicher und lassen sich hier öffnen."
-          : "Die Datei liegt im privaten Speicher des Projekts."}
+          : "Die Datei liegt im privaten Speicher des Projekts. Der Link zum Öffnen gilt eine Minute und nur für dich."}
       </p>
     </Drawer>
   );
@@ -401,7 +408,7 @@ function UploadDialog({ defaultProjectId, onClose }: { defaultProjectId: string 
     let ok = 0;
     const errors: string[] = [];
     for (const f of valid) {
-      const res = await mutate((r) => r.uploadDocument({ projectId, folderPath, file: { name: f.name, size: f.size, type: f.type } }));
+      const res = await mutate((r) => r.uploadDocument({ projectId, folderPath, file: { name: f.name, size: f.size, type: f.type }, blob: f }));
       if (res.ok) ok++;
       else errors.push(`${f.name}: ${res.error}`);
     }

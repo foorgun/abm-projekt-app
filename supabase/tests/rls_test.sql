@@ -57,8 +57,8 @@ insert into storage.objects (bucket_id, name) values
 -- Nicht angemeldet (anon) -------------------------------------------------
 begin;
 set local role anon;
-select test.expect('anon sieht keine Projekte',  (select count(*) from public.projects), 0);
-select test.expect('anon sieht keine Rechnungen', (select count(*) from public.invoices), 0);
+select test.throws('anon darf Projekte nicht einmal ansprechen',  $$select count(*) from public.projects$$);
+select test.throws('anon darf Rechnungen nicht einmal ansprechen', $$select count(*) from public.invoices$$);
 rollback;
 
 -- Angemeldet, aber ohne Rolle ----------------------------------------------
@@ -92,9 +92,9 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
-select test.expect('Admin darf Rolle vergeben',
-  test.affected($$insert into public.user_roles (user_id, role)
-                  values ('00000000-0000-4000-8000-0000000000a4', 'mitarbeiter')$$), 1);
+select test.expect('Admin sieht alle Rollen', (select count(*) from public.user_roles), 3);
+select test.throws('Rollen vergibt auch der Admin nicht über die App (nur Skript oder Dashboard)',
+  $$insert into public.user_roles (user_id, role) values ('00000000-0000-4000-8000-0000000000a4', 'mitarbeiter')$$);
 rollback;
 
 -- Freiberufler (nur Projekt 1) -------------------------------------------------
@@ -146,8 +146,8 @@ select test.expect('Mitarbeiter sieht Ordnervorlage (126 Ordner)', (select count
 select test.expect('Mitarbeiter sieht Aufgaben',      (select count(*) from public.tasks), 2);
 select test.expect('Mitarbeiter sieht Aktivitäten',   (select count(*) from public.activities), 1);
 select test.expect('Mitarbeiter sieht Postfächer',    (select count(*) from public.mailboxes), 1);
-select test.expect('Mitarbeiter sieht Posteingang',   (select count(*) from public.inbox_items), 1);
-select test.expect('Mitarbeiter sieht Anhänge',       (select count(*) from public.inbox_attachments), 1);
+select test.expect('Mitarbeiter sieht Posteingang',   (select count(*) from public.inbox_items), 2);
+select test.expect('Mitarbeiter sieht Anhänge',       (select count(*) from public.inbox_attachments), 2);
 select test.expect('Mitarbeiter sieht Agent-Läufe',   (select count(*) from public.agent_runs), 1);
 select test.expect('Mitarbeiter sieht Agent-Regeln',  (select count(*) from public.agent_rules), 2);
 select test.expect('Mitarbeiter darf Aufgabe anlegen',
@@ -166,16 +166,10 @@ select test.throws('Regel mit Großbuchstaben/Leerzeichen wird abgelehnt',
   $$insert into public.agent_rules (kind, match) values ('ignorieren', ' News@Example.com')$$);
 select test.throws('Regel auf Ordner außerhalb der Vorlage wird abgelehnt',
   $$insert into public.agent_rules (kind, match, folder_path) values ('absender_ordner', 'x@example.com', '99 Erfunden')$$);
-select test.throws('Mail mit gleicher message_id wird nicht doppelt gespeichert',
-  $$insert into public.inbox_items (mailbox_id, message_id, received_at, from_email) values ('ab000000-0000-4000-8000-000000000001', '<seed-1@abm-demo.example>', now(), 'x@example.com')$$);
-select test.throws('Postfach mit Passwort in secret_ref wird abgelehnt',
-  $$insert into public.mailboxes (label, address, provider, secret_ref) values ('X', 'x@abm-demo.example', 'imap', 'password=geheim')$$);
 select test.expect('Mitarbeiter darf Schwellen NICHT ändern (nur Admin)',
   test.affected($$update public.agent_settings set auto_file_threshold = 0.5$$), 0);
-select test.expect('Aktivitäten sind unveränderlich',
-  test.affected($$update public.activities set text = 'geändert'$$), 0);
-select test.expect('Aktivitäten sind nicht löschbar',
-  test.affected($$delete from public.activities$$), 0);
+select test.throws('Aktivitäten sind unveränderlich', $$update public.activities set text = 'geändert'$$);
+select test.throws('Aktivitäten sind nicht löschbar',  $$delete from public.activities$$);
 select test.throws('Mitarbeiter darf Ordnervorlage nicht ändern',
   $$insert into public.folder_templates (path, sort, label) values ('12 Neu', 99, '12 Neu')$$);
 rollback;
@@ -188,10 +182,8 @@ select test.expect('Admin darf Schwellen ändern',
   test.affected($$update public.agent_settings set auto_file_threshold = 0.95$$), 1);
 select test.throws('Schwellen in falscher Reihenfolge werden abgelehnt',
   $$update public.agent_settings set suggest_threshold = 0.97$$);
-select test.expect('Admin darf Ordnervorlage ergänzen',
-  test.affected($$insert into public.folder_templates (path, sort, label) values ('12 Gewährleistung', 999, '12 Gewährleistung')$$), 1);
-select test.throws('Ordnerpfad mit .. wird abgelehnt',
-  $$insert into public.folder_templates (path, sort, label) values ('08 Bauantrag/../geheim', 1000, 'x')$$);
+select test.throws('Ordnervorlage ändert auch der Admin noch nicht über die App (kein GRANT)',
+  $$insert into public.folder_templates (path, sort, label) values ('12 Gewährleistung', 999, '12 Gewährleistung')$$);
 rollback;
 
 -- Freiberufler (nur Projekt 1) -------------------------------------------------------
@@ -214,6 +206,167 @@ select test.throws('Freiberufler darf keine Agent-Regel anlegen',
   $$insert into public.agent_rules (kind, match) values ('ignorieren', 'x@example.com')$$);
 select test.throws('Freiberufler darf keine Beteiligten ändern',
   $$insert into public.project_parties (project_id, role, name) values ('a0000000-0000-4000-8000-000000000001', 'wasser', 'X')$$);
+rollback;
+
+-- ===========================================================================
+-- Regeln der Tabellen selbst (ohne Rollenwechsel, wie der Agent mit service_role)
+-- ===========================================================================
+select test.throws('Mail mit gleicher message_id wird nicht doppelt gespeichert',
+  $$insert into public.inbox_items (mailbox_id, message_id, received_at, from_email) values ('ab000000-0000-4000-8000-000000000001', '<seed-1@abm-demo.example>', now(), 'x@example.com')$$);
+select test.throws('Postfach mit Passwort in secret_ref wird abgelehnt',
+  $$insert into public.mailboxes (label, address, provider, secret_ref) values ('X', 'x@abm-demo.example', 'imap', 'password=geheim')$$);
+select test.throws('Ordnerpfad der Vorlage mit .. wird abgelehnt',
+  $$insert into public.folder_templates (path, sort, label) values ('08 Bauantrag/../geheim', 1000, 'x')$$);
+select test.throws('Ordnerpfad eines Dokuments mit .. wird abgelehnt (0005)',
+  $$insert into public.documents (project_id, name, storage_path, folder_path) values ('a0000000-0000-4000-8000-000000000001', 'x.pdf', 'x/y', '08 Bauantrag/../geheim')$$);
+
+-- ===========================================================================
+-- Migration 0004: GRANTs. anon nichts, authenticated nur was die App braucht
+-- ===========================================================================
+select test.expect('anon hat auf keiner Tabelle irgendein Recht',
+  (select count(*) from pg_tables t, unnest(array['select','insert','update','delete','truncate','references','trigger']) p
+   where t.schemaname = 'public' and has_table_privilege('anon', format('%I.%I', t.schemaname, t.tablename), p)), 0);
+select test.expect('anon hat auf keiner Spalte ein Recht',
+  (select count(*) from information_schema.column_privileges where table_schema = 'public' and grantee in ('anon', 'PUBLIC')), 0);
+select test.expect('anon darf keine Funktion der App ausführen',
+  (select count(*) from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+   where n.nspname = 'public' and has_function_privilege('anon', f.oid, 'execute')), 0);
+select test.expect('authenticated darf nur in project_steps und agent_rules löschen',
+  (select count(*) from pg_tables t where t.schemaname = 'public'
+     and has_table_privilege('authenticated', format('%I.%I', t.schemaname, t.tablename), 'delete')
+     and t.tablename not in ('project_steps', 'agent_rules')), 0);
+select test.expect('authenticated darf nirgends TRUNCATE',
+  (select count(*) from pg_tables t where t.schemaname = 'public'
+     and has_table_privilege('authenticated', format('%I.%I', t.schemaname, t.tablename), 'truncate')), 0);
+select test.expect('service_role darf jede Tabelle lesen und schreiben',
+  (select count(*) from pg_tables t where t.schemaname = 'public'
+     and not has_table_privilege('service_role', format('%I.%I', t.schemaname, t.tablename), 'select, insert, update, delete')), 0);
+select test.expect('Jede Tabelle hat RLS eingeschaltet',
+  (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity), 0);
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.throws('Mitarbeiter darf Rechnungsbetrag nicht ändern (Spaltenrecht)',
+  $$update public.invoices set amount_cents = 1 where id = 'e0000000-0000-4000-8000-000000000001'$$);
+select test.throws('Mitarbeiter darf kein Projekt löschen', $$delete from public.projects$$);
+select test.throws('Mitarbeiter darf kein Dokument löschen', $$delete from public.documents$$);
+select test.throws('secret_ref der Postfächer ist nicht lesbar', $$select secret_ref from public.mailboxes$$);
+select test.expect('Postfächer ohne secret_ref lesbar',
+  (select count(*) from (select id, label, address, provider, status, last_checked_at, watch_folder, is_demo from public.mailboxes) x), 1);
+select test.expect('Mitarbeiter darf Postfach pausieren',
+  test.affected($$update public.mailboxes set status = 'pausiert'$$), 1);
+select test.throws('Mitarbeiter darf keine Mails in den Posteingang schreiben (nur der Agent)',
+  $$insert into public.inbox_items (mailbox_id, message_id, received_at, from_email) values ('ab000000-0000-4000-8000-000000000001', '<x@y>', now(), 'x@example.com')$$);
+select test.throws('Mitarbeiter darf keine Firma anlegen (Stammdaten nur lesen)',
+  $$insert into public.companies (name) values ('Neu')$$);
+select test.expect('Mitarbeiter darf Schritt zurücksetzen (Zeile löschen)',
+  test.affected($$delete from public.project_steps where project_id = 'a0000000-0000-4000-8000-000000000003'$$), 1);
+rollback;
+
+-- ===========================================================================
+-- Migration 0005: Anzeigename, Prüfliste
+-- ===========================================================================
+update public.user_roles set full_name = 'Anna Admin'       where user_id = '00000000-0000-4000-8000-0000000000a1';
+update public.user_roles set full_name = 'Mira Mitarbeiter' where user_id = '00000000-0000-4000-8000-0000000000a2';
+update public.user_roles set full_name = 'Frank Frei'       where user_id = '00000000-0000-4000-8000-0000000000a3';
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiter liest nur die eigene Rolle (keine Nutzerverwaltung)', (select count(*) from public.user_roles), 1);
+select test.expect('Mitarbeiter sieht die Namen aller Kollegen', (select count(*) from public.list_user_names()), 3);
+select test.expect('Eigener Anzeigename', (select count(*) from (select public.current_user_name() n) x where n = 'Mira Mitarbeiter'), 1);
+
+-- Bestätigen: Dokument entsteht, Anhang abgelegt, Mail abgelegt, Lernbeispiel, Protokoll, Regel
+select public.resolve_review('20000000-0000-4000-8000-000000000002', 'bestaetigen', null, null, 'absender_ordner', '04 Vermesser/02 Vermesserunterlagen erhalten am {datum}');
+select test.expect('Prüfliste bestätigen: Dokument angelegt',
+  (select count(*) from public.documents where source_item_id = '20000000-0000-4000-8000-000000000002' and source = 'agent'
+     and folder_path = '04 Vermesser/02 Vermesserunterlagen erhalten am 08.10.2026' and received_on = '2026-10-08'), 1);
+select test.expect('Prüfliste bestätigen: Anhang abgelegt und mit Dokument verknüpft',
+  (select count(*) from public.inbox_attachments where id = '20000000-0000-4000-8000-000000000002' and status = 'abgelegt' and document_id is not null), 1);
+select test.expect('Prüfliste bestätigen: Mail gilt als abgelegt',
+  (select count(*) from public.inbox_items where id = '10000000-0000-4000-8000-000000000002' and status = 'abgelegt'), 1);
+select test.expect('Prüfliste bestätigen: Lernbeispiel gespeichert',
+  (select count(*) from public.agent_feedback where attachment_id = '20000000-0000-4000-8000-000000000002' and action = 'bestaetigt'), 1);
+select test.expect('Prüfliste bestätigen: Aktivität mit Namen',
+  (select count(*) from public.activities where actor = 'Mira Mitarbeiter' and text = 'Hoehenaufnahme.pdf nach Prüfung abgelegt'), 1);
+select test.expect('Prüfliste bestätigen: Regel Absender → Ordner gemerkt',
+  (select count(*) from public.agent_rules where kind = 'absender_ordner' and match = 'buero@vermessung-donautal.example'), 1);
+
+-- Als falsch melden, dann in ein anderes Projekt ändern: dieselbe Kopie wandert, keine zweite
+select public.report_wrong_filing('20000000-0000-4000-8000-000000000002');
+select test.expect('Falsch gemeldet: zurück in der Prüfliste und als korrigiert gezählt',
+  (select count(*) from public.inbox_attachments where id = '20000000-0000-4000-8000-000000000002' and status = 'pruefen' and corrected), 1);
+select test.expect('Falsch gemeldet: Mail wieder in Prüfung',
+  (select count(*) from public.inbox_items where id = '10000000-0000-4000-8000-000000000002' and status = 'pruefen'), 1);
+select public.resolve_review('20000000-0000-4000-8000-000000000002', 'aendern', 'a0000000-0000-4000-8000-000000000003', '04 Vermesser');
+select test.expect('Ändern: weiterhin genau ein Dokument, jetzt im anderen Projekt',
+  (select count(*) from public.documents where source_item_id = '20000000-0000-4000-8000-000000000002'
+     and project_id = 'a0000000-0000-4000-8000-000000000003' and folder_path = '04 Vermesser'), 1);
+select test.expect('Ändern: kein zweites Dokument',
+  (select count(*) from public.documents where source_item_id = '20000000-0000-4000-8000-000000000002'), 1);
+select test.throws('Ändern ohne Datum im Datumsordner wird abgelehnt',
+  $$select public.resolve_review('20000000-0000-4000-8000-000000000001', 'aendern', 'a0000000-0000-4000-8000-000000000001', '10 Bodengutachten/Bodengutachten erhalten am {datum}')$$);
+select test.throws('Nur abgelegte Anhänge lassen sich als falsch melden',
+  $$select public.report_wrong_filing('20000000-0000-4000-8000-000000000002'); select public.report_wrong_filing('20000000-0000-4000-8000-000000000002')$$);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.resolve_review('20000000-0000-4000-8000-000000000002', 'ignorieren', null, null, 'ignorieren');
+select test.expect('Ignorieren: Anhang und Mail ignoriert, Regel gemerkt',
+  (select count(*) from public.inbox_attachments a join public.inbox_items i on i.id = a.item_id
+   where a.id = '20000000-0000-4000-8000-000000000002' and a.status = 'ignoriert' and i.status = 'ignoriert'
+     and exists (select 1 from public.agent_rules where kind = 'ignorieren' and match = 'buero@vermessung-donautal.example')), 1);
+select test.expect('Ignorieren legt kein Dokument an',
+  (select count(*) from public.documents where source_item_id = '20000000-0000-4000-8000-000000000002'), 0);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht nur den eigenen Namen', (select count(*) from public.list_user_names()), 1);
+select test.throws('Freiberufler darf die Prüfliste nicht entscheiden',
+  $$select public.resolve_review('20000000-0000-4000-8000-000000000002', 'bestaetigen')$$);
+select test.throws('Freiberufler darf nichts als falsch melden',
+  $$select public.report_wrong_filing('20000000-0000-4000-8000-000000000001')$$);
+select test.expect('Freiberufler darf Dokument in seinem Projekt eintragen',
+  test.affected($$insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+    values ('a0000000-0000-4000-8000-000000000001', 'skizze.pdf', 'a0000000-0000-4000-8000-000000000001/u1/skizze.pdf', '05 Entwurf', '00000000-0000-4000-8000-0000000000a3')$$), 1);
+select test.throws('Freiberufler darf kein Dokument in fremdem Projekt eintragen',
+  $$insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+    values ('a0000000-0000-4000-8000-000000000002', 'skizze.pdf', 'a0000000-0000-4000-8000-000000000002/u1/skizze.pdf', '05 Entwurf', '00000000-0000-4000-8000-0000000000a3')$$);
+rollback;
+
+-- ===========================================================================
+-- Migration 0006: Demo-Kennzeichen
+-- ===========================================================================
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.throws('Auch ein Admin darf über die App keine Demo-Daten kennzeichnen (Projekt anlegen)',
+  $$insert into public.projects (bauherr_label, is_demo) values ('X', true)$$);
+select test.throws('Kennzeichen lässt sich über die App nicht nachträglich ändern',
+  $$update public.projects set is_demo = true where id = 'a0000000-0000-4000-8000-000000000001'$$);
+select test.expect('Normales Anlegen bleibt möglich',
+  test.affected($$insert into public.projects (bauherr_label) values ('Neu')$$), 1);
+rollback;
+
+begin;
+update public.projects set is_demo = true where id = 'a0000000-0000-4000-8000-000000000001';
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Demo-Projekt lässt sich normal bearbeiten (Kennzeichen bleibt)',
+  test.affected($$update public.projects set status = 'abgeschlossen' where id = 'a0000000-0000-4000-8000-000000000001'$$), 1);
+reset role;
+select test.expect('Demo-Daten löschen: genau das eine Demo-Projekt', test.affected($$delete from public.projects where is_demo$$), 1);
+select test.expect('Demo-Daten löschen nimmt Rechnungen und Schritte mit',
+  (select count(*) from public.invoices where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.project_steps where project_id = 'a0000000-0000-4000-8000-000000000001'), 0);
+select test.expect('Echte Projekte unberührt', (select count(*) from public.projects), 4);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------

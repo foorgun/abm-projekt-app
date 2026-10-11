@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, RotateCcw, Settings, UserRound } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, LogOut, RotateCcw, Settings, UserRound } from "lucide-react";
 import logo from "../../assets/abm-logo.png";
 import { ROLE_LABEL, useSession, type AppRole } from "../../lib/session";
 import { useData } from "../../lib/store";
@@ -19,7 +19,7 @@ export function Sidebar({
   onNavigate: () => void;
   counts: Partial<Record<CountKey, number>>;
 }) {
-  const { user, setRole, demo } = useSession();
+  const { user, setRole, demo, signOut } = useSession();
   const { repo, mutate } = useData();
   const toast = useToast();
   const navigate = useNavigate();
@@ -122,13 +122,16 @@ export function Sidebar({
         <Menu
           side="top"
           align="left"
-          header={demo ? <div className="menu-label">Rolle ansehen als (Demo)</div> : undefined}
+          header={<div className="menu-label">{demo ? "Rolle ansehen als (Demo)" : user.email ?? user.name}</div>}
           items={[
-            ...roles.map((r) => ({
-              label: `${ROLE_LABEL[r]}${r === user.role ? " ✓" : ""}`,
-              icon: <UserRound size={14} />,
-              onSelect: () => setRole(r),
-            })),
+            // Rollenwechsel gibt es nur in der Demo: im Echtbetrieb kommt die Rolle aus der Datenbank
+            ...(demo
+              ? roles.map((r) => ({
+                  label: `${ROLE_LABEL[r]}${r === user.role ? " ✓" : ""}`,
+                  icon: <UserRound size={14} />,
+                  onSelect: () => setRole(r),
+                }))
+              : [{ label: "Abmelden", icon: <LogOut size={14} />, onSelect: () => void signOut() }]),
             ...(canReset ? (["sep", { label: "Demo zurücksetzen", icon: <RotateCcw size={14} />, onSelect: () => setConfirmReset(true) }] as const) : []),
           ]}
           trigger={(p) => (
@@ -142,7 +145,7 @@ export function Sidebar({
             </button>
           )}
         />
-        <div className="sidebar-version">v0.1 – Prototyp{repo.mode === "demo" ? " · Demo-Daten" : ""}</div>
+        <div className="sidebar-version">v0.1 – {repo.mode === "demo" ? "Prototyp · Demo-Daten" : "Pilot"}</div>
       </div>
       {confirmReset && (
         <Dialog

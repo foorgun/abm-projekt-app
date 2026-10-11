@@ -17,3 +17,9 @@ tools/out/
 import-*/
 screenshots/
 __pycache__/
+
+# Supabase: erzeugte Dateien, lokale Konten, Sicherungen (nie einchecken)
+supabase/.out/
+supabase/.temp/
+konten.local.json
+backups/

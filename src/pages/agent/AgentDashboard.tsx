@@ -23,7 +23,8 @@ const SERIES = [{ name: "Automatisch abgelegt" }, { name: "Zur Prüfung" }];
 
 /** Agent-Dashboard: Kennzahlen, Postfächer, Verlauf und die letzten Entscheidungen mit Begründung. */
 export function AgentDashboard() {
-  const { data, loading, error, reload, today, mutate } = useData();
+  const { data, loading, error, reload, today, mutate, repo } = useData();
+  const agentConnected = repo.mode === "demo";
   const { user } = useSession();
   const toast = useToast();
   const navigate = useNavigate();
@@ -44,10 +45,17 @@ export function AgentDashboard() {
   const head = (
     <PageHead
       title="Posteingangs-Agent"
-      sub="Liest die Postfächer (nur lesen), legt Kopien der Anhänge im Projektordner ab und begründet jede Entscheidung."
+      sub={agentConnected ? "Liest die Postfächer (nur lesen), legt Kopien der Anhänge im Projektordner ab und begründet jede Entscheidung." : "Noch nicht angeschlossen: Die Postfächer werden im Pilotbetrieb noch nicht gelesen. Prüfliste, Regeln und Schwellen arbeiten bereits mit der Datenbank."}
       actions={
         staff ? (
-          <Button variant="primary" icon={<RefreshCw size={15} className={running ? "spin" : undefined} />} disabled={running} onClick={() => void runNow()}>
+          <Button
+            variant="primary"
+            icon={<RefreshCw size={15} className={running ? "spin" : undefined} />}
+            // Im Pilotbetrieb ist der Agent noch nicht angeschlossen (Schritt 9): Knopf sichtbar, aber gesperrt und erklärt
+            disabled={running || !agentConnected}
+            title={agentConnected ? undefined : "Der Agent ist noch nicht angeschlossen (folgt in Schritt 9)"}
+            onClick={() => void runNow()}
+          >
             {running ? "Prüfe Postfächer …" : "Jetzt prüfen"}
           </Button>
         ) : undefined

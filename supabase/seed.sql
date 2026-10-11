@@ -109,3 +109,13 @@ insert into public.agent_runs (mailbox_id, started_at, finished_at, fetched, fil
 insert into public.agent_rules (kind, match, folder_path) values
   ('ignorieren', '@newsletter.baustoffe.example', null),
   ('absender_ordner', 'eingang@lra-demo.example', '08 Bauantrag/05 Eingangsbestätigung/01 Eingangsbestätigung');
+
+-- Ein Anhang, den der Agent nicht sicher zuordnen konnte (Prüfliste)
+insert into public.inbox_items (id, mailbox_id, message_id, received_at, from_name, from_email, subject, body_excerpt, status, project_id, confidence, reason) values
+  ('10000000-0000-4000-8000-000000000002', 'ab000000-0000-4000-8000-000000000001', '<seed-2@abm-demo.example>', '2026-10-08 11:40+02',
+   'Vermessung Donautal', 'buero@vermessung-donautal.example', 'Höhenaufnahme Engelhardt', 'Anbei die Höhenaufnahme.', 'pruefen',
+   'a0000000-0000-4000-8000-000000000002', 0.72, 'Bauherr Engelhardt im Betreff, Ordner unsicher');
+
+insert into public.inbox_attachments (id, item_id, file_name, mime, size_bytes, project_id, folder_path, confidence, status) values
+  ('20000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'Hoehenaufnahme.pdf', 'application/pdf', 230000,
+   'a0000000-0000-4000-8000-000000000002', '04 Vermesser/02 Vermesserunterlagen erhalten am 08.10.2026', 0.72, 'pruefen');

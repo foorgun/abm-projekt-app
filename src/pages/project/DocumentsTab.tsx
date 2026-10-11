@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type DragEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Bot, ChevronDown, ChevronRight, File, FileImage, FileText, Folder, FolderOpen, Mail, Upload } from "lucide-react";
 import { useToast } from "../../components/Toast";
+import { useOpenDocument } from "../../components/useOpenDocument";
 import { Button, Checkbox, Dialog, EmptyState, Field, Input, Pill, Select } from "../../components/ui";
 import { fileKind } from "../../lib/files";
 import { concretePath, displayPath } from "../../lib/folders";
@@ -26,6 +27,7 @@ interface PendingUpload {
  */
 export function DocumentsTab({ projectId, templates, documents }: { projectId: string; templates: FolderTemplate[]; documents: ProjectDocument[] }) {
   const { mutate, today } = useData();
+  const open = useOpenDocument();
   const toast = useToast();
   const tree = useMemo(() => buildFolderTree(templates, documents), [templates, documents]);
 
@@ -72,7 +74,7 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
     let ok = 0;
     const errors: string[] = [];
     for (const f of list) {
-      const res = await mutate((r) => r.uploadDocument({ projectId, folderPath, file: { name: f.name, size: f.size, type: f.type } }));
+      const res = await mutate((r) => r.uploadDocument({ projectId, folderPath, file: { name: f.name, size: f.size, type: f.type }, blob: f }));
       if (res.ok) ok++;
       else errors.push(`${f.name}: ${res.error}`);
     }
@@ -206,9 +208,15 @@ export function DocumentsTab({ projectId, templates, documents }: { projectId: s
                     <li key={f.id} className="file-row">
                       <Icon size={18} className="file-icon" aria-hidden />
                       <div className="file-main">
-                        <span className="file-name" title={`${f.name}\nVorschau und Download folgen mit Supabase Storage (Schritt 8)`}>
-                          {f.name}
-                        </span>
+                        {open ? (
+                          <button type="button" className="file-name file-open" title={`${f.name} öffnen`} onClick={() => open(f)}>
+                            {f.name}
+                          </button>
+                        ) : (
+                          <span className="file-name" title={`${f.name}\nVorschau und Download gibt es im Demo-Modus nicht`}>
+                            {f.name}
+                          </span>
+                        )}
                         <span className="file-meta">
                           {formatDate(f.receivedOn)} · {formatBytes(f.sizeBytes)}
                           {f.uploadedBy ? ` · ${f.uploadedBy}` : ""}

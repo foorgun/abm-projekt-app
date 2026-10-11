@@ -1,5 +1,5 @@
 // Repo-Interface: einziger Weg der Oberfläche zu den Daten.
-// demoRepo (erfundene Daten im Speicher) und supabaseRepo (ab Schritt 8) implementieren es gleich.
+// demoRepo (erfundene Daten im Speicher) und supabaseRepo (echte Datenbank) implementieren es gleich.
 // Die UI spricht nie direkt mit Supabase.
 
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
@@ -38,6 +38,8 @@ export interface UploadInput {
   /** Konkreter Ordnerpfad (Vorlagenpfad oder mit eingesetztem Datum). */
   folderPath: string;
   file: { name: string; size: number; type: string };
+  /** Inhalt der Datei. Im Demo-Modus ungenutzt (dort werden nur die Angaben gespeichert). */
+  blob?: Blob;
 }
 
 export type NewAgentRule = Pick<AgentRule, "kind" | "match" | "projectId" | "folderPath">;
@@ -90,6 +92,8 @@ export interface Repo {
    * Liefert je Dokument Projekt und, bei Herkunft Agent, die zugehörige Mail (Betreff, Absender, Begründung).
    */
   listDocuments(filter: DocumentFilter): Promise<DocumentListResult>;
+  /** Nur Echtbetrieb: kurzlebiger Link zum Öffnen einer Datei aus dem privaten Speicher. */
+  documentUrl?(doc: ProjectDocument): Promise<string>;
 
   createTask(input: NewTask): Promise<Task>;
   updateTask(id: string, patch: TaskPatch): Promise<Task>;

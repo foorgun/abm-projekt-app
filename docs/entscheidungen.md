@@ -329,3 +329,38 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   keine neue Tabelle nötig, die bestehenden Policies auf `documents` und den Posteingangstabellen müssen genau das leisten (RLS-Test ergänzen).
 - **Unter 640 px** Kartenliste statt Tabelle, 40 je Schritt („Weitere anzeigen“).
 - Zeitraum ohne Einschränkung heißt „Jederzeit“ (nicht „Alle“), damit er sich vom Quelle-Schalter „Alle“ unterscheidet.
+
+## Schritt 8 – Supabase, Punkte 1 bis 3 (Datenanbindung, Rechte, Anmeldung)
+
+- **Anmeldung mit E-Mail und Passwort**, nicht Magic Link. Gründe: kein Mailversand nötig (der eingebaute Versand im Free-Tarif
+  ist stark begrenzt), keine Weiterleitungsadressen, kein Konflikt mit dem HashRouter. Kein "Passwort vergessen" in der App;
+  Konten und Passwörter verwaltet der Admin (Dashboard, später Skript). Keine Registrierung in der Oberfläche.
+- **Anzeigename bei der Rolle** (`user_roles.full_name`, Migration 0005) statt einer eigenen Profiltabelle: ein Datensatz je Benutzer.
+  Ein Konto ohne Rolle sieht nichts; die App zeigt "Konto noch nicht freigeschaltet".
+- **GRANTs (Migration 0004):** `anon` bekommt nichts. `authenticated` bekommt je Tabelle nur die Aktionen, die die App ausführt,
+  teils spaltengenau (Rechnungen: nur Status und Daten, nie Beträge; Postfächer: ohne `secret_ref`). Löschen ist nur bei
+  `project_steps` (Datum zurücksetzen) und `agent_rules` erlaubt. `service_role` (Skripte, später Agent) bekommt alles.
+  Folge: **Rollen vergeben und Stammdaten pflegen geht noch nicht über die App**, auch nicht als Admin. Das kommt mit der
+  Einstellungsseite als eigene Migration. Zwei frühere Tests ("Admin darf Rolle vergeben", "Admin darf Ordnervorlage ergänzen")
+  prüfen deshalb jetzt das Gegenteil.
+- **Der lokale Test-Ersatz für Supabase vergibt keine Rechte mehr von selbst** (`supabase/tests/stub.sql`), wie das echte Projekt mit
+  "Automatically expose new tables" AUS. Erst dadurch prüfen die Tests die GRANTs wirklich mit.
+- **Prüfliste als Datenbankfunktion** (`resolve_review`, `report_wrong_filing`, Migration 0005): Dokument, Anhang, Mail, Lernbeispiel,
+  Regel und Protokoll ändern sich in einer Transaktion. Die Funktionen laufen mit den Rechten des Benutzers (kein Umgehen von RLS).
+- **Einfache Änderungen schreibt das Repo direkt** (Schritt setzen, Aufgabe, Rechnung versendet), der Protokolleintrag folgt als zweiter
+  Aufruf. Schlägt nur der Protokolleintrag fehl, bleibt die Änderung gültig (Warnung in der Konsole).
+- **Laden:** das Repo holt beim Start alle sichtbaren Tabellen (seitenweise zu 1000 Zeilen), Aktivitäten und Agent-Läufe nur die
+  neuesten 500. `listDocuments` filtert im Repo mit denselben Regeln wie die Demo. Für die Pilotgröße (rund 140 Projekte) reicht das;
+  bei deutlich mehr Dokumenten gehört das Filtern in die Datenbank.
+- **Zeitstempel** wandelt das Repo in Ortszeit ohne Zone um, damit die Oberfläche dieselbe Form bekommt wie im Demo-Modus.
+- **Dateien:** Upload in den privaten Speicher unter `<Projekt-ID>/<zufällig>/<Dateiname ohne Sonderzeichen>`; echter Name und Ordner
+  stehen in `documents`. Öffnen über einen Link, der 60 Sekunden gilt (neue Repo-Methode `documentUrl`, nur Echtbetrieb).
+  `UploadInput` trägt dafür jetzt auch den Inhalt (`blob`).
+- **Agent bleibt Demo:** im Echtbetrieb ist "Jetzt prüfen" gesperrt und erklärt. Prüfliste, Regeln, Postfächer und Schwellen arbeiten
+  schon mit der Datenbank.
+- **Demo-Build ohne Supabase:** der Supabase-Teil wird nachgeladen und steht hinter einer festen Bedingung. Ein Build ohne
+  `VITE_SUPABASE_*` enthält weder den Client noch eine Adresse (geprüft mit `grep supabase.co`). `npm run dev:demo` startet den
+  Demo-Modus neben dem Echtbetrieb.
+- **Demo-Kennzeichen `is_demo`** (Migration 0006) schon jetzt angelegt, damit die Migrationen in einem Zug angewendet werden können.
+  Die App kann es nicht setzen (Trigger), nur das spätere Seed-Skript.
+- **Abweichung vom Demo-Modus:** Freiberufler werden über `project_members` zugewiesen (Benutzerkonto), nicht über den Planer am Projekt.

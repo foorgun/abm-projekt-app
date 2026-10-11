@@ -23,3 +23,12 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Rechnungen: Ab wann gilt eine Rechnung als fällig zum Versand (im Prototyp 7 Tage nach dem auslösenden Schritt)? Welche Rechnungen
   gibt es je Projekt (im Prototyp: Abschlag Vorplanung, Genehmigungsplanung, Ausführungsplanung/Baubegleitung, Schlussrechnung)?
 - Rechnungen: Soll auch "bezahlt" in der App gepflegt werden, oder kommt das später aus der Buchhaltung?
+
+## Zu Schritt 8 (Supabase)
+
+- Vertrag zur Auftragsverarbeitung (AVV) mit Supabase: liegt er vor bzw. lässt er sich im Free-Tarif abschließen? Vor echten Bauherren-Daten klären.
+- Wechsel auf den Pro-Tarif: wann, und wer zahlt (Backups, keine Pause)?
+- Sollen Admins Rollen und Projektzuweisungen in der App pflegen (Nutzerverwaltung), oder reicht Skript/Dashboard?
+- Passwörter: Mindestlänge und Regeln im Dashboard festlegen (Authentication → Passwords). Zwei-Faktor-Anmeldung gewünscht?
+- Wird ein Dokument in der Prüfliste in ein anderes Projekt verschoben, bleibt die Datei im Speicher unter der alten Projekt-ID liegen.
+  Das muss der Agent in Schritt 9 lösen (Datei mit verschieben), sonst passt die Zugriffsregel des Speichers nicht mehr.
