@@ -433,3 +433,20 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   Testdaten heißen "Zzsmoke…" bzw. "ZZ-Smoketest …"; am Ende wird nachgezählt, ob etwas übrig ist.
 - **Sicherung ohne Dateien:** `export:backup` schreibt Tabellen, Kontenliste und Dateiliste. Die Dateien im Speicher und eine
   Wiederherstellung aus der Sicherung fehlen noch (offene Punkte).
+
+## Hosting für den Pilotbetrieb
+
+- **Cloudflare Pages + Access, ohne eigene Domain** (`docs/hosting-echtbetrieb.md`). Access mit Einmalcode und einzelnen freigegebenen
+  Adressen; die Anmeldung der App bleibt zusätzlich. Vorschau-Builds bekommen keine Supabase-Variablen und laufen im Demo-Modus.
+- **Styleguide nur in der Entwicklung:** Die Seite wird nur im Dev-Server geladen und ist im Produktions-Build nicht enthalten.
+  Unbekannte Adressen zeigen "Diese Seite gibt es nicht".
+- **Suchmaschinen:** `noindex` in `index.html`, `public/robots.txt` (alles gesperrt) und `X-Robots-Tag` in `public/_headers`.
+- **Sicherheits-Kopfzeilen** in `public/_headers`, darunter eine Content-Security-Policy: Skripte, Schriften und Bilder nur von der
+  eigenen Adresse, Verbindungen nur zur eigenen Adresse und zu `*.supabase.co`. Inline-Styles bleiben erlaubt (Diagramme).
+- **`npm run check:build`** prüft den Build vor dem Veröffentlichen auf Geheimnisse, interne Seiten und die Sperre für Suchmaschinen.
+- **Texte im Echtbetrieb ohne interne Verweise** ("BUILD.md", "Schritt 9", "Prototyp"). Die Fußzeile zeigt "v0.1 – Pilot".
+  Bewusst geblieben: Die Postfächer der Beispieldaten heißen "… (Demo)" und haben die Art "Demo". Das sind Daten, kein Hinweis der
+  Oberfläche; sie verschwinden mit den Demo-Daten.
+- **Einführung beim ersten Login** (`PilotIntro`), einmal je Konto und Gerät (im Browser gemerkt, nicht in der Datenbank), jederzeit
+  unter "Hilfe" nachzulesen. Die Hilfeseite ersetzt den bisherigen Platzhalter.
+- **Dialoge:** Kopf und Fuß bleiben stehen, nur der Inhalt scrollt. Vorher scrollte der ganze Dialog, auf dem Handy rutschte der Titel weg.

@@ -49,7 +49,7 @@ export function Invoices() {
       title="Rechnungen"
       sub="Rechnungen entstehen in der Buchhaltung. Hier wird verfolgt, ob sie versendet und bezahlt sind."
       actions={
-        <span className="assumption-note" title="Im Prototyp erfunden: Beträge, Auslöser (welcher Schritt eine Rechnung fällig macht) und die Frist von 7 Tagen. Mit ABM abzustimmen.">
+        <span className="assumption-note" title="Annahmen im Pilot: Beträge, Auslöser (welcher Schritt eine Rechnung fällig macht) und die Frist von 7 Tagen. Mit ABM abzustimmen.">
           <Info size={14} aria-hidden /> Beträge und Auslöser sind Annahmen
         </span>
       }

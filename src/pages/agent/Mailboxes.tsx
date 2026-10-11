@@ -225,7 +225,7 @@ function MailboxDialog({ initial, onClose }: { initial: MailboxInput; onClose: (
         </div>
         <p className="field-hint">
           Zugangsdaten werden hier nicht eingegeben. Im Echtbetrieb: App-Registrierung in Microsoft 365 nur mit „Mail.Read“, auf diese Postfächer
-          beschränkt; das Geheimnis liegt in Supabase Vault (BUILD.md Schritt 9).
+          beschränkt; das Geheimnis liegt verschlüsselt im Tresor der Datenbank, nie in dieser Tabelle.
         </p>
         {err && (
           <p className="form-error" role="alert">

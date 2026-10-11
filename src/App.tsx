@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
 import { createBackend, type Backend } from "./lib/createRepo";
@@ -9,14 +9,18 @@ import { Documents } from "./pages/Documents";
 import { AgentDashboard } from "./pages/agent/AgentDashboard";
 import { Mailboxes } from "./pages/agent/Mailboxes";
 import { ReviewList } from "./pages/agent/ReviewList";
+import { Help } from "./pages/Help";
 import { Invoices } from "./pages/Invoices";
 import { Login, NoRole, SessionError, SessionLoading } from "./pages/Login";
 import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
 import { Projects } from "./pages/Projects";
 import { ProjectDetail } from "./pages/project/ProjectDetail";
-import { Styleguide } from "./pages/Styleguide";
 import { Tasks } from "./pages/Tasks";
+
+// Interne Seite für die Entwicklung (alle Bausteine auf einen Blick). Nur im Dev-Server: Die Bedingung ist beim Build fest,
+// deshalb landet die Seite gar nicht erst im Produktions-Build.
+const Styleguide = import.meta.env.DEV ? lazy(() => import("./pages/Styleguide").then((m) => ({ default: m.Styleguide }))) : null;
 
 export function App() {
   // Demo-Modus: sofort da. Echtbetrieb: der Supabase-Teil wird nachgeladen.
@@ -57,10 +61,19 @@ export function App() {
                 <Route path="agent" element={<AgentDashboard />} />
                 <Route path="agent/pruefung" element={<ReviewList />} />
                 <Route path="agent/postfaecher" element={<Mailboxes />} />
-                <Route path="einstellungen" element={<Placeholder title="Einstellungen" step="Schritt 10" />} />
-                <Route path="hilfe" element={<Placeholder title="Hilfe" step="Schritt 10" />} />
-                <Route path="styleguide" element={<Styleguide />} />
-                <Route path="*" element={<Placeholder title="Seite nicht gefunden" step="–" />} />
+                <Route path="einstellungen" element={<Placeholder title="Einstellungen" />} />
+                <Route path="hilfe" element={<Help />} />
+                {Styleguide && (
+                  <Route
+                    path="styleguide"
+                    element={
+                      <Suspense fallback={null}>
+                        <Styleguide />
+                      </Suspense>
+                    }
+                  />
+                )}
+                <Route path="*" element={<Placeholder title="Seite nicht gefunden" notFound />} />
               </Route>
             </Routes>
           </HashRouter>

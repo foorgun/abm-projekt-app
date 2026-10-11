@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useData } from "../../lib/store";
 import { NewProjectProvider, useNewProject } from "../NewProjectDialog";
+import { PilotIntroProvider } from "../PilotIntro";
 import { ToastProvider } from "../Toast";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -45,7 +46,9 @@ export function AppShell() {
   return (
     <ToastProvider>
       <NewProjectProvider>
-        <ShellLayout collapsed={collapsed} setCollapsed={setCollapsed} drawer={drawer} setDrawer={setDrawer} />
+        <PilotIntroProvider>
+          <ShellLayout collapsed={collapsed} setCollapsed={setCollapsed} drawer={drawer} setDrawer={setDrawer} />
+        </PilotIntroProvider>
       </NewProjectProvider>
     </ToastProvider>
   );

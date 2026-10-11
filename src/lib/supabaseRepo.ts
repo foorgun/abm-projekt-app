@@ -59,7 +59,7 @@ const PAGE = 1000;
 export const ACTIVITY_LIMIT = 500;
 const RUN_LIMIT = 500;
 const DEFAULT_SETTINGS: AgentSettings = { autoFileThreshold: 0.9, suggestThreshold: 0.6 };
-const AGENT_NOT_CONNECTED = "Der Posteingangs-Agent ist noch nicht angeschlossen (folgt in Schritt 9). Prüfliste, Regeln und Postfächer arbeiten bereits mit der Datenbank.";
+const AGENT_NOT_CONNECTED = "Der Posteingangs-Agent ist noch nicht angeschlossen (folgt in einem späteren Schritt). Prüfliste, Regeln und Postfächer arbeiten bereits mit der Datenbank.";
 
 function fail(error: PostgrestError | { message: string; code?: string } | null, fallback?: string): never {
   const msg = dbErrorMessage(error, fallback);

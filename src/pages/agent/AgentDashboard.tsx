@@ -53,7 +53,7 @@ export function AgentDashboard() {
             icon={<RefreshCw size={15} className={running ? "spin" : undefined} />}
             // Im Pilotbetrieb ist der Agent noch nicht angeschlossen (Schritt 9): Knopf sichtbar, aber gesperrt und erklärt
             disabled={running || !agentConnected}
-            title={agentConnected ? undefined : "Der Agent ist noch nicht angeschlossen (folgt in Schritt 9)"}
+            title={agentConnected ? undefined : "Der Agent ist noch nicht angeschlossen (folgt in einem späteren Schritt)"}
             onClick={() => void runNow()}
           >
             {running ? "Prüfe Postfächer …" : "Jetzt prüfen"}

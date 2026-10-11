@@ -1,6 +1,9 @@
 # Demo als statische Webseite veröffentlichen (mit Passwortschutz)
 
-Nur Beschreibung. Noch nichts eingerichtet.
+Nur Beschreibung. Noch nichts eingerichtet. Diese Seite gilt für die **Demo ohne Datenbank**.
+Für den Pilotbetrieb mit Supabase siehe `docs/hosting-echtbetrieb.md`.
+
+`public/_headers` und `public/robots.txt` gibt es inzwischen im Repo (Punkt 4 der Prüfliste ist damit erledigt).
 
 ## Warum das ohne echte Daten geht
 
@@ -18,7 +21,8 @@ Nur Beschreibung. Noch nichts eingerichtet.
 2. Lokal bauen und prüfen, dass kein Supabase-Zugang im Ergebnis steckt:
    ```bash
    npm run typecheck && npm test && npm run build
-   grep -ri "supabase.co" dist/ || echo "ok: kein Supabase-Zugang im Build"
+   grep -ri "supabase.co" dist/assets dist/index.html || echo "ok: kein Supabase-Zugang im Build"
+   # (in dist/_headers steht "*.supabase.co" als erlaubtes Ziel der Sicherheits-Kopfzeile; das ist kein Zugang)
    npm run preview   # http://localhost:4173 ansehen, unten links muss "Demo-Daten" stehen
    ```
 3. Beim Host **keine** Umgebungsvariablen `VITE_SUPABASE_*` setzen.
