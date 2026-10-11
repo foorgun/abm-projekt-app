@@ -9,12 +9,14 @@ import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
-import { cleanMasterName, followupForMissingInfo, validateNewProject } from "./projectForm";
+import { planProjectUpdate } from "./projectEdit";
+import { cleanMasterName, followupForMissingInfo, followupKey, infoStateOfNew, validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
 import {
   PermissionError,
   type AgentRunSummary,
   type MailboxInput,
+  type ProjectPatch,
   type NewAgentRule,
   type NewProject,
   type NewTask,
@@ -24,7 +26,7 @@ import {
   type UploadInput,
 } from "./repo";
 import type { SessionUser } from "./session";
-import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Project, ProjectDocument, Task } from "./types";
+import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, Task } from "./types";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -158,6 +160,26 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     return a;
   }
 
+  /**
+   * Aufgabe "Fehlende Angaben nachfragen" abgleichen (wie sync_followup_task in Migration 0008): eine je Projekt.
+   * Fehlt nichts mehr, wird die offene Aufgabe erledigt; sonst umbenannt oder, wenn es noch keine gab, angelegt.
+   * Eine erledigte Aufgabe bleibt erledigt.
+   */
+  function syncFollowup(projectId: string, followup: { title: string; dueOn: string } | null) {
+    const key = followupKey(projectId);
+    const existing = db.tasks.find((t) => t.sourceKey === key);
+    if (!followup) {
+      if (existing?.status === "offen") Object.assign(existing, { status: "erledigt", doneAt: now() });
+      return;
+    }
+    if (existing) {
+      if (existing.status === "offen") existing.title = followup.title;
+      return;
+    }
+    // "manuell", nicht "warnung": sonst würde der Abgleich mit den Warnungen die Aufgabe sofort schließen
+    db.tasks.push({ id: newId("task"), projectId, title: followup.title, dueOn: followup.dueOn, assigneeId: project(projectId).architectId, status: "offen", source: "manuell", sourceKey: key, createdAt: now(), doneAt: null });
+  }
+
   return {
     mode: "demo",
 
@@ -210,25 +232,38 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.projects.unshift(p);
       const vermesser = input.vermesser?.trim();
       if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
+      const b = input.bauherr;
+      const val = (v: string | null | undefined) => v?.trim() || null;
+      if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name))) {
+        db.bauherren.push({ projectId: p.id, name: val(b.name) ?? p.bauherrLabel, address: val(b.address), phone: val(b.phone), email: val(b.email), buildingAddress: val(b.buildingAddress) });
+      }
       log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
       if (input.createFolders) log({ projectId: p.id, kind: "projekt", text: `Projektordner aus der Vorlage angelegt (${db.folderTemplates.length} Ordner)` });
       // Fehlende Angaben: eine Aufgabe zum Nachfragen (ohne eigenen Protokolleintrag)
-      const followup = followupForMissingInfo(input, todayIso());
-      if (followup) {
-        db.tasks.push({
-          id: newId("task"),
-          projectId: p.id,
-          title: followup.title,
-          dueOn: followup.dueOn,
-          assigneeId: p.architectId,
-          status: "offen",
-          source: "manuell",
-          sourceKey: `angaben:${p.id}`,
-          createdAt: now(),
-          doneAt: null,
-        });
-      }
+      syncFollowup(p.id, followupForMissingInfo(infoStateOfNew(input), todayIso()));
       return done(structuredClone(p));
+    },
+
+    async updateProject(projectId, patch: ProjectPatch) {
+      requireStaff();
+      const p = project(projectId);
+      const plan = planProjectUpdate(db, projectId, patch, todayIso());
+      const first = Object.values(plan.errors)[0];
+      if (first) throw new Error(first);
+      Object.assign(p, plan.project);
+      if (plan.bauherr) {
+        const row = { projectId, name: plan.bauherr.name ?? p.bauherrLabel, address: plan.bauherr.address, phone: plan.bauherr.phone, email: plan.bauherr.email, buildingAddress: plan.bauherr.buildingAddress };
+        const cur = db.bauherren.find((b) => b.projectId === projectId);
+        if (cur) Object.assign(cur, row);
+        else db.bauherren.push(row);
+      }
+      for (const [role, value] of Object.entries(plan.parties) as [PartyRole, { name: string; contact: string | null } | null][]) {
+        db.parties = db.parties.filter((x) => !(x.projectId === projectId && x.role === role));
+        if (value) db.parties.push({ projectId, role, ...value });
+      }
+      if (plan.activity) log({ projectId, kind: "projekt", text: plan.activity });
+      syncFollowup(projectId, plan.followup);
+      return done(undefined);
     },
 
     async createCompany(name) {

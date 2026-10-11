@@ -57,3 +57,12 @@ describe("Stufen", () => {
     expect(stageMoveTarget(p({ a: "x", b: "x", c: "x" }), STEPS)).toBeNull(); // schon in der letzten Stufe
   });
 });
+
+describe("Projekttitel", () => {
+  it("ohne ABM-Nr. nur der Name, nicht „Bauvoranfrage“", async () => {
+    const { projectTitle } = await import("./projects");
+    expect(projectTitle({ abmNr: null, bauherrLabel: "Hoffmann" })).toBe("Hoffmann");
+    expect(projectTitle({ abmNr: "8161-101", bauherrLabel: "Meyer" })).toBe("8161-101 · Meyer");
+    expect(projectTitle({ abmNr: "Bauvoranfrage", bauherrLabel: "Winter" })).toBe("Winter (Bauvoranfrage)");
+  });
+});

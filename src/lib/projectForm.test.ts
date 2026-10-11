@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDataset } from "../data/demoData";
-import { cleanMasterName, followupForMissingInfo, FOLLOWUP_DUE_DAYS, missingProjectInfo, validateNewProject } from "./projectForm";
+import { cleanMasterName, followupForMissingInfo, followupKey, FOLLOWUP_DUE_DAYS, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectInfoState } from "./projectForm";
 import type { NewProject } from "./repo";
 
 const db = buildDemoDataset("2026-10-10");
@@ -40,22 +40,42 @@ describe("Formular Neues Projekt", () => {
 });
 
 describe("Fehlende Angaben nachfragen", () => {
-  it("nennt, was fehlt, in der Reihenfolge des Formulars", () => {
-    expect(missingProjectInfo(ok)).toEqual([]);
-    expect(missingProjectInfo(onlyName)).toEqual(["Hausbaufirma", "ABM-Nr.", "Bauort", "Eingangsmonat"]);
-    expect(missingProjectInfo({ ...ok, abmNr: " " })).toEqual(["ABM-Nr."]);
+  const full: ProjectInfoState = { kind: "neubau", companyId: "c-bz", salespersonId: "s-1", phone: "0731 1", email: null, buildingAddress: "Weg 1", vermesser: "Vermessung X" };
+  const empty: ProjectInfoState = { kind: "neubau", companyId: null, salespersonId: null, phone: null, email: null, buildingAddress: null, vermesser: null };
+
+  it("prüft Kontakt, Bauadresse, Hausbaufirma, Verkäufer, Vermesser (in dieser Reihenfolge)", () => {
+    expect(missingProjectInfo(full)).toEqual([]);
+    expect(missingProjectInfo(empty)).toEqual(["Telefon oder E-Mail des Bauherrn", "Bauadresse", "Hausbaufirma", "Verkäufer", "Vermesser"]);
   });
 
-  it("Bauvoranfrage: Firma und ABM-Nr. zählen nicht als fehlend", () => {
-    expect(missingProjectInfo({ ...onlyName, kind: "bauvoranfrage" })).toEqual(["Bauort", "Eingangsmonat"]);
+  it("Telefon ODER E-Mail genügt; Leerzeichen zählen nicht", () => {
+    expect(missingProjectInfo({ ...full, phone: null, email: "a@example.com" })).toEqual([]);
+    expect(missingProjectInfo({ ...full, phone: "  ", email: null })).toEqual(["Telefon oder E-Mail des Bauherrn"]);
   });
 
-  it("Aufgabe mit Titel und Fälligkeit, oder keine", () => {
-    expect(followupForMissingInfo(ok, "2026-10-11")).toBeNull();
-    const f = followupForMissingInfo({ ...ok, abmNr: null, location: null }, "2026-10-11")!;
-    expect(f.title).toBe("Fehlende Angaben nachfragen: ABM-Nr., Bauort");
+  it("ABM-Nr. und Eingangsmonat gehören nicht zur Regel", () => {
+    // Ein Projekt ohne ABM-Nr., Bauort und Eingangsmonat, aber mit allen geprüften Angaben: nichts fehlt
+    expect(missingProjectInfo(infoStateOfNew({ ...onlyName, companyId: "c-bz", salespersonId: "s-1", vermesser: "V", bauherr: { phone: "1", email: null, address: null, buildingAddress: "Weg 1" } }))).toEqual([]);
+    // Umgekehrt: ABM-Nr. und Monat da, sonst nichts: es fehlt trotzdem alles Geprüfte außer der Firma
+    expect(missingProjectInfo(infoStateOfNew(ok))).toEqual(["Telefon oder E-Mail des Bauherrn", "Bauadresse", "Verkäufer", "Vermesser"]);
+  });
+
+  it("Bauvoranfrage: Hausbaufirma und Verkäufer zählen nicht als fehlend", () => {
+    expect(missingProjectInfo({ ...empty, kind: "bauvoranfrage" })).toEqual(["Telefon oder E-Mail des Bauherrn", "Bauadresse", "Vermesser"]);
+  });
+
+  it("eine Aufgabe mit allen fehlenden Feldern in einer Zeile, oder keine", () => {
+    expect(followupForMissingInfo(full, "2026-10-11")).toBeNull();
+    const f = followupForMissingInfo({ ...full, buildingAddress: null, vermesser: null }, "2026-10-11")!;
+    expect(f.title).toBe("Fehlende Angaben nachfragen: Bauadresse, Vermesser");
     expect(FOLLOWUP_DUE_DAYS).toBe(7);
     expect(f.dueOn).toBe("2026-10-18");
+    expect(followupKey("p-1")).toBe("angaben:p-1");
+  });
+
+  it("E-Mail des Bauherrn wird auf ihr Format geprüft, wenn eingetragen", () => {
+    expect(validateNewProject({ ...ok, bauherr: { phone: null, email: "kein-at", address: null, buildingAddress: null } }, db.projects).email).toMatch(/E-Mail/);
+    expect(validateNewProject({ ...ok, bauherr: { phone: null, email: " a@example.com ", address: null, buildingAddress: null } }, db.projects)).toEqual({});
   });
 });
 

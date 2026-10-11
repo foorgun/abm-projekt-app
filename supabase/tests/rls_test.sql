@@ -231,10 +231,10 @@ select test.expect('anon hat auf keiner Spalte ein Recht',
 select test.expect('anon darf keine Funktion der App ausführen',
   (select count(*) from pg_proc f join pg_namespace n on n.oid = f.pronamespace
    where n.nspname = 'public' and has_function_privilege('anon', f.oid, 'execute')), 0);
-select test.expect('authenticated darf nur in project_steps und agent_rules löschen',
+select test.expect('authenticated darf nur in project_steps, agent_rules und project_parties löschen',
   (select count(*) from pg_tables t where t.schemaname = 'public'
      and has_table_privilege('authenticated', format('%I.%I', t.schemaname, t.tablename), 'delete')
-     and t.tablename not in ('project_steps', 'agent_rules')), 0);
+     and t.tablename not in ('project_steps', 'agent_rules', 'project_parties')), 0);
 select test.expect('authenticated darf nirgends TRUNCATE',
   (select count(*) from pg_tables t where t.schemaname = 'public'
      and has_table_privilege('authenticated', format('%I.%I', t.schemaname, t.tablename), 'truncate')), 0);
@@ -396,7 +396,7 @@ select test.throws('Mitarbeiter darf Teammitglied nicht ändern', $$update publi
 select test.throws('Mitarbeiter darf Teammitglied nicht löschen', $$delete from public.team_members$$);
 
 -- Projekt nur mit Bauherr: alles andere leer, Aufgabe zum Nachfragen entsteht
-select public.create_project(p_bauherr_label => ' Neumann ', p_followup_title => 'Fehlende Angaben nachfragen: ABM-Nr., Hausbaufirma, Bauort', p_followup_due => '2026-10-18');
+select public.create_project('{"bauherr_label": " Neumann "}', p_followup_title => 'Fehlende Angaben nachfragen: ABM-Nr., Hausbaufirma, Bauort', p_followup_due => '2026-10-18');
 select test.expect('Projekt nur mit Bauherr anlegen',
   (select count(*) from public.projects
    where bauherr_label = 'Neumann' and abm_nr is null and company_id is null and location is null and intake_month is null and status = 'aktiv'), 1);
@@ -410,8 +410,8 @@ select test.expect('Protokoll: Projekt angelegt, mit Namen',
 
 -- Vollständig, mit Vermesser: keine Aufgabe
 select public.create_project(
-     p_bauherr_label => 'Vollmer', p_abm_nr => '8161-9777', p_company => 'c0000000-0000-4000-8000-000000000001',
-     p_location => 'Ulm', p_intake_month => '2026-10-01', p_architect => '70000000-0000-4000-8000-000000000001',
+     '{"bauherr_label": "Vollmer", "abm_nr": "8161-9777", "company_id": "c0000000-0000-4000-8000-000000000001",
+       "location": "Ulm", "intake_month": "2026-10-01", "architect_id": "70000000-0000-4000-8000-000000000001"}',
      p_vermesser => 'Vermessung Donautal', p_folders_note => 'Projektordner aus der Vorlage angelegt (126 Ordner)');
 select test.expect('Projekt mit allen Angaben und Vermesser',
   (select count(*) from public.projects where bauherr_label = 'Vollmer' and abm_nr = '8161-9777' and location = 'Ulm'), 1);
@@ -420,9 +420,9 @@ select test.expect('Vermesser als Projektbeteiligter gespeichert',
    where p.bauherr_label = 'Vollmer' and x.role = 'vermesser' and x.name = 'Vermessung Donautal'), 1);
 select test.expect('Vollständiges Projekt: keine Aufgabe',
   (select count(*) from public.tasks t join public.projects p on p.id = t.project_id where p.bauherr_label = 'Vollmer'), 0);
-select test.throws('Projekt ohne Bauherr wird abgelehnt', $$select public.create_project(p_bauherr_label => ' ')$$);
+select test.throws('Projekt ohne Bauherr wird abgelehnt', $$select public.create_project('{"bauherr_label": " "}')$$);
 select test.throws('Schlägt ein Teil fehl, entsteht gar kein Projekt (unbekannte Firma)',
-  $$select public.create_project(p_bauherr_label => 'Halbfertig', p_company => '00000000-0000-4000-8000-00000000dead', p_vermesser => 'X')$$);
+  $$select public.create_project('{"bauherr_label": "Halbfertig", "company_id": "00000000-0000-4000-8000-00000000dead"}', p_vermesser => 'X')$$);
 select test.expect('… wirklich keines', (select count(*) from public.projects where bauherr_label = 'Halbfertig'), 0);
 rollback;
 
@@ -442,13 +442,116 @@ select test.throws('Freiberufler darf keinen Verkäufer anlegen',
 select test.throws('Freiberufler darf kein Teammitglied anlegen', $$insert into public.team_members (name, role) values ('X Y', 'architekt')$$);
 select test.throws('Freiberufler darf keinen Vermesser eintragen, auch nicht im eigenen Projekt',
   $$insert into public.project_parties (project_id, role, name) values ('a0000000-0000-4000-8000-000000000001', 'erdbauer', 'X Y')$$);
-select test.throws('Freiberufler darf kein Projekt anlegen (Funktion)', $$select public.create_project(p_bauherr_label => 'Unzulässig')$$);
+select test.throws('Freiberufler darf kein Projekt anlegen (Funktion)', $$select public.create_project('{"bauherr_label": "Unzulässig"}')$$);
 rollback;
 
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
 select test.throws('Ohne Rolle: keine Hausbaufirma anlegen', $$insert into public.companies (name) values ('Fingerhaus')$$);
+rollback;
+
+-- ===========================================================================
+-- Migration 0008: Projektdaten bearbeiten, Kontaktdaten des Bauherrn, Aufgabe schließt sich
+-- ===========================================================================
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+
+-- Anlegen mit Kontaktdaten
+select public.create_project('{"bauherr_label": "Kontakt"}',
+  '{"phone": " 0731 111111 ", "email": "", "address": "Weg 1, 89073 Ulm", "building_address": null}',
+  p_followup_title => 'Fehlende Angaben nachfragen: Bauadresse, Hausbaufirma, Verkäufer, Vermesser', p_followup_due => '2026-10-18');
+select test.expect('Anlegen mit Kontaktdaten: Bauherr angelegt und verknüpft, leere Werte sind null',
+  (select count(*) from public.projects p join public.bauherren b on b.id = p.bauherr_id
+   where p.bauherr_label = 'Kontakt' and b.name = 'Kontakt' and b.phone = '0731 111111' and b.email is null
+     and b.address = 'Weg 1, 89073 Ulm' and b.building_address is null and not b.is_demo), 1);
+select public.create_project('{"bauherr_label": "Ohnekontakt"}', '{"phone": "", "email": " "}');
+select test.expect('Anlegen ohne Kontaktangaben legt keinen leeren Bauherrn an',
+  (select count(*) from public.projects where bauherr_label = 'Ohnekontakt' and bauherr_id is null), 1);
+
+-- Bearbeiten: nur genannte Felder ändern sich, Aufgabe wird umbenannt
+select public.update_project((select id from public.projects where bauherr_label = 'Kontakt'),
+  '{"location": " Neu-Ulm ", "company_id": "c0000000-0000-4000-8000-000000000001", "salesperson_id": "50000000-0000-4000-8000-000000000001"}',
+  '{"phone": "0731 111111", "address": "Weg 1, 89073 Ulm", "building_address": "Baugebiet 7, 89231 Neu-Ulm"}',
+  null, 'Projektdaten geändert: Bauort, Hausbaufirma, Verkäufer, Bauadresse',
+  'Fehlende Angaben nachfragen: Vermesser', '2026-10-18');
+select test.expect('Bearbeiten: genannte Felder geändert, andere unberührt',
+  (select count(*) from public.projects where bauherr_label = 'Kontakt' and location = 'Neu-Ulm'
+     and company_id = 'c0000000-0000-4000-8000-000000000001' and salesperson_id is not null and status = 'aktiv' and kind = 'neubau'), 1);
+select test.expect('Bearbeiten: Bauadresse am selben Bauherrn nachgetragen (kein zweiter)',
+  (select count(*) from public.bauherren where name = 'Kontakt' and building_address = 'Baugebiet 7, 89231 Neu-Ulm'), 1);
+select test.expect('Bearbeiten: Aufgabe umbenannt, weiterhin genau eine und offen',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id
+   where p.bauherr_label = 'Kontakt' and t.title = 'Fehlende Angaben nachfragen: Vermesser' and t.status = 'offen'), 1);
+select test.expect('… wirklich nur eine',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id where p.bauherr_label = 'Kontakt'), 1);
+select test.expect('Bearbeiten: Protokolleintrag mit Namen',
+  (select count(*) from public.activities where text = 'Projektdaten geändert: Bauort, Hausbaufirma, Verkäufer, Bauadresse' and actor = 'Mira Mitarbeiter'), 1);
+
+-- Letzte Angabe nachgetragen: Aufgabe schließt sich
+select public.update_project((select id from public.projects where bauherr_label = 'Kontakt'),
+  p_parties => '{"vermesser": {"name": " Vermessung Donautal ", "contact": ""}, "strom": {"name": "Stromnetz", "contact": "0731 2"}}',
+  p_activity => 'Projektdaten geändert: Vermesser, Strom');
+select test.expect('Beteiligte eingetragen (Name bereinigt, leerer Kontakt null)',
+  (select count(*) from public.project_parties x join public.projects p on p.id = x.project_id
+   where p.bauherr_label = 'Kontakt' and ((x.role = 'vermesser' and x.name = 'Vermessung Donautal' and x.contact is null)
+                                       or (x.role = 'strom' and x.contact = '0731 2'))), 2);
+select test.expect('Nichts fehlt mehr: Aufgabe automatisch erledigt, mit Erledigt-Datum',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id
+   where p.bauherr_label = 'Kontakt' and t.status = 'erledigt' and t.done_at is not null), 1);
+
+-- Später fehlt wieder etwas: die erledigte Aufgabe bleibt erledigt, es entsteht keine zweite
+select public.update_project((select id from public.projects where bauherr_label = 'Kontakt'),
+  p_parties => '{"strom": null}', p_followup_title => 'Fehlende Angaben nachfragen: Vermesser', p_followup_due => '2026-10-20');
+select test.expect('Beteiligter ausgetragen', (select count(*) from public.project_parties x join public.projects p on p.id = x.project_id
+   where p.bauherr_label = 'Kontakt' and x.role = 'strom'), 0);
+select test.expect('Erledigte Aufgabe wird nicht neu angelegt',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id where p.bauherr_label = 'Kontakt' and t.status = 'offen'), 0);
+
+-- Älteres Projekt ohne Aufgabe (wie "Hoffmann"): beim ersten Speichern entsteht sie
+select public.update_project('a0000000-0000-4000-8000-000000000003', '{"location": "Ehningen"}', null, null, null,
+  'Fehlende Angaben nachfragen: Telefon oder E-Mail des Bauherrn, Bauadresse, Vermesser', '2026-10-18');
+select test.expect('Projekt ohne Aufgabe bekommt sie beim Bearbeiten',
+  (select count(*) from public.tasks where source_key = 'angaben:a0000000-0000-4000-8000-000000000003' and status = 'offen'), 1);
+
+select test.throws('Bearbeiten: leerer Bauherr wird abgelehnt',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000003', '{"bauherr_label": " "}')$$);
+select test.throws('Bearbeiten: unbekanntes Projekt', $$select public.update_project('00000000-0000-4000-8000-00000000dead', '{"location": "X"}')$$);
+select test.throws('Bearbeiten: unbekannte Rolle eines Beteiligten',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000003', p_parties => '{"geheim": {"name": "X Y"}}')$$);
+select public.update_project('a0000000-0000-4000-8000-000000000003', '{"status": "storno", "is_demo": true, "bauherr_id": null}');
+select test.expect('Nicht vorgesehene Felder (Status, is_demo, bauherr_id) werden ignoriert',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000003' and status = 'aktiv' and not is_demo), 1);
+rollback;
+
+-- Admin sieht und pflegt Kontaktdaten
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin sieht Kontaktdaten der Bauherren', (select count(*) from public.bauherren where phone is not null), 2);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_bauherr => '{"name": "Familie Reinhardt", "phone": "0731 999999", "email": "neu@example.com"}');
+select test.expect('Admin ändert Kontaktdaten', (select count(*) from public.bauherren where id = 'b0000000-0000-4000-8000-000000000001' and phone = '0731 999999' and email = 'neu@example.com' and address is null), 1);
+select test.throws('Bauherr löschen geht nicht', $$delete from public.bauherren$$);
+rollback;
+
+-- Freiberufler: sieht Kontaktdaten nie und kann nichts bearbeiten, auch nicht im zugewiesenen Projekt
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht sein Projekt', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001'), 1);
+select test.expect('Freiberufler sieht keine einzige Bauherren-Zeile', (select count(*) from public.bauherren), 0);
+select test.expect('Freiberufler: auch gezielt nach ID nichts',
+  (select count(*) from public.bauherren where id = (select bauherr_id from public.projects where id = 'a0000000-0000-4000-8000-000000000001')), 0);
+select test.throws('Freiberufler darf keine Kontaktdaten eintragen',
+  $$insert into public.bauherren (name, phone) values ('X Y', '1')$$);
+select test.expect('Freiberufler ändert keine Kontaktdaten', test.affected($$update public.bauherren set phone = '0'$$), 0);
+select test.throws('Freiberufler darf Projektdaten nicht bearbeiten',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000001', '{"location": "X"}')$$);
+select test.throws('Freiberufler darf Kontaktdaten nicht über die Funktion setzen',
+  $$select public.set_project_bauherr('a0000000-0000-4000-8000-000000000001', '{"phone": "1"}')$$);
+select test.throws('Freiberufler darf die Aufgabe nicht abgleichen',
+  $$select public.sync_followup_task('a0000000-0000-4000-8000-000000000001', 'X', null)$$);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------

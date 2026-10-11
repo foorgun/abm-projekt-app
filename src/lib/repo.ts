@@ -4,7 +4,7 @@
 
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
-import type { AgentRule, AgentSettings, Company, Dataset, Mailbox, MailboxStatus, Project, ProjectDocument, Salesperson, Task, TeamMember } from "./types";
+import type { AgentRule, AgentSettings, Company, Dataset, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, Salesperson, Task, TeamMember } from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -20,8 +20,34 @@ export interface NewProject {
   intakeMonth: string | null;
   /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */
   vermesser?: string | null;
+  /** Kontaktdaten des Bauherrn (nur Admin und Mitarbeiter). */
+  bauherr?: BauherrInput | null;
   /** Projektordner aus der Vorlage anlegen (im Echtbetrieb im Speicher; im Demo-Modus protokolliert) */
   createFolders: boolean;
+}
+
+/** Kontaktdaten des Bauherrn. Leere Werte leeren das Feld. Ohne Namen gilt der Nachname des Projekts. */
+export interface BauherrInput {
+  name?: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  buildingAddress: string | null;
+}
+
+/** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
+export type ProjectFields = Pick<
+  Project,
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung"
+>;
+
+/** Änderung an einem Projekt: nur was genannt ist, ändert sich. */
+export interface ProjectPatch {
+  project?: Partial<ProjectFields>;
+  /** Alle Kontaktfelder auf einmal (die Kachel wird als Ganzes gespeichert). */
+  bauherr?: BauherrInput;
+  /** Beteiligte je Rolle; null trägt den Beteiligten aus. */
+  parties?: Partial<Record<PartyRole, { name: string; contact: string | null } | null>>;
 }
 
 export interface NewTask {
@@ -87,6 +113,11 @@ export interface Repo {
   setStepDate(projectId: string, stepKey: string, date: string | null): Promise<void>;
   /** Pflicht ist nur der Bauherr. Fehlen Angaben, entsteht eine Aufgabe "Fehlende Angaben nachfragen". */
   createProject(input: NewProject): Promise<Project>;
+  /**
+   * Projektdaten bearbeiten (nur Admin und Mitarbeiter), mit Protokolleintrag. Gleicht die Aufgabe
+   * "Fehlende Angaben nachfragen" ab: fehlt nichts mehr, wird sie erledigt.
+   */
+  updateProject(projectId: string, patch: ProjectPatch): Promise<void>;
   /** Stammdaten direkt beim Anlegen eines Projekts ergänzen (nur Admin und Mitarbeiter). Der Name genügt. */
   createCompany(name: string): Promise<Company>;
   createSalesperson(companyId: string, name: string): Promise<Salesperson>;

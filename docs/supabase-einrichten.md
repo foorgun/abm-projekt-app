@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0007). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0008). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 
@@ -99,7 +99,8 @@ Agenten sind schon da, die kommen aus den Migrationen.
 
 Was im Pilotbetrieb noch **nicht** geht: Der Posteingangs-Agent liest keine Postfächer ("Jetzt prüfen" ist gesperrt, Schritt 9).
 Stammdaten: Die drei Hausbaufirmen kommen aus Migration 0007. Weitere Hausbaufirmen, Verkäufer, Architekten und Vermesser legt man
-direkt im Dialog "Neues Projekt" an ("+ Neu anlegen", nur der Name). Ändern oder löschen geht in der App noch nicht.
+direkt im Dialog "Neues Projekt" an ("+ Neu anlegen", nur der Name). Stammdaten ändern oder löschen geht in der App noch nicht.
+Projektdaten, Beteiligte und Kontaktdaten des Bauherrn lassen sich auf der Projektseite bearbeiten (Kachel → "Bearbeiten").
 
 ## 6. Wer darf was (Kurzfassung)
 
@@ -112,7 +113,7 @@ direkt im Dialog "Neues Projekt" an ("+ Neu anlegen", nur der Name). Ändern ode
 - **Stammdaten anlegen** (Hausbaufirma, Verkäufer, Architekt, Vermesser) dürfen Admin und Mitarbeiter, nur mit Namen. Freiberufler nicht.
 - **Rollen vergeben** geht nicht über die App, auch nicht als Admin, sondern nur im Dashboard oder per Skript.
 
-Lokal nachprüfen (temporäres Postgres, kein Zugriff auf das echte Projekt): `bash tools/test-db.sh` (147 Prüfungen).
+Lokal nachprüfen (temporäres Postgres, kein Zugriff auf das echte Projekt): `bash tools/test-db.sh` (174 Prüfungen).
 
 ## 7. Free-Tarif: was das bedeutet
 

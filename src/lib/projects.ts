@@ -91,5 +91,7 @@ export function stageMoveTarget(project: Project, steps: StepDefinition[]): { st
 }
 
 export function projectTitle(p: Pick<Project, "abmNr" | "bauherrLabel">): string {
-  return p.abmNr && p.abmNr !== "Bauvoranfrage" ? `${p.abmNr} · ${p.bauherrLabel}` : `${p.bauherrLabel} (Bauvoranfrage)`;
+  // Ohne ABM-Nr. (beim Anlegen oft noch unbekannt) steht nur der Name; "Bauvoranfrage" nur, wenn es wirklich eine ist
+  if (p.abmNr === "Bauvoranfrage") return `${p.bauherrLabel} (Bauvoranfrage)`;
+  return p.abmNr ? `${p.abmNr} · ${p.bauherrLabel}` : p.bauherrLabel;
 }

@@ -387,3 +387,29 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   Der Nummernkreis bleibt leer (siehe offene Fragen): ohne ihn gibt es für die Firma keinen Nummernvorschlag.
 - **Projekt anlegen ist eine Datenbankfunktion** (`create_project`): Projekt, Vermesser, Aufgabe und Protokoll in einer Transaktion.
 - **Nebenbei behoben:** Freiberufler sahen den Knopf "+ Neues Projekt" und die Befehle unter Strg+K, obwohl sie nichts anlegen dürfen.
+
+## Schritt 8 – Fehlende Angaben, Projektdaten bearbeiten, Kontakt Bauherr
+
+- **Regel "Fehlende Angaben nachfragen" neu:** geprüft werden Kontakt des Bauherrn (Telefon *oder* E-Mail), Bauadresse, Hausbaufirma,
+  Verkäufer, Vermesser. ABM-Nr. und Eingangsmonat gehören nicht mehr dazu, der Bauort auch nicht (er stand nicht in der neuen Liste).
+  Bei einer Bauvoranfrage entfallen Hausbaufirma und Verkäufer. Eine Aufgabe je Projekt (Schlüssel `angaben:<Projekt>`), alle
+  fehlenden Felder in einer Zeile.
+- **Die Aufgabe gleicht sich bei jedem Speichern ab** (`sync_followup_task`, im Demo-Modus dieselbe Logik):
+  fehlt nichts mehr → erledigt; fehlt noch etwas → Titel wird gekürzt; gab es noch keine Aufgabe → sie entsteht.
+  Eine erledigte Aufgabe bleibt erledigt und wird nicht neu angelegt, auch wenn später wieder etwas ausgetragen wird.
+  Folge für ältere Projekte (z. B. vor dieser Änderung angelegt): Sie bekommen die Aufgabe beim ersten Bearbeiten, nicht rückwirkend
+  von selbst. So entstehen nach dem Excel-Import nicht auf einen Schlag über hundert Aufgaben.
+- **Projektdaten bearbeiten:** Die drei Kacheln der Übersicht (Projektbeteiligte, Projektdaten, Kontakt Bauherr) haben für Admin und
+  Mitarbeiter "Bearbeiten"; die Kachel wird zum Formular mit Speichern/Abbrechen. Status und Art lassen sich dort nicht ändern
+  (Status hat sein eigenes Menü). Neue Repo-Methode `updateProject`, im Echtbetrieb als Datenbankfunktion `update_project`
+  (Projekt, Bauherr, Beteiligte, Aufgabe, Protokoll in einer Transaktion). Was sich ändert, berechnet `planProjectUpdate` für beide Repos.
+- **Protokoll ohne Werte:** Der Eintrag nennt nur die geänderten Felder ("Projektdaten geändert: Telefon, Bauadresse"), nicht die Inhalte.
+  Kontaktdaten der Bauherren sollen nicht im Aktivitätenprotokoll stehen.
+- **Kachel "Kontakt Bauherr":** Die Rollenabfrage war richtig; der Sperrhinweis erschien auch für Admins, sobald zu einem Projekt noch
+  kein Bauherr gespeichert war. Jetzt: Sperrhinweis nur für Freiberufler, sonst die Daten oder "Noch keine Kontaktdaten eingetragen".
+- **Kontaktfelder beim Anlegen:** Telefon, E-Mail, Anschrift des Bauherrn und Bauadresse im Dialog "Neues Projekt". Ohne jede Angabe wird
+  kein leerer Bauherr angelegt. Die E-Mail wird auf ihr Format geprüft, das Telefon nicht.
+- **Wechsel der Hausbaufirma trägt den Verkäufer aus**, wenn er zur alten Firma gehört (mit Hinweis im Formular).
+- **Rechte (Migration 0008):** `bauherren` anlegen und ändern (nur die fünf Kontaktspalten), Beteiligte ändern und austragen; jeweils nur
+  Admin und Mitarbeiter über die bestehenden Zeilenregeln. Freiberufler sehen weiterhin keine Zeile aus `bauherren`.
+- **Nebenbei behoben:** Ein Neubau ohne ABM-Nr. hieß in Überschrift und Listen "(Bauvoranfrage)". Jetzt steht nur der Name.

@@ -48,7 +48,9 @@ Gut zu wissen (Design v2):
 
 - Oben rechts gibt es nur noch einen Hauptbutton **+ Neues Projekt** (öffnet direkt das Formular mit allen Feldern).
   Bei Bedarf kurz zeigen: Bauherr leer lassen → Meldung direkt am Feld (nur der Bauherr ist Pflicht); Firma wählen → die nächste freie ABM-Nr.
-  wird als Vorschlag angeboten; bei Hausbaufirma "+ Neu anlegen" wählen → Name eintippen, Enter. Was fehlt, landet als Aufgabe "Fehlende Angaben nachfragen".
+  wird als Vorschlag angeboten; bei Hausbaufirma "+ Neu anlegen" wählen → Name eintippen, Enter. Fehlen Kontakt des Bauherrn, Bauadresse, Hausbaufirma, Verkäufer oder Vermesser,
+  entsteht eine Aufgabe "Fehlende Angaben nachfragen"; sie erledigt sich von selbst, sobald alles auf der Projektseite nachgetragen ist
+  (Kachel → "Bearbeiten").
 - **Neue Aufgabe** geht über die Aufgabenseite oder schnell per **Strg+K** → "Neue Aufgabe" (Strg+K zeigt Befehle und sucht Projekte).
 - Rückmeldungen erscheinen unten rechts als kleine Karte mit Titel und Erklärung.
 

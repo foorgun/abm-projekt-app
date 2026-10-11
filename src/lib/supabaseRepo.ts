@@ -7,10 +7,14 @@ import { filterDocuments, type DocumentFilter, type DocumentRow } from "./docume
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
-import { cleanMasterName, followupForMissingInfo, validateNewProject } from "./projectForm";
+import { planProjectUpdate } from "./projectEdit";
+import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewProject } from "./projectForm";
 import {
   PermissionError,
+  type BauherrInput,
   type MailboxInput,
+  type ProjectFields,
+  type ProjectPatch,
   type NewAgentRule,
   type NewProject,
   type NewTask,
@@ -81,6 +85,34 @@ async function latest(sb: SupabaseClient, table: string, cols: string, by: strin
   const { data, error } = await sb.from(table).select(cols).order(by, { ascending: false }).limit(limit);
   if (error) fail(error, `${table} konnte nicht geladen werden`);
   return (data ?? []) as unknown as Row[];
+}
+
+const PROJECT_COLUMN: Record<keyof ProjectFields, string> = {
+  bauherrLabel: "bauherr_label",
+  abmNr: "abm_nr",
+  hausbauNr: "hausbau_nr",
+  companyId: "company_id",
+  salespersonId: "salesperson_id",
+  location: "location",
+  architectId: "architect_id",
+  planerId: "planer_id",
+  intakeMonth: "intake_month",
+  baubetreuung: "baubetreuung",
+};
+
+/** Projektfelder → Spaltennamen. Nur genannte Felder; leere Texte werden zu null. */
+export function projectJson(fields: Partial<ProjectFields>): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const [key, value] of Object.entries(fields) as [keyof ProjectFields, string | null | undefined][]) {
+    if (value === undefined) continue;
+    out[PROJECT_COLUMN[key]] = value?.trim() || null;
+  }
+  return out;
+}
+
+export function bauherrJson(b: BauherrInput): Record<string, string | null> {
+  const v = (x: string | null | undefined) => x?.trim() || null;
+  return { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress) };
 }
 
 export function createSupabaseRepo(): Repo {
@@ -199,19 +231,24 @@ export function createSupabaseRepo(): Repo {
       // Dieselben Regeln wie im Formular
       const first = Object.values(validateNewProject(input, last?.projects ?? []))[0];
       if (first) throw new Error(first);
-      const followup = followupForMissingInfo(input, todayIso());
-      // Eine Funktion in der Datenbank legt Projekt, Vermesser, Aufgabe und Protokoll in einer Transaktion an (Migration 0007)
+      const followup = followupForMissingInfo(infoStateOfNew(input), todayIso());
+      // Eine Funktion in der Datenbank legt Projekt, Bauherr, Vermesser, Aufgabe und Protokoll in einer Transaktion an (Migration 0008)
       const created = await sb.rpc("create_project", {
-        p_bauherr_label: input.bauherrLabel.trim(),
-        p_kind: input.kind,
-        p_abm_nr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr?.trim() || null,
-        p_hausbau_nr: input.hausbauNr?.trim() || null,
-        p_company: input.companyId,
-        p_salesperson: input.salespersonId,
-        p_location: input.location?.trim() || null,
-        p_architect: input.architectId,
-        p_planer: input.planerId,
-        p_intake_month: input.intakeMonth,
+        p_project: {
+          ...projectJson({
+            bauherrLabel: input.bauherrLabel,
+            abmNr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr,
+            hausbauNr: input.hausbauNr,
+            companyId: input.companyId,
+            salespersonId: input.salespersonId,
+            location: input.location,
+            architectId: input.architectId,
+            planerId: input.planerId,
+            intakeMonth: input.intakeMonth,
+          }),
+          kind: input.kind,
+        },
+        p_bauherr: input.bauherr ? bauherrJson(input.bauherr) : null,
         p_vermesser: input.vermesser?.trim() || null,
         p_followup_title: followup?.title ?? null,
         p_followup_due: followup?.dueOn ?? null,
@@ -222,6 +259,25 @@ export function createSupabaseRepo(): Repo {
       const { data, error } = await sb.from("projects").select(COLS.projects).eq("id", created.data as string).single();
       if (error) fail(error, "Projekt wurde angelegt, konnte aber nicht geladen werden. Bitte Seite neu laden.");
       return toProject(data as unknown as Row);
+    },
+
+    async updateProject(projectId, patch: ProjectPatch) {
+      requireStaff();
+      if (!last) throw new Error("Daten noch nicht geladen. Bitte Seite neu laden.");
+      const plan = planProjectUpdate(last, projectId, patch, todayIso());
+      const first = Object.values(plan.errors)[0];
+      if (first) throw new Error(first);
+      // Eine Funktion in der Datenbank ändert Projekt, Bauherr, Beteiligte, Aufgabe und Protokoll in einer Transaktion (Migration 0008)
+      const { error } = await sb.rpc("update_project", {
+        p_id: projectId,
+        p_project: projectJson(plan.project),
+        p_bauherr: plan.bauherr ? bauherrJson(plan.bauherr) : null,
+        p_parties: Object.keys(plan.parties).length ? plan.parties : null,
+        p_activity: plan.activity,
+        p_followup_title: plan.followup?.title ?? null,
+        p_followup_due: plan.followup?.dueOn ?? null,
+      });
+      if (error) fail(error, "Projektdaten konnten nicht gespeichert werden");
     },
 
     async createCompany(name) {

@@ -1,15 +1,15 @@
-import { createContext, useCallback, useContext, useId, useState, type FormEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, X } from "lucide-react";
 import { monthStart } from "../lib/format";
 import { compareAbm } from "../lib/projectFilters";
-import { cleanMasterName, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
+import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import type { NewProject } from "../lib/repo";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { Project } from "../lib/types";
 import { useToast } from "./Toast";
-import { Button, Checkbox, Dialog, Field, IconButton, Input, Select, type SelectOption } from "./ui";
+import { SelectOrCreate } from "./SelectOrCreate";
+import { Button, Checkbox, Dialog, Field, Input, Select } from "./ui";
 
 const NewProjectContext = createContext<() => void>(() => {});
 
@@ -41,123 +41,6 @@ export function suggestAbmNr(prefix: string | null, projects: Project[]): string
   return `${prefix}-${String(next).padStart(3, "0")}`;
 }
 
-const NEW = "__neu__";
-
-/**
- * Auswahlliste mit der Option "+ Neu anlegen". Wählt man sie, wird aus der Liste ein Textfeld: Name eintragen, anlegen,
- * und der neue Eintrag ist gewählt. `onCreate` liefert den Wert des neuen Eintrags oder wirft mit einer Meldung.
- */
-function SelectOrCreate({
-  id,
-  value,
-  options,
-  emptyLabel,
-  onChange,
-  onCreate,
-  canCreate,
-  createPlaceholder,
-  disabled,
-}: {
-  id: string;
-  value: string;
-  options: SelectOption[];
-  /** Beschriftung der leeren Auswahl, z. B. "Noch offen" */
-  emptyLabel: string;
-  onChange: (value: string) => void;
-  onCreate: (name: string) => Promise<string>;
-  canCreate: boolean;
-  createPlaceholder: string;
-  disabled?: boolean;
-}) {
-  const [creating, setCreating] = useState(false);
-  const [name, setName] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const errId = useId();
-
-  function cancel() {
-    setCreating(false);
-    setName("");
-    setError(null);
-    // Fokus zurück auf die Liste, sobald sie wieder da ist
-    setTimeout(() => document.getElementById(id)?.focus(), 0);
-  }
-
-  async function create() {
-    if (busy) return;
-    const checked = cleanMasterName(name, options.map((o) => o.label));
-    if (!checked.ok) return setError(checked.reason);
-    setBusy(true);
-    setError(null);
-    try {
-      const created = await onCreate(checked.name);
-      setCreating(false);
-      setName("");
-      onChange(created);
-      setTimeout(() => document.getElementById(id)?.focus(), 0);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (!creating) {
-    return (
-      <Select
-        id={id}
-        value={value}
-        disabled={disabled}
-        onChange={(e) => (e.target.value === NEW ? setCreating(true) : onChange(e.target.value))}
-        options={[{ value: "", label: emptyLabel }, ...options, ...(canCreate && !disabled ? [{ value: NEW, label: "+ Neu anlegen" }] : [])]}
-      />
-    );
-  }
-  return (
-    <>
-      <div className="create-inline">
-        <Input
-          id={id}
-          value={name}
-          autoFocus
-          placeholder={createPlaceholder}
-          maxLength={80}
-          disabled={busy}
-          aria-invalid={error ? true : undefined}
-          aria-describedby={error ? errId : undefined}
-          onChange={(e) => {
-            setName(e.target.value);
-            setError(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              // nicht das ganze Projektformular absenden
-              e.preventDefault();
-              void create();
-            }
-            if (e.key === "Escape") {
-              // nur dieses Feld schließen, nicht den Dialog
-              e.stopPropagation();
-              cancel();
-            }
-          }}
-        />
-        <Button size="sm" variant="primary" icon={<Check size={14} />} disabled={busy} onClick={() => void create()}>
-          {busy ? "Legt an …" : "Anlegen"}
-        </Button>
-        <IconButton label="Abbrechen, zurück zur Auswahl" size="sm" disabled={busy} onClick={cancel}>
-          <X size={15} />
-        </IconButton>
-      </div>
-      {error && (
-        <span className="field-error" id={errId} role="alert">
-          {error}
-        </span>
-      )}
-    </>
-  );
-}
-
 function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const { data, mutate, today } = useData();
   const { user } = useSession();
@@ -183,6 +66,7 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
     planerId: null,
     intakeMonth: monthStart(today),
     vermesser: null,
+    bauherr: { phone: null, email: null, address: null, buildingAddress: null },
     createFolders: true,
   }));
   /** Vermesser, die in diesem Dialog neu eingetragen wurden (gespeichert werden sie erst mit dem Projekt) */
@@ -200,7 +84,8 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
   const suggestion = v.kind === "neubau" ? suggestAbmNr(company?.numberPrefix ?? null, projects) : "";
   // Bauvoranfrage: weder ABM-Nr. noch Firma
   const effective: NewProject = v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v;
-  const missing = missingProjectInfo(effective);
+  const missing = missingProjectInfo(infoStateOfNew(effective));
+  const setContact = (patch: Partial<NonNullable<NewProject["bauherr"]>>) => setV((old) => ({ ...old, bauherr: { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr, ...patch } }));
 
   async function createVia<T extends { id: string }>(fn: Parameters<typeof mutate<T>>[0]): Promise<string> {
     const res = await mutate(fn);
@@ -222,7 +107,7 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
     setBusy(false);
     if (!res.ok) return setServerError(res.error);
     const notes = [v.createFolders ? "Projektordner aus der Vorlage angelegt." : "Ohne Projektordner angelegt."];
-    if (missing.length) notes.push(`Aufgabe angelegt: ${missing.join(", ")} nachfragen.`);
+    if (missing.length) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
     toast(`Projekt ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
     onClose();
     navigate(`/projekte/${res.value.id}`);
@@ -378,8 +263,26 @@ function NewProjectDialog({ onClose }: { onClose: () => void }) {
               createPlaceholder="Name des Vermessungsbüros"
             />
           </Field>
-          <div className="field" />
+          <Field label="Bauadresse" htmlFor="np-bauadresse">
+            <Input id="np-bauadresse" value={v.bauherr?.buildingAddress ?? ""} onChange={(e) => setContact({ buildingAddress: e.target.value || null })} placeholder="Straße, PLZ Ort oder Flurstück" autoComplete="off" />
+          </Field>
         </div>
+
+        <fieldset className="form-group">
+          <legend>Kontakt Bauherr</legend>
+          <div className="dialog-row">
+            <Field label="Telefon" htmlFor="np-tel">
+              <Input id="np-tel" type="tel" value={v.bauherr?.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value || null })} autoComplete="off" />
+            </Field>
+            <Field label="E-Mail" htmlFor="np-mail">
+              <Input id="np-mail" type="email" value={v.bauherr?.email ?? ""} onChange={(e) => setContact({ email: e.target.value || null })} autoComplete="off" {...invalid("email")} />
+              <Err k="email" />
+            </Field>
+          </div>
+          <Field label="Anschrift des Bauherrn" htmlFor="np-anschrift">
+            <Input id="np-anschrift" value={v.bauherr?.address ?? ""} onChange={(e) => setContact({ address: e.target.value || null })} placeholder="Straße, PLZ Ort" autoComplete="off" />
+          </Field>
+        </fieldset>
 
         <Checkbox label="Projektordner aus der Vorlage anlegen" checked={v.createFolders} onChange={(e) => set({ createFolders: e.target.checked })} />
 
