@@ -4,7 +4,7 @@
 
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
-import type { AgentRule, AgentSettings, Dataset, Mailbox, MailboxStatus, Project, ProjectDocument, Task } from "./types";
+import type { AgentRule, AgentSettings, Company, Dataset, Mailbox, MailboxStatus, Project, ProjectDocument, Salesperson, Task, TeamMember } from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -18,6 +18,8 @@ export interface NewProject {
   planerId: string | null;
   /** Erster Tag des Eingangsmonats */
   intakeMonth: string | null;
+  /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */
+  vermesser?: string | null;
   /** Projektordner aus der Vorlage anlegen (im Echtbetrieb im Speicher; im Demo-Modus protokolliert) */
   createFolders: boolean;
 }
@@ -83,7 +85,12 @@ export interface Repo {
   load(user: SessionUser): Promise<Dataset>;
 
   setStepDate(projectId: string, stepKey: string, date: string | null): Promise<void>;
+  /** Pflicht ist nur der Bauherr. Fehlen Angaben, entsteht eine Aufgabe "Fehlende Angaben nachfragen". */
   createProject(input: NewProject): Promise<Project>;
+  /** Stammdaten direkt beim Anlegen eines Projekts ergänzen (nur Admin und Mitarbeiter). Der Name genügt. */
+  createCompany(name: string): Promise<Company>;
+  createSalesperson(companyId: string, name: string): Promise<Salesperson>;
+  createTeamMember(name: string, role: TeamMember["role"]): Promise<TeamMember>;
   setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;
   markInvoiceSent(invoiceId: string, sentOn: string): Promise<void>;
   uploadDocument(input: UploadInput): Promise<ProjectDocument>;

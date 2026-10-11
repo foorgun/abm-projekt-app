@@ -124,3 +124,55 @@ describe("demoRepo: Änderungen", () => {
     expect((await r.load(admin)).agentSettings.autoFileThreshold).toBe(0.95);
   });
 });
+
+describe("Projekt anlegen mit wenigen Angaben, Stammdaten ergänzen", () => {
+  const base = { kind: "neubau" as const, abmNr: null, hausbauNr: null, companyId: null, salespersonId: null, location: null, architectId: null, planerId: null, intakeMonth: null, createFolders: false };
+
+  it("nur mit Bauherr: Projekt entsteht, dazu genau eine Aufgabe zum Nachfragen", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    await repo.load({ name: "Test", role: "mitarbeiter" });
+    const p = await repo.createProject({ ...base, bauherrLabel: "Neumann" });
+    const d = await repo.load({ name: "Test", role: "mitarbeiter" });
+    const tasks = d.tasks.filter((t) => t.projectId === p.id);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("Fehlende Angaben nachfragen: Hausbaufirma, ABM-Nr., Bauort, Eingangsmonat");
+    expect(tasks[0].status).toBe("offen");
+    expect(tasks[0].sourceKey).toBe(`angaben:${p.id}`);
+    // kein "source: warnung": sonst würde der Abgleich mit den Warnungen die Aufgabe sofort schließen
+    expect(tasks[0].source).toBe("manuell");
+  });
+
+  it("vollständig und mit Vermesser: keine Aufgabe, Vermesser als Projektbeteiligter", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    const d0 = await repo.load({ name: "Test", role: "admin" });
+    const p = await repo.createProject({ ...base, bauherrLabel: "Vollmer", abmNr: "8161-977", companyId: d0.companies[0].id, location: "Ulm", intakeMonth: "2026-10-01", vermesser: " Vermessung Neu " });
+    const d = await repo.load({ name: "Test", role: "admin" });
+    expect(d.tasks.filter((t) => t.projectId === p.id)).toHaveLength(0);
+    expect(d.parties.filter((x) => x.projectId === p.id)).toEqual([{ projectId: p.id, role: "vermesser", name: "Vermessung Neu", contact: null }]);
+  });
+
+  it("Mitarbeiter legt Hausbaufirma, Verkäufer und Architekt an; Dubletten werden abgelehnt", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    const d0 = await repo.load({ name: "Test", role: "mitarbeiter" });
+    const c = await repo.createCompany("  Fingerhaus ");
+    expect(c.name).toBe("Fingerhaus");
+    const s = await repo.createSalesperson(c.id, "Petra Neu");
+    expect(s.companyId).toBe(c.id);
+    const t = await repo.createTeamMember("Neue Architektin", "architekt");
+    expect(t.role).toBe("architekt");
+    await expect(repo.createCompany(d0.companies[0].name.toUpperCase())).rejects.toThrow("gibt es schon");
+    await expect(repo.createSalesperson("gibt-es-nicht", "X Y")).rejects.toThrow("nicht gefunden");
+    const d = await repo.load({ name: "Test", role: "mitarbeiter" });
+    expect(d.companies).toHaveLength(d0.companies.length + 1);
+    expect(d.team.some((x) => x.id === t.id)).toBe(true);
+  });
+
+  it("Freiberufler darf weder Stammdaten noch Projekte anlegen", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    await repo.load({ name: "Frei", role: "freiberufler" });
+    await expect(repo.createCompany("Fingerhaus")).rejects.toThrow(PermissionError);
+    await expect(repo.createSalesperson("c-bz", "X Y")).rejects.toThrow(PermissionError);
+    await expect(repo.createTeamMember("X Y", "architekt")).rejects.toThrow(PermissionError);
+    await expect(repo.createProject({ ...base, bauherrLabel: "Unzulässig" })).rejects.toThrow(PermissionError);
+  });
+});

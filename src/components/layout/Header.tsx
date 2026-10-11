@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { Alert } from "../../lib/alerts";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { projectTitle } from "../../lib/projects";
+import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
 import { NARROW, useMediaQuery } from "../../lib/useMedia";
 import { Button, IconButton, Popover } from "../ui";
@@ -19,6 +20,8 @@ export function Header({
 }) {
   const narrow = useMediaQuery(NARROW);
   const { data } = useData();
+  // Projekte und Aufgaben legen nur Admin und Mitarbeiter an
+  const staff = useSession().user.role !== "freiberufler";
   const alertCount = alerts.length;
 
   return (
@@ -77,9 +80,11 @@ export function Header({
           )}
         </Popover>
         {/* Ein einziger Hauptbutton; "Neue Aufgabe" gibt es auf der Aufgabenseite und per Strg+K */}
-        <Button variant="primary" icon={<Plus size={16} />} onClick={onNewProject} aria-label="Neues Projekt">
-          <span className="header-new-label">Neues Projekt</span>
-        </Button>
+        {staff && (
+          <Button variant="primary" icon={<Plus size={16} />} onClick={onNewProject} aria-label="Neues Projekt">
+            <span className="header-new-label">Neues Projekt</span>
+          </Button>
+        )}
       </div>
     </header>
   );

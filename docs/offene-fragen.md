@@ -32,3 +32,6 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Passwörter: Mindestlänge und Regeln im Dashboard festlegen (Authentication → Passwords). Zwei-Faktor-Anmeldung gewünscht?
 - Wird ein Dokument in der Prüfliste in ein anderes Projekt verschoben, bleibt die Datei im Speicher unter der alten Projekt-ID liegen.
   Das muss der Agent in Schritt 9 lösen (Datei mit verschieben), sonst passt die Zugriffsregel des Speichers nicht mehr.
+- Nummernkreise der Hausbaufirmen (z. B. 8161 für Bien-Zenker?): stimmen die Zuordnungen aus der Demo? Erst mit bestätigtem
+  Nummernkreis schlägt die App die nächste freie ABM-Nr. vor. Schreibweise der Firmennamen muss zur Excel-Liste passen (Import).
+- Soll die Aufgabe "Fehlende Angaben nachfragen" nach 7 Tagen fällig sein, und an wen geht sie, wenn kein Architekt gewählt ist?

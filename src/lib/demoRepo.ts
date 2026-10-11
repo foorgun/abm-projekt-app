@@ -9,7 +9,7 @@ import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
-import { validateNewProject } from "./projectForm";
+import { cleanMasterName, followupForMissingInfo, validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
 import {
   PermissionError,
@@ -208,9 +208,55 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         steps: {},
       };
       db.projects.unshift(p);
+      const vermesser = input.vermesser?.trim();
+      if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
       log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
       if (input.createFolders) log({ projectId: p.id, kind: "projekt", text: `Projektordner aus der Vorlage angelegt (${db.folderTemplates.length} Ordner)` });
+      // Fehlende Angaben: eine Aufgabe zum Nachfragen (ohne eigenen Protokolleintrag)
+      const followup = followupForMissingInfo(input, todayIso());
+      if (followup) {
+        db.tasks.push({
+          id: newId("task"),
+          projectId: p.id,
+          title: followup.title,
+          dueOn: followup.dueOn,
+          assigneeId: p.architectId,
+          status: "offen",
+          source: "manuell",
+          sourceKey: `angaben:${p.id}`,
+          createdAt: now(),
+          doneAt: null,
+        });
+      }
       return done(structuredClone(p));
+    },
+
+    async createCompany(name) {
+      requireStaff();
+      const c = cleanMasterName(name, db.companies.map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const row = { id: newId("c"), name: c.name, numberPrefix: null };
+      db.companies.push(row);
+      return done(structuredClone(row));
+    },
+
+    async createSalesperson(companyId, name) {
+      requireStaff();
+      if (!db.companies.some((x) => x.id === companyId)) throw new Error("Hausbaufirma nicht gefunden");
+      const c = cleanMasterName(name, db.salespeople.filter((s) => s.companyId === companyId).map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const row = { id: newId("s"), companyId, name: c.name, email: null };
+      db.salespeople.push(row);
+      return done(structuredClone(row));
+    },
+
+    async createTeamMember(name, role) {
+      requireStaff();
+      const c = cleanMasterName(name, db.team.filter((t) => t.role === role).map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const row = { id: newId("t"), code: null, name: c.name, role };
+      db.team.push(row);
+      return done(structuredClone(row));
     },
 
     async setProjectStatus(projectId, status) {

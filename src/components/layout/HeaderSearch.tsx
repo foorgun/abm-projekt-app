@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FilePlus2, ListTodo, Search } from "lucide-react";
 import { matchesQuery } from "../../lib/projectFilters";
 import { phaseOf, projectTitle } from "../../lib/projects";
+import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
 
 const MAX = 6;
@@ -27,6 +28,8 @@ const COMMANDS: Command[] = [
  */
 export function HeaderSearch({ placeholder, onNewProject }: { placeholder: string; onNewProject: () => void }) {
   const { data } = useData();
+  // Befehle zum Anlegen gibt es nur für Admin und Mitarbeiter
+  const staff = useSession().user.role !== "freiberufler";
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [q, setQ] = useState("");
@@ -50,7 +53,8 @@ export function HeaderSearch({ placeholder, onNewProject }: { placeholder: strin
     ? (data?.projects ?? []).filter((p) => matchesQuery(p, q, p.companyId ? companyName.get(p.companyId) : null)).slice(0, MAX)
     : [];
   const term = q.trim().toLowerCase();
-  const commands = term ? COMMANDS.filter((c) => c.words.some((w) => w.startsWith(term) || term.split(/\s+/).every((t) => c.words.some((x) => x.startsWith(t))))) : COMMANDS;
+  const available = staff ? COMMANDS : [];
+  const commands = term ? available.filter((c) => c.words.some((w) => w.startsWith(term) || term.split(/\s+/).every((t) => c.words.some((x) => x.startsWith(t))))) : available;
   // Reihenfolge der Auswahl: Befehle, dann Projekte
   const options = [...commands.map((c) => ({ kind: "cmd" as const, c })), ...hits.map((p) => ({ kind: "project" as const, p }))];
 

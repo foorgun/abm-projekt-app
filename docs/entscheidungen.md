@@ -364,3 +364,26 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Demo-Kennzeichen `is_demo`** (Migration 0006) schon jetzt angelegt, damit die Migrationen in einem Zug angewendet werden können.
   Die App kann es nicht setzen (Trigger), nur das spätere Seed-Skript.
 - **Abweichung vom Demo-Modus:** Freiberufler werden über `project_members` zugewiesen (Benutzerkonto), nicht über den Planer am Projekt.
+
+## Schritt 8 – Blocker "Neues Projekt" (leere Auswahllisten)
+
+- **Pflicht ist nur der Bauherr.** ABM-Nr., Hausbaufirma, Bauort und Eingangsmonat sind freiwillig. Eingetragene Werte werden weiter
+  geprüft (Format der ABM-Nr. und Hausbau-Nr., Dublette der ABM-Nr.). Bei einer Bauvoranfrage wird die ABM-Nr. weiter auf "Bauvoranfrage" gesetzt.
+- **Fehlende Angaben erzeugen eine Aufgabe** "Fehlende Angaben nachfragen: …" (eine je Projekt, fällig in 7 Tagen, zugewiesen an den
+  Architekten, falls gewählt). Diese Regel gab es bisher nicht, auch nicht in der Demo; sie ist jetzt in beiden Repos gleich
+  (`followupForMissingInfo`, Konstante `FOLLOWUP_DUE_DAYS`, Annahme). Die Aufgabe ist als "manuell" gespeichert und nicht als "warnung",
+  weil der Abgleich mit den Warnungen sie sonst sofort wieder schließen würde. Sie schließt sich nicht von selbst, wenn die Angaben
+  nachgetragen sind (Projekte lassen sich in der App noch nicht bearbeiten).
+- **ABM-Nr. wird nicht mehr vorbelegt**, sondern als Vorschlag zum Anklicken angeboten ("Nächste freie Nummer … übernehmen"), weil sie
+  beim Anlegen oft noch nicht bekannt ist. Es ist auch keine Hausbaufirma mehr vorgewählt.
+- **"+ Neu anlegen" in der Auswahlliste** bei Hausbaufirma, Verkäufer, Architekt und Vermesser: aus der Liste wird ein Textfeld,
+  Enter legt an und wählt den neuen Eintrag, Escape geht zurück zur Liste (schließt nicht den Dialog). Nur der Name; doppelte Namen
+  werden abgelehnt (Groß-/Kleinschreibung egal). Der Planer hat die Option bewusst nicht (nicht verlangt).
+- **Vermesser ist ein Projektbeteiligter**, keine eigene Stammliste: Die Auswahl zeigt die Vermesser aller bisherigen Projekte, ein neuer
+  Name wird erst mit dem Projekt gespeichert (`project_parties`).
+- **Rechte (Migration 0007):** Admin und Mitarbeiter dürfen Hausbaufirmen, Verkäufer und Teammitglieder *anlegen*, spaltengenau nur mit
+  Namen (kein Nummernkreis, kein Benutzerkonto, kein `is_demo`). Ändern und Löschen bleibt gesperrt. Freiberufler dürfen nichts davon.
+- **Die drei Hausbaufirmen** haben die IDs, die der Excel-Import für diese Namen erzeugt, damit der Import später dieselben Zeilen trifft.
+  Der Nummernkreis bleibt leer (siehe offene Fragen): ohne ihn gibt es für die Firma keinen Nummernvorschlag.
+- **Projekt anlegen ist eine Datenbankfunktion** (`create_project`): Projekt, Vermesser, Aufgabe und Protokoll in einer Transaktion.
+- **Nebenbei behoben:** Freiberufler sahen den Knopf "+ Neues Projekt" und die Befehle unter Strg+K, obwohl sie nichts anlegen dürfen.

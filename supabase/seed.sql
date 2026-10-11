@@ -1,10 +1,11 @@
 -- Erfundene Beispieldaten für die lokale Entwicklung (supabase db reset).
 -- Keine echten Kunden. Echte Daten kommen ausschließlich über tools/import_excel.py.
 
-insert into public.companies (id, name, number_prefix) values
-  ('c0000000-0000-4000-8000-000000000001', 'Bien-Zenker',  '8161'),
-  ('c0000000-0000-4000-8000-000000000002', 'Living Haus',  '8260'),
-  ('c0000000-0000-4000-8000-000000000003', 'Schwabenhaus', '8185');
+-- Die drei Hausbaufirmen kommen seit Migration 0007 als Stammdaten. Für die lokalen Tests bekommen sie hier
+-- feste IDs und erfundene Nummernkreise.
+update public.companies set id = 'c0000000-0000-4000-8000-000000000001', number_prefix = '8161' where name = 'Bien-Zenker';
+update public.companies set id = 'c0000000-0000-4000-8000-000000000002', number_prefix = '8260' where name = 'Living Haus';
+update public.companies set id = 'c0000000-0000-4000-8000-000000000003', number_prefix = '8185' where name = 'Schwabenhaus';
 
 insert into public.salespeople (id, company_id, name) values
   ('50000000-0000-4000-8000-000000000001', 'c0000000-0000-4000-8000-000000000001', 'Jonas Reiter'),

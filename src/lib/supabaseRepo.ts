@@ -7,7 +7,7 @@ import { filterDocuments, type DocumentFilter, type DocumentRow } from "./docume
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
-import { validateNewProject } from "./projectForm";
+import { cleanMasterName, followupForMissingInfo, validateNewProject } from "./projectForm";
 import {
   PermissionError,
   type MailboxInput,
@@ -46,7 +46,7 @@ import {
   toTeamMember,
   type Row,
 } from "./supabase/mappers";
-import type { ActivityKind, AgentSettings, Dataset, MailboxStatus, Project } from "./types";
+import type { ActivityKind, AgentSettings, Dataset, MailboxStatus } from "./types";
 
 export const BUCKET = "project-documents";
 /** Die Daten-API liefert höchstens 1000 Zeilen je Anfrage: größere Tabellen werden seitenweise geholt. */
@@ -199,29 +199,56 @@ export function createSupabaseRepo(): Repo {
       // Dieselben Regeln wie im Formular
       const first = Object.values(validateNewProject(input, last?.projects ?? []))[0];
       if (first) throw new Error(first);
-      const { data, error } = await sb
-        .from("projects")
-        .insert({
-          abm_nr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr?.trim() || null,
-          hausbau_nr: input.hausbauNr?.trim() || null,
-          kind: input.kind,
-          status: "aktiv",
-          company_id: input.companyId,
-          salesperson_id: input.salespersonId,
-          bauherr_label: input.bauherrLabel.trim(),
-          location: input.location?.trim() || null,
-          architect_id: input.architectId,
-          planer_id: input.planerId,
-          intake_month: input.intakeMonth,
-        })
-        .select(COLS.projects)
-        .single();
-      if (error) fail(error, "Projekt konnte nicht angelegt werden");
-      const p: Project = toProject(data as unknown as Row);
-      await log(p.id, "projekt", "Projekt angelegt");
-      // Ordner sind keine eigenen Zeilen: der Baum entsteht aus der Vorlage, ein Ordner "existiert", sobald eine Datei darin liegt
-      if (input.createFolders) await log(p.id, "projekt", `Projektordner aus der Vorlage angelegt (${templates().length} Ordner)`);
-      return p;
+      const followup = followupForMissingInfo(input, todayIso());
+      // Eine Funktion in der Datenbank legt Projekt, Vermesser, Aufgabe und Protokoll in einer Transaktion an (Migration 0007)
+      const created = await sb.rpc("create_project", {
+        p_bauherr_label: input.bauherrLabel.trim(),
+        p_kind: input.kind,
+        p_abm_nr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr?.trim() || null,
+        p_hausbau_nr: input.hausbauNr?.trim() || null,
+        p_company: input.companyId,
+        p_salesperson: input.salespersonId,
+        p_location: input.location?.trim() || null,
+        p_architect: input.architectId,
+        p_planer: input.planerId,
+        p_intake_month: input.intakeMonth,
+        p_vermesser: input.vermesser?.trim() || null,
+        p_followup_title: followup?.title ?? null,
+        p_followup_due: followup?.dueOn ?? null,
+        // Ordner sind keine eigenen Zeilen: der Baum entsteht aus der Vorlage, ein Ordner "existiert", sobald eine Datei darin liegt
+        p_folders_note: input.createFolders ? `Projektordner aus der Vorlage angelegt (${templates().length} Ordner)` : null,
+      });
+      if (created.error) fail(created.error, "Projekt konnte nicht angelegt werden");
+      const { data, error } = await sb.from("projects").select(COLS.projects).eq("id", created.data as string).single();
+      if (error) fail(error, "Projekt wurde angelegt, konnte aber nicht geladen werden. Bitte Seite neu laden.");
+      return toProject(data as unknown as Row);
+    },
+
+    async createCompany(name) {
+      requireStaff();
+      const c = cleanMasterName(name, (last?.companies ?? []).map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const { data, error } = await sb.from("companies").insert({ name: c.name }).select(COLS.companies).single();
+      if (error) fail(error, "Hausbaufirma konnte nicht angelegt werden");
+      return toCompany(data as unknown as Row);
+    },
+
+    async createSalesperson(companyId, name) {
+      requireStaff();
+      const c = cleanMasterName(name, (last?.salespeople ?? []).filter((s) => s.companyId === companyId).map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const { data, error } = await sb.from("salespeople").insert({ company_id: companyId, name: c.name }).select(COLS.salespeople).single();
+      if (error) fail(error, "Verkäufer konnte nicht angelegt werden");
+      return toSalesperson(data as unknown as Row);
+    },
+
+    async createTeamMember(name, role) {
+      requireStaff();
+      const c = cleanMasterName(name, (last?.team ?? []).filter((t) => t.role === role).map((x) => x.name));
+      if (!c.ok) throw new Error(c.reason);
+      const { data, error } = await sb.from("team_members").insert({ name: c.name, role }).select(COLS.team_members).single();
+      if (error) fail(error, "Eintrag konnte nicht angelegt werden");
+      return toTeamMember(data as unknown as Row);
     },
 
     async setProjectStatus(projectId, status) {

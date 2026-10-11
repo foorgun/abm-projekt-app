@@ -4476,3 +4476,37 @@ li:first-child > .doc-card {
 .file-open:hover {
   text-decoration: underline;
 }
+
+/* ---------------------------------------------------------------- Neu anlegen direkt im Formular */
+
+.create-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.create-inline .input {
+  flex: 1;
+  min-width: 0;
+}
+
+.hint-action {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.form-note {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  line-height: 1.5;
+}

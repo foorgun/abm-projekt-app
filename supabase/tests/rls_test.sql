@@ -259,8 +259,8 @@ select test.expect('Mitarbeiter darf Postfach pausieren',
   test.affected($$update public.mailboxes set status = 'pausiert'$$), 1);
 select test.throws('Mitarbeiter darf keine Mails in den Posteingang schreiben (nur der Agent)',
   $$insert into public.inbox_items (mailbox_id, message_id, received_at, from_email) values ('ab000000-0000-4000-8000-000000000001', '<x@y>', now(), 'x@example.com')$$);
-select test.throws('Mitarbeiter darf keine Firma anlegen (Stammdaten nur lesen)',
-  $$insert into public.companies (name) values ('Neu')$$);
+select test.throws('Mitarbeiter darf keine Firma löschen', $$delete from public.companies$$);
+select test.throws('Mitarbeiter darf Firmennamen nicht ändern', $$update public.companies set name = 'X' || name$$);
 select test.expect('Mitarbeiter darf Schritt zurücksetzen (Zeile löschen)',
   test.affected($$delete from public.project_steps where project_id = 'a0000000-0000-4000-8000-000000000003'$$), 1);
 rollback;
@@ -367,6 +367,88 @@ select test.expect('Demo-Daten löschen nimmt Rechnungen und Schritte mit',
   (select count(*) from public.invoices where project_id = 'a0000000-0000-4000-8000-000000000001')
   + (select count(*) from public.project_steps where project_id = 'a0000000-0000-4000-8000-000000000001'), 0);
 select test.expect('Echte Projekte unberührt', (select count(*) from public.projects), 4);
+rollback;
+
+-- ===========================================================================
+-- Migration 0007: Stammdaten beim Anlegen eines Projekts ergänzen, Projekt anlegen
+-- ===========================================================================
+select test.expect('0007: drei Hausbaufirmen als echte Stammdaten (kein is_demo)',
+  (select count(*) from public.companies where name in ('Bien-Zenker', 'Living Haus', 'Schwabenhaus') and not is_demo), 3);
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiter darf Hausbaufirma anlegen (nur Name)',
+  test.affected($$insert into public.companies (name) values ('Fingerhaus')$$), 1);
+select test.throws('Hausbaufirma mit Nummernkreis anlegen geht nicht (Spaltenrecht)',
+  $$insert into public.companies (name, number_prefix) values ('Okal', '9999')$$);
+select test.throws('Hausbaufirma als Demo kennzeichnen geht nicht (Spaltenrecht)',
+  $$insert into public.companies (name, is_demo) values ('Okal', true)$$);
+select test.throws('Gleiche Hausbaufirma zweimal wird abgelehnt', $$insert into public.companies (name) values ('Bien-Zenker')$$);
+select test.throws('Leerer Name wird abgelehnt', $$insert into public.companies (name) values (' ')$$);
+select test.expect('Mitarbeiter darf Verkäufer anlegen',
+  test.affected($$insert into public.salespeople (company_id, name) values ('c0000000-0000-4000-8000-000000000001', 'Neuer Verkäufer')$$), 1);
+select test.expect('Mitarbeiter darf Architekt anlegen',
+  test.affected($$insert into public.team_members (name, role) values ('Neue Architektin', 'architekt')$$), 1);
+select test.throws('Teammitglied mit Benutzerkonto verknüpfen geht nicht (Spaltenrecht)',
+  $$insert into public.team_members (name, role, user_id) values ('X Y', 'architekt', '00000000-0000-4000-8000-0000000000a2')$$);
+select test.throws('Mitarbeiter darf Teammitglied nicht ändern', $$update public.team_members set name = 'Anders'$$);
+select test.throws('Mitarbeiter darf Teammitglied nicht löschen', $$delete from public.team_members$$);
+
+-- Projekt nur mit Bauherr: alles andere leer, Aufgabe zum Nachfragen entsteht
+select public.create_project(p_bauherr_label => ' Neumann ', p_followup_title => 'Fehlende Angaben nachfragen: ABM-Nr., Hausbaufirma, Bauort', p_followup_due => '2026-10-18');
+select test.expect('Projekt nur mit Bauherr anlegen',
+  (select count(*) from public.projects
+   where bauherr_label = 'Neumann' and abm_nr is null and company_id is null and location is null and intake_month is null and status = 'aktiv'), 1);
+select test.expect('Aufgabe "nachfragen" am neuen Projekt',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id
+   where p.bauherr_label = 'Neumann' and t.title like 'Fehlende Angaben nachfragen:%' and t.status = 'offen' and t.due_on = '2026-10-18'
+     and t.source_key = 'angaben:' || p.id::text), 1);
+select test.expect('Protokoll: Projekt angelegt, mit Namen',
+  (select count(*) from public.activities a join public.projects p on p.id = a.project_id
+   where p.bauherr_label = 'Neumann' and a.text = 'Projekt angelegt' and a.actor = 'Mira Mitarbeiter'), 1);
+
+-- Vollständig, mit Vermesser: keine Aufgabe
+select public.create_project(
+     p_bauherr_label => 'Vollmer', p_abm_nr => '8161-9777', p_company => 'c0000000-0000-4000-8000-000000000001',
+     p_location => 'Ulm', p_intake_month => '2026-10-01', p_architect => '70000000-0000-4000-8000-000000000001',
+     p_vermesser => 'Vermessung Donautal', p_folders_note => 'Projektordner aus der Vorlage angelegt (126 Ordner)');
+select test.expect('Projekt mit allen Angaben und Vermesser',
+  (select count(*) from public.projects where bauherr_label = 'Vollmer' and abm_nr = '8161-9777' and location = 'Ulm'), 1);
+select test.expect('Vermesser als Projektbeteiligter gespeichert',
+  (select count(*) from public.project_parties x join public.projects p on p.id = x.project_id
+   where p.bauherr_label = 'Vollmer' and x.role = 'vermesser' and x.name = 'Vermessung Donautal'), 1);
+select test.expect('Vollständiges Projekt: keine Aufgabe',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id where p.bauherr_label = 'Vollmer'), 0);
+select test.throws('Projekt ohne Bauherr wird abgelehnt', $$select public.create_project(p_bauherr_label => ' ')$$);
+select test.throws('Schlägt ein Teil fehl, entsteht gar kein Projekt (unbekannte Firma)',
+  $$select public.create_project(p_bauherr_label => 'Halbfertig', p_company => '00000000-0000-4000-8000-00000000dead', p_vermesser => 'X')$$);
+select test.expect('… wirklich keines', (select count(*) from public.projects where bauherr_label = 'Halbfertig'), 0);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin darf Hausbaufirma anlegen', test.affected($$insert into public.companies (name) values ('Fingerhaus')$$), 1);
+select test.expect('Admin darf Architekt anlegen', test.affected($$insert into public.team_members (name, role) values ('Neuer Architekt', 'architekt')$$), 1);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.throws('Freiberufler darf keine Hausbaufirma anlegen', $$insert into public.companies (name) values ('Fingerhaus')$$);
+select test.throws('Freiberufler darf keinen Verkäufer anlegen',
+  $$insert into public.salespeople (company_id, name) values ('c0000000-0000-4000-8000-000000000001', 'X Y')$$);
+select test.throws('Freiberufler darf kein Teammitglied anlegen', $$insert into public.team_members (name, role) values ('X Y', 'architekt')$$);
+select test.throws('Freiberufler darf keinen Vermesser eintragen, auch nicht im eigenen Projekt',
+  $$insert into public.project_parties (project_id, role, name) values ('a0000000-0000-4000-8000-000000000001', 'erdbauer', 'X Y')$$);
+select test.throws('Freiberufler darf kein Projekt anlegen (Funktion)', $$select public.create_project(p_bauherr_label => 'Unzulässig')$$);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.throws('Ohne Rolle: keine Hausbaufirma anlegen', $$insert into public.companies (name) values ('Fingerhaus')$$);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------
