@@ -1,7 +1,7 @@
 # Supabase einrichten (Pilotprojekt "abm-pilot", Frankfurt)
 
-Stand: Schritt 8, Punkte 1 bis 3 (Datenanbindung, Rechte, Anmeldung). Konten per Skript, Rollenprüfung, Sicherung und
-Demo-Daten für die echte Datenbank folgen (Abschnitt 8).
+Stand: Schritt 8 (Datenanbindung, Rechte, Anmeldung, Skripte für Konten, Rollenprüfung, Sicherung und Demo-Daten).
+Die Skripte aus Abschnitt 8 sind geschrieben und lokal geprüft, soweit das ohne das echte Projekt geht.
 
 ## 1. Zwei Schlüssel, zwei Orte
 
@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0008). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0009). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 
@@ -63,7 +63,7 @@ letzte Zeile "In Ordnung". Steht irgendwo "OFFEN", nicht weitermachen.
 
 ## 4. Erstes Konto (Admin)
 
-Eine Registrierung gibt es nicht. Konten legt der Admin an, bis das Skript aus Abschnitt 8 da ist von Hand:
+Eine Registrierung gibt es nicht. Konten legt der Admin an: von Hand wie hier, oder mehrere auf einmal per Skript (Abschnitt 8):
 
 1. Dashboard → **Authentication → Users → Add user → Create new user**: E-Mail, ein langes Passwort,
    "Auto Confirm User" **an**.
@@ -94,7 +94,7 @@ npm run dev:demo     # Demo-Modus mit erfundenen Daten auf http://localhost:5199
 ```
 
 Anmeldung mit E-Mail und Passwort. Nach den Migrationen ist die Datenbank leer: Dashboard und Listen zeigen leere Zustände,
-bis Projekte angelegt oder Demo-Daten geladen sind (Abschnitt 8). Schritte, Ordnervorlage (126 Ordner) und die Schwellen des
+bis Projekte angelegt oder Demo-Daten geladen sind (Abschnitt 8, `npm run seed:demo`). Schritte, Ordnervorlage (126 Ordner) und die Schwellen des
 Agenten sind schon da, die kommen aus den Migrationen.
 
 Was im Pilotbetrieb noch **nicht** geht: Der Posteingangs-Agent liest keine Postfächer ("Jetzt prüfen" ist gesperrt, Schritt 9).
@@ -119,8 +119,8 @@ Lokal nachprüfen (temporäres Postgres, kein Zugriff auf das echte Projekt): `b
 
 Angaben nach meinem Kenntnisstand, bitte vor einer Entscheidung auf supabase.com/pricing gegenprüfen.
 
-- **Keine automatischen Backups.** Geht etwas verloren, ist es weg. Bis `npm run export:backup` da ist (Abschnitt 8),
-  gibt es keine Sicherung. Bis dahin keine Daten eintragen, die nicht auch woanders stehen.
+- **Keine automatischen Backups.** Geht etwas verloren, ist es weg. Die einzige Sicherung ist `npm run export:backup` (Abschnitt 8),
+  und die sichert keine Dateien. Regelmäßig laufen lassen, mindestens vor jedem Import und jeder Migration.
 - **Pause nach etwa einer Woche ohne Zugriffe.** Das Projekt wird angehalten, die App meldet dann "Keine Verbindung".
   Im Dashboard lässt es sich wieder starten ("Restore project"); das dauert einige Minuten. Daten bleiben erhalten,
   solange es rechtzeitig wieder gestartet wird.
@@ -132,16 +132,49 @@ Angaben nach meinem Kenntnisstand, bitte vor einer Entscheidung auf supabase.com
 im Alltag damit arbeitet. Gründe: tägliche Backups, keine Pause, mehr Speicher. Vorher zu klären (steht in
 `docs/offene-fragen.md`): Vertrag zur Auftragsverarbeitung (AVV) mit Supabase.
 
-## 8. Folgt in den nächsten Punkten von Schritt 8
+## 8. Demo-Daten, Testkonten, Prüfungen, Sicherung
 
-Noch nicht vorhanden, hier nur damit klar ist, was kommt:
+Reihenfolge einhalten. Schritte mit **[Secret key]** brauchen die Datei `.env.server`, die du selbst anlegst:
 
-- Vier Testkonten per Skript, E-Mail-Adressen aus `konten.local.json` (nicht eingecheckt); Freiberufler mit drei Projekten.
-- `npm run check:roles`: meldet sich je Konto an und prüft die Sichten, Ergebnis als Tabelle.
-- `npm run export:backup`: alle Tabellen als JSON nach `backups/<datum>/`.
-- Seed mit erfundenen Demo-Daten, getrennt von echten Daten (Spalte `is_demo`, Migration 0006), mit Schalter zum Löschen.
+```
+SUPABASE_SECRET_KEY=sb_secret_…
+```
 
-Diese Skripte brauchen den Secret key aus `.env.server`. Die Datei legst du selbst an; ich schreibe den Schlüssel nirgends hin.
+Den Schlüssel findest du im Dashboard unter Project Settings → API Keys → Secret keys. Die Datei ist in `.gitignore`.
+Kein Skript gibt den Schlüssel aus oder schreibt ihn irgendwohin. Wer ihn hat, kann alles lesen und löschen: nicht weitergeben,
+und wenn er doch einmal in eine Mail oder einen Chat gerät, im Dashboard widerrufen und neu erzeugen.
+
+| Nr. | Befehl | Was passiert | Schlüssel |
+|---|---|---|---|
+| 1 | `npm run db:bundle -- --ab 0008`, Datei im SQL-Editor ausführen | Migrationen 0008 und 0009 | keiner |
+| 2 | `npm run seed:demo` | lädt rund 2.000 erfundene Zeilen (60 Projekte, 150 Rechnungen, 624 Dokumente ohne Dateien …), alle mit `is_demo` | **[Secret key]** |
+| 3 | `konten.beispiel.json` nach `konten.local.json` kopieren, vier E-Mail-Adressen eintragen | Liste der Testkonten, nur lokal | keiner |
+| 4 | `npm run konten:anlegen` | legt fehlende Konten an, setzt Rolle und Namen, weist dem Freiberufler drei Demo-Projekte zu | **[Secret key]** |
+| 5 | `npm run check:roles` | meldet sich je Konto an und prüft die Sichten, Ergebnis als Tabelle | keiner (Passwörter aus `konten.local.json`) |
+| 6 | `npm run check:repo` | ruft jede Funktion der App einmal gegen die echte Datenbank auf, mit Testdaten, die danach entfernt werden | **[Secret key]** (Vorbereiten und Aufräumen) |
+| 7 | `npm run export:backup` | alle Tabellen als JSON nach `backups/abm-backup-<Datum>_<Uhrzeit>/` | **[Secret key]** |
+
+**Demo-Daten wieder entfernen:** `npm run seed:demo -- --loeschen` **[Secret key]**. Entfernt alles mit `is_demo` samt der daran
+hängenden Zeilen; echte Projekte, die drei Hausbaufirmen und die Ordnervorlage bleiben. Zweimal laden geht nicht (das Skript bricht ab).
+
+**Ohne Secret key** geht der Seed auch: `npm run seed:demo -- --sql` schreibt `supabase/.out/demo-seed.sql` und
+`demo-loeschen.sql` zum Einfügen in den SQL-Editor (eine Transaktion, rund 550 KB). Genau diese Dateien sind lokal geprüft:
+`npm run seed:demo -- --sql && bash tools/test-db.sh --demo` lädt, zählt und löscht restlos.
+
+**Konten:**
+
+- Gibt es ein Konto schon (z. B. deines), bleibt das Passwort unberührt; das Skript setzt nur Rolle und Namen.
+- Neue Konten bekommen ein zufälliges Passwort. Es wird nicht angezeigt, sondern steht danach in `konten.local.json`.
+  Der Person auf sicherem Weg geben; ändern lässt es sich im Dashboard unter Authentication → Users.
+- `check:roles` und `check:repo` melden sich nur mit Konten an, zu denen ein Passwort in `konten.local.json` steht.
+  Für dein eigenes Konto kannst du dort von Hand `"passwort": "…"` ergänzen; sonst wird es übersprungen.
+  Gebraucht wird mindestens ein Admin-Konto mit Passwort (das neu angelegte reicht).
+- Der Freiberufler bekommt die ersten drei aktiven Demo-Projekte. Hat er schon genau drei Zuweisungen, bleiben sie.
+
+**Sicherung:** enthält alle Tabellen, die Liste der Konten (ohne Passwörter) und die Liste der Dateien im Speicher, aber
+**nicht die Dateien selbst**. Im Free-Tarif ist das die einzige Sicherung; vor jedem größeren Schritt (Import, Migration) laufen lassen.
+Der Ordner enthält Kontaktdaten: nicht in eine Cloud-Ablage legen, die dafür nicht gedacht ist. Eine Wiederherstellung aus den
+JSON-Dateien gibt es noch nicht als Skript.
 
 ## 9. Wenn etwas nicht geht
 

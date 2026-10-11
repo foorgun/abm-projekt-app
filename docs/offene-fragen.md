@@ -35,3 +35,5 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Nummernkreise der Hausbaufirmen (z. B. 8161 für Bien-Zenker?): stimmen die Zuordnungen aus der Demo? Erst mit bestätigtem
   Nummernkreis schlägt die App die nächste freie ABM-Nr. vor. Schreibweise der Firmennamen muss zur Excel-Liste passen (Import).
 - Soll die Aufgabe "Fehlende Angaben nachfragen" nach 7 Tagen fällig sein, und an wen geht sie, wenn kein Architekt gewählt ist?
+- Sicherung: Sollen auch die Dateien aus dem Speicher gesichert werden, und wohin? Wer führt `export:backup` wie oft aus?
+  Ein Skript zur Wiederherstellung aus der Sicherung gibt es noch nicht.

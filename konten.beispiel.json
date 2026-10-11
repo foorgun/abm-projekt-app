@@ -1,0 +1,8 @@
+{
+  "konten": [
+    { "email": "furkan@example.com", "name": "Furkan Cetin", "rolle": "admin" },
+    { "email": "mehmet@example.com", "name": "Mehmet Cetin", "rolle": "admin" },
+    { "email": "mitarbeiter@example.com", "name": "Vorname Nachname", "rolle": "mitarbeiter" },
+    { "email": "freiberufler@example.com", "name": "Vorname Nachname", "rolle": "freiberufler" }
+  ]
+}

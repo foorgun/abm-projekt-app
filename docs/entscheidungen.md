@@ -413,3 +413,23 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Rechte (Migration 0008):** `bauherren` anlegen und ändern (nur die fünf Kontaktspalten), Beteiligte ändern und austragen; jeweils nur
   Admin und Mitarbeiter über die bestehenden Zeilenregeln. Freiberufler sehen weiterhin keine Zeile aus `bauherren`.
 - **Nebenbei behoben:** Ein Neubau ohne ABM-Nr. hieß in Überschrift und Listen "(Bauvoranfrage)". Jetzt steht nur der Name.
+
+## Schritt 8 – Skripte für Konten, Rollenprüfung, Sicherung, Demo-Daten
+
+- **Zwei lokale Dateien, beide nicht eingecheckt:** `.env.server` (Secret key) und `konten.local.json` (E-Mail-Adressen, Rollen,
+  Passwörter neu angelegter Konten). Vorlage: `konten.beispiel.json`. Kein Skript zeigt Passwörter oder Schlüssel an.
+- **Demo-Daten in der echten Datenbank** sind derselbe erfundene Bestand wie im Demo-Modus (`buildSeedTables`), mit festen UUIDs
+  (beginnen mit `de30`) und `is_demo = true` auf allen Wurzeldatensätzen. Sie hängen sich an die echten Hausbaufirmen, statt Dubletten
+  anzulegen; Demo-Verkäufer bekommen dafür ein eigenes Kennzeichen (Migration 0009). Demo-Architekten haben kein Kürzel, damit
+  "BE" und "MC" den echten vorbehalten bleiben. Demo-Dokumente haben keine Datei im Speicher ("Datei öffnen" meldet das).
+- **Laden über die API ist keine Transaktion.** Schlägt ein Teil fehl, entfernt das Skript alles bereits Geladene wieder.
+  Alternativ gibt es dieselben Zeilen als SQL in einer Transaktion (`--sql`); nur diese Fassung ist lokal geprüft.
+- **`check:roles` braucht keinen Secret key:** Bezugswerte ("alle Projekte") kommen aus einem angemeldeten Admin-Konto.
+  Schreibversuche sind so gebaut, dass sie nichts ändern, auch wenn eine Regel versagt: Werte werden auf sich selbst gesetzt, oder der
+  Versuch enthält einen ungültigen Wert, den die Datenbank erst nach der Berechtigungsprüfung ablehnt. "Gesperrt" zählt nur, wenn
+  die Ablehnung wirklich an der Berechtigung liegt.
+- **`check:repo` braucht den Secret key** nur zum Vorbereiten (Testmail, Testrechnung: schreibt sonst nur der Agent) und zum Aufräumen
+  (die App kann nichts löschen). Die geprüften Aufrufe selbst laufen als angemeldeter Benutzer über das `supabaseRepo`.
+  Testdaten heißen "Zzsmoke…" bzw. "ZZ-Smoketest …"; am Ende wird nachgezählt, ob etwas übrig ist.
+- **Sicherung ohne Dateien:** `export:backup` schreibt Tabellen, Kontenliste und Dateiliste. Die Dateien im Speicher und eine
+  Wiederherstellung aus der Sicherung fehlen noch (offene Punkte).
