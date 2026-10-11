@@ -161,6 +161,11 @@ hängenden Zeilen; echte Projekte, die drei Hausbaufirmen und die Ordnervorlage 
 `demo-loeschen.sql` zum Einfügen in den SQL-Editor (eine Transaktion, rund 550 KB). Genau diese Dateien sind lokal geprüft:
 `npm run seed:demo -- --sql && bash tools/test-db.sh --demo` lädt, zählt und löscht restlos.
 
+**`check:roles` lesen:** Jede Zeile hat eines von drei Ergebnissen: eine Zeilenzahl, `gesperrt (Code: Text)` oder
+`UNERWARTETER FEHLER (Code: Text)`. "Gesperrt" heißt, die Datenbank lehnt wegen fehlender Berechtigung ab (meist Code `42501`,
+bei unseren Funktionen `P0001: Keine Berechtigung`). Ein unerwarteter Fehler zählt immer als FEHLER, auch wenn 0 Zeilen erwartet waren.
+Übersprungene Konten (ohne Passwort in der Datei) stehen am Ende; für sie ist nichts geprüft.
+
 **Konten:**
 
 - Gibt es ein Konto schon (z. B. deines), bleibt das Passwort unberührt; das Skript setzt nur Rolle und Namen.

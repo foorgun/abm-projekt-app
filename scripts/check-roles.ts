@@ -3,6 +3,8 @@
 // Schreibversuche sind so gewählt, dass sie auch dann nichts verändern, wenn eine Regel wider Erwarten nicht greift:
 // Werte werden auf sich selbst gesetzt, oder der Versuch enthält absichtlich einen ungültigen Wert, den die Datenbank
 // erst NACH der Berechtigungsprüfung ablehnt (leerer Name, nicht vorhandene Benutzer-ID).
+// Jede Prüfung hat eines von drei Ergebnissen: eine Zeilenzahl, "gesperrt" (mit Code und Text der Datenbank) oder
+// "UNERWARTETER FEHLER" (ebenfalls mit Code und Text). Ein unerwarteter Fehler ist nie ok.
 // Aufruf: npm run check:roles
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeAlerts, unsentInvoiceTotal } from "../src/lib/alerts";
@@ -14,30 +16,85 @@ import { die, publicClient, readKonten, table, type Konto } from "./lib/server";
 const NIL = "00000000-0000-4000-8000-000000000000";
 const rows: string[][] = [];
 let failed = 0;
-function check(konto: string, what: string, expected: string | number, actual: string | number) {
-  const ok = String(expected) === String(actual);
-  if (!ok) failed++;
-  rows.push([konto, what, String(expected), String(actual), ok ? "ok" : "FEHLER"]);
+
+/** Ergebnis eines Zugriffs: Zeilenzahl, Ablehnung wegen fehlender Berechtigung, oder ein unerwarteter Fehler. */
+type Outcome = { kind: "zeilen"; n: number } | { kind: "gesperrt"; detail: string } | { kind: "fehler"; detail: string };
+type DbError = { message?: string; code?: string; details?: string | null; hint?: string | null; status?: number; statusCode?: string | number };
+
+/** Code und Text eines Fehlers, vollständig. Nie leer: fehlt beides, steht das da. */
+function errorText(e: DbError, status?: number): string {
+  const code = e.code || (e.statusCode != null ? `HTTP ${e.statusCode}` : status ? `HTTP ${status}` : "ohne Code");
+  // Meldung und Einzelheiten der Datenbank. Der "hint" der API bleibt weg: er schlägt bei 42501 vor, das Recht zu vergeben.
+  const text = [e.message, e.details].filter((x) => x && String(x).trim()).join(" · ") || "ohne Text (die Antwort enthielt keine Meldung)";
+  return `${code}: ${text}`;
+}
+/** Fehlende Berechtigung: GRANT fehlt (42501), Zeilenregel lehnt ab, oder die Funktion prüft die Rolle. Alles andere ist unerwartet. */
+function isNoPermission(e: DbError): boolean {
+  return e.code === "42501" || /permission denied|row-level security|Keine Berechtigung/i.test(e.message ?? "");
+}
+function outcome(error: DbError | null, n: number, status?: number): Outcome {
+  if (!error) return { kind: "zeilen", n };
+  return isNoPermission(error) ? { kind: "gesperrt", detail: errorText(error, status) } : { kind: "fehler", detail: errorText(error, status) };
+}
+function show(o: Outcome): string {
+  if (o.kind === "zeilen") return String(o.n);
+  return o.kind === "gesperrt" ? `gesperrt (${o.detail})` : `UNERWARTETER FEHLER (${o.detail})`;
 }
 
-async function count(sb: SupabaseClient, tableName: string, filter?: (q: any) => any): Promise<number | string> {
-  let q: any = sb.from(tableName).select("*", { count: "exact", head: true });
-  if (filter) q = filter(q);
-  const { count: n, error } = await q;
-  return error ? `Fehler: ${error.code ?? error.message}` : n ?? 0;
+function record(konto: string, what: string, expected: string, actual: string, ok: boolean) {
+  if (!ok) failed++;
+  rows.push([konto, what, expected, actual, ok ? "ok" : "FEHLER"]);
 }
-/**
- * "gesperrt" nur, wenn die Datenbank wegen fehlender Berechtigung ablehnt (GRANT, Zeilenregel, Rollenprüfung der Funktion)
- * oder die Zeilenregel keine Zeile trifft. Jede andere Ablehnung (z. B. ein ungültiger Wert) heißt: die Berechtigung war da.
- */
-async function denied(run: PromiseLike<{ error: { message: string; code?: string } | null; data?: unknown }>): Promise<string> {
-  const { error, data } = await run;
-  if (error) {
-    const noRight = error.code === "42501" || /permission denied|row-level security|Keine Berechtigung/i.test(error.message);
-    return noRight ? "gesperrt" : `ERLAUBT (erst später abgelehnt: ${error.message.slice(0, 60)})`;
+/** Erwartet eine bestimmte Zeilenzahl. Eine Ablehnung oder ein Fehler ist hier nie ok, auch nicht bei erwarteten 0 Zeilen. */
+function expectRows(konto: string, what: string, expected: number | Outcome, actual: Outcome) {
+  if (typeof expected !== "number") {
+    if (expected.kind !== "zeilen") return record(konto, what, "Bezugswert", `Bezugswert nicht lesbar: ${show(expected)}`, false);
+    expected = expected.n;
   }
-  return Array.isArray(data) && data.length === 0 ? "gesperrt" : "ERLAUBT";
+  record(konto, what, String(expected), show(actual), actual.kind === "zeilen" && actual.n === expected);
 }
+/** Erwartet eine Ablehnung wegen fehlender Berechtigung. Null Zeilen oder ein anderer Fehler sind hier nicht ok. */
+function expectDenied(konto: string, what: string, actual: Outcome) {
+  record(konto, what, "gesperrt", show(actual), actual.kind === "gesperrt");
+}
+function expectText(konto: string, what: string, expected: string, actual: string) {
+  record(konto, what, expected, actual, expected === actual);
+}
+
+/**
+ * Eine Spalte je Tabelle, die jede Rolle lesen darf. Nie "*": mailboxes gibt nur einzelne Spalten frei (ohne secret_ref),
+ * dort lehnt die Datenbank "*" für JEDE Rolle ab. Gezählt wird mit einer normalen Abfrage (nicht HEAD), damit ein Fehler
+ * seinen Code und Text mitbringt.
+ */
+const KEY: Record<string, string> = { project_steps: "project_id", project_members: "project_id", user_roles: "user_id", step_definitions: "key", agent_settings: "id" };
+
+async function count(sb: SupabaseClient, tableName: string, filter?: (q: any) => any, column?: string): Promise<Outcome> {
+  let q: any = sb.from(tableName).select(column ?? KEY[tableName] ?? "id", { count: "exact" });
+  if (filter) q = filter(q);
+  const { count: n, error, status } = await q.limit(1);
+  return outcome(error, n ?? 0, status);
+}
+
+/**
+ * Schreibversuch: "gesperrt", wenn die Datenbank wegen fehlender Berechtigung ablehnt. Trifft eine Zeilenregel einfach
+ * keine Zeile, gilt das als "0 Zeilen". Jede andere Ablehnung (z. B. ein ungültiger Wert) heißt: die Berechtigung war da.
+ */
+async function attempt(run: PromiseLike<{ error: DbError | null; data?: unknown; status?: number }>): Promise<Outcome> {
+  const { error, data, status } = await run;
+  return outcome(error, Array.isArray(data) ? data.length : 1, status);
+}
+/** Für Schreibversuche: gesperrt ODER keine Zeile betroffen ist in Ordnung; eine geänderte Zeile oder ein anderer Fehler nicht. */
+function expectBlocked(konto: string, what: string, actual: Outcome) {
+  const ok = actual.kind === "gesperrt" || (actual.kind === "zeilen" && actual.n === 0);
+  record(konto, what, "gesperrt oder 0 Zeilen", actual.kind === "zeilen" ? `${actual.n} Zeilen betroffen` : show(actual), ok);
+}
+/** Zeilen lesen; ein Fehler wird als fehlgeschlagene Prüfung vermerkt, nicht verschluckt. */
+async function read<T>(konto: string, what: string, run: PromiseLike<{ data: T[] | null; error: DbError | null; status?: number }>): Promise<T[]> {
+  const { data, error, status } = await run;
+  if (error) record(konto, what, "lesbar", show(outcome(error, 0, status)), false);
+  return data ?? [];
+}
+
 async function signIn(k: Konto): Promise<{ sb: SupabaseClient; id: string } | null> {
   const sb = publicClient();
   const { data, error } = await sb.auth.signInWithPassword({ email: k.email, password: k.passwort! });
@@ -51,9 +108,7 @@ for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.r
 
 // ---- nicht angemeldet
 const anon = publicClient();
-check("nicht angemeldet", "Projekte lesen", "gesperrt", typeof (await count(anon, "projects")) === "string" ? "gesperrt" : "LESBAR");
-check("nicht angemeldet", "Rechnungen lesen", "gesperrt", typeof (await count(anon, "invoices")) === "string" ? "gesperrt" : "LESBAR");
-check("nicht angemeldet", "Bauherren lesen", "gesperrt", typeof (await count(anon, "bauherren")) === "string" ? "gesperrt" : "LESBAR");
+for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 
 // ---- Bezugswerte: was ein Admin sieht
 const adminKonto = mitPasswort.find((k) => k.rolle === "admin");
@@ -66,69 +121,74 @@ const all = {
   bauherren: await count(ref.sb, "bauherren"),
   roles: await count(ref.sb, "user_roles"),
 };
-const allProjects = ((await ref.sb.from("projects").select("id, bauherr_id").limit(5000)).data ?? []) as { id: string; bauherr_id: string | null }[];
-if (Number(all.invoices) === 0 || Number(all.bauherren) === 0) {
+const allProjects = await read<{ id: string; bauherr_id: string | null }>("Bezugswerte (Admin)", "Projekte lesen", ref.sb.from("projects").select("id, bauherr_id").limit(5000));
+const zero = (o: Outcome) => o.kind === "zeilen" && o.n === 0;
+if (zero(all.invoices) || zero(all.bauherren)) {
   console.warn("Hinweis: In der Datenbank gibt es keine Rechnungen oder keine Bauherren. Die Prüfungen \"sieht keine\" sind dann wenig aussagekräftig (vorher npm run seed:demo).\n");
 }
 
 for (const k of mitPasswort) {
   const who = `${k.email} (${k.rolle})`;
   const s = await signIn(k);
-  check(who, "Anmeldung", "ok", s ? "ok" : "fehlgeschlagen");
+  expectText(who, "Anmeldung", "ok", s ? "ok" : "fehlgeschlagen");
   if (!s) continue;
   const { sb, id } = s;
-  const own = await sb.from("user_roles").select("role, full_name").eq("user_id", id).maybeSingle();
-  check(who, "Rolle laut Datenbank", k.rolle, own.data?.role ?? "keine");
+  const own = await read<{ role: string }>(who, "eigene Rolle lesen", sb.from("user_roles").select("role").eq("user_id", id));
+  expectText(who, "Rolle laut Datenbank", k.rolle, own[0]?.role ?? "keine");
+  // secret_ref (Verweis auf die Zugangsdaten der Postfächer) ist für JEDE Rolle gesperrt, auch für Admins
+  expectDenied(who, "mailboxes.secret_ref lesen", await count(sb, "mailboxes", undefined, "secret_ref"));
 
   if (k.rolle === "admin") {
-    check(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
-    check(who, "sieht Rechnungen", all.invoices, await count(sb, "invoices"));
-    check(who, "sieht Kontaktdaten der Bauherren", all.bauherren, await count(sb, "bauherren"));
-    check(who, "sieht die Rollen aller Konten", all.roles, await count(sb, "user_roles"));
+    expectRows(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
+    expectRows(who, "sieht Rechnungen", all.invoices, await count(sb, "invoices"));
+    expectRows(who, "sieht Kontaktdaten der Bauherren", all.bauherren, await count(sb, "bauherren"));
+    expectRows(who, "sieht die Rollen aller Konten", all.roles, await count(sb, "user_roles"));
   }
 
   if (k.rolle === "mitarbeiter") {
-    check(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
-    check(who, "sieht Rechnungen", all.invoices, await count(sb, "invoices"));
-    check(who, "sieht Kontaktdaten der Bauherren", all.bauherren, await count(sb, "bauherren"));
-    check(who, "Nutzerverwaltung: sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
-    check(who, "Nutzerverwaltung: Rolle vergeben", "gesperrt", await denied(sb.from("user_roles").insert({ user_id: NIL, role: "admin" }).select()));
-    check(who, "Nutzerverwaltung: eigene Rolle ändern", "gesperrt", await denied(sb.from("user_roles").update({ role: k.rolle }).eq("user_id", id).select()));
-    check(who, "Nutzerverwaltung: Projekt zuweisen", "gesperrt", await denied(sb.from("project_members").insert({ project_id: NIL, user_id: id }).select()));
-    const cur = await sb.from("agent_settings").select("auto_file_threshold, suggest_threshold").maybeSingle();
-    if (cur.data) check(who, "Schwellen des Agenten ändern (nur Admin)", "gesperrt", await denied(sb.from("agent_settings").update(cur.data).eq("id", true).select()));
+    expectRows(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
+    expectRows(who, "sieht Rechnungen", all.invoices, await count(sb, "invoices"));
+    expectRows(who, "sieht Kontaktdaten der Bauherren", all.bauherren, await count(sb, "bauherren"));
+    expectRows(who, "Nutzerverwaltung: sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
+    expectDenied(who, "Nutzerverwaltung: Rolle vergeben", await attempt(sb.from("user_roles").insert({ user_id: NIL, role: "admin" }).select("user_id")));
+    expectDenied(who, "Nutzerverwaltung: eigene Rolle ändern", await attempt(sb.from("user_roles").update({ role: k.rolle }).eq("user_id", id).select("user_id")));
+    expectDenied(who, "Nutzerverwaltung: Projekt zuweisen", await attempt(sb.from("project_members").insert({ project_id: NIL, user_id: id }).select("project_id")));
+    const cur = await read<{ auto_file_threshold: number; suggest_threshold: number }>(who, "Schwellen lesen", sb.from("agent_settings").select("auto_file_threshold, suggest_threshold"));
+    // dieselben Werte zurückschreiben: die Zeilenregel lässt nur Admins ändern, bei Mitarbeitern trifft das Update keine Zeile
+    if (cur[0]) expectBlocked(who, "Schwellen des Agenten ändern (nur Admin)", await attempt(sb.from("agent_settings").update(cur[0]).eq("id", true).select("id")));
   }
 
   if (k.rolle === "freiberufler") {
-    const mine = ((await sb.from("projects").select("id, bauherr_id").limit(5000)).data ?? []) as { id: string; bauherr_id: string | null }[];
-    const members = ((await sb.from("project_members").select("project_id").eq("user_id", id)).data ?? []).map((m) => m.project_id).sort();
-    check(who, "sieht genau drei Projekte", 3, mine.length);
-    check(who, "… und zwar die zugewiesenen", members.join(","), mine.map((p) => p.id).sort().join(","));
+    const mine = await read<{ id: string; bauherr_id: string | null }>(who, "Projekte lesen", sb.from("projects").select("id, bauherr_id").limit(5000));
+    const members = (await read<{ project_id: string }>(who, "eigene Zuweisungen lesen", sb.from("project_members").select("project_id").eq("user_id", id))).map((m) => m.project_id).sort();
+    expectRows(who, "sieht genau drei Projekte", 3, await count(sb, "projects"));
+    const short = (ids: string[]) => ids.map((x) => x.slice(0, 8)).join(", ");
+    expectText(who, "… und zwar die zugewiesenen", short(members) || "keine Zuweisung", short(mine.map((p) => p.id).sort()) || "keine Projekte");
     const foreign = allProjects.find((p) => !mine.some((m) => m.id === p.id));
     if (foreign) {
-      check(who, "fremdes Projekt gezielt per ID", 0, await count(sb, "projects", (q) => q.eq("id", foreign.id)));
-      check(who, "Schritte eines fremden Projekts", 0, await count(sb, "project_steps", (q) => q.eq("project_id", foreign.id)));
-      check(who, "Dokumente eines fremden Projekts", 0, await count(sb, "documents", (q) => q.eq("project_id", foreign.id)));
+      expectRows(who, "fremdes Projekt gezielt per ID", 0, await count(sb, "projects", (q) => q.eq("id", foreign.id)));
+      expectRows(who, "Schritte eines fremden Projekts", 0, await count(sb, "project_steps", (q) => q.eq("project_id", foreign.id)));
+      expectRows(who, "Dokumente eines fremden Projekts", 0, await count(sb, "documents", (q) => q.eq("project_id", foreign.id)));
       const files = await sb.storage.from("project-documents").list(foreign.id);
-      check(who, "Dateien eines fremden Projekts im Speicher", 0, files.error ? 0 : files.data.length);
-    }
-    check(who, "sieht keine Rechnungen", 0, await count(sb, "invoices"));
-    if (mine[0]) check(who, "Rechnungen des eigenen Projekts gezielt per ID", 0, await count(sb, "invoices", (q) => q.eq("project_id", mine[0].id)));
-    check(who, "sieht keine Kontaktdaten der Bauherren", 0, await count(sb, "bauherren"));
+      expectRows(who, "Dateien eines fremden Projekts im Speicher", 0, outcome(files.error as DbError | null, files.data?.length ?? 0));
+    } else record(who, "fremdes Projekt gezielt per ID", "ein fremdes Projekt zum Prüfen", "es gibt kein Projekt außerhalb der Zuweisung", false);
+    expectRows(who, "sieht keine Rechnungen", 0, await count(sb, "invoices"));
+    if (mine[0]) expectRows(who, "Rechnungen des eigenen Projekts gezielt per ID", 0, await count(sb, "invoices", (q) => q.eq("project_id", mine[0].id)));
+    expectRows(who, "sieht keine Kontaktdaten der Bauherren", 0, await count(sb, "bauherren"));
     const ownBauherr = mine.find((p) => p.bauherr_id)?.bauherr_id;
-    if (ownBauherr) check(who, "Bauherr des eigenen Projekts gezielt per ID", 0, await count(sb, "bauherren", (q) => q.eq("id", ownBauherr)));
+    if (ownBauherr) expectRows(who, "Bauherr des eigenen Projekts gezielt per ID", 0, await count(sb, "bauherren", (q) => q.eq("id", ownBauherr)));
     for (const t of ["companies", "salespeople", "tasks", "activities", "mailboxes", "inbox_items", "inbox_attachments", "agent_rules", "agent_settings"]) {
-      check(who, `sieht nichts in ${t}`, 0, await count(sb, t));
+      expectRows(who, `sieht nichts in ${t}`, 0, await count(sb, t));
     }
-    check(who, "sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
+    expectRows(who, "sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
     if (mine[0]) {
       // leerer Bauherr: mit Berechtigung käme "Bitte den Nachnamen …", ohne "Keine Berechtigung"
-      check(who, "Projektdaten bearbeiten", "gesperrt", await denied(sb.rpc("update_project", { p_id: mine[0].id, p_project: { bauherr_label: "" } })));
+      expectDenied(who, "Projektdaten bearbeiten", await attempt(sb.rpc("update_project", { p_id: mine[0].id, p_project: { bauherr_label: "" } })));
       // ohne Kontaktdaten: mit Berechtigung passiert nichts, ohne kommt "Keine Berechtigung"
-      check(who, "Kontaktdaten setzen", "gesperrt", await denied(sb.rpc("set_project_bauherr", { p_project: mine[0].id, p_bauherr: null })));
+      expectDenied(who, "Kontaktdaten setzen", await attempt(sb.rpc("set_project_bauherr", { p_project: mine[0].id, p_bauherr: null })));
     }
-    check(who, "Projekt anlegen", "gesperrt", await denied(sb.rpc("create_project", { p_project: { bauherr_label: "" } })));
-    check(who, "Hausbaufirma anlegen", "gesperrt", await denied(sb.from("companies").insert({ name: " " }).select()));
+    expectDenied(who, "Projekt anlegen", await attempt(sb.rpc("create_project", { p_project: { bauherr_label: "" } })));
+    expectDenied(who, "Hausbaufirma anlegen", await attempt(sb.from("companies").insert({ name: " " }).select("id")));
 
     // Dieselben Daten, wie die App sie lädt: Zahlen des Dashboards
     try {
@@ -137,14 +197,16 @@ for (const k of mitPasswort) {
       if (login.error) throw login.error;
       const d = await createSupabaseRepo().load({ id, name: k.name, role: "freiberufler" });
       const alerts = computeAlerts(d, todayIso());
-      check(who, "App-Daten: Rechnungen", 0, d.invoices.length);
-      check(who, "App-Daten: Kontaktdaten Bauherren", 0, d.bauherren.length);
-      check(who, "Dashboard: Summe nicht versendeter Rechnungen", 0, unsentInvoiceTotal(alerts, d));
-      check(who, "Dashboard: Warnungen zu Rechnungen", 0, alerts.filter((a) => a.kind === "invoice_unsent").length);
-      check(who, "App-Daten: Projekte", 3, d.projects.length);
+      const n = (x: number): Outcome => ({ kind: "zeilen", n: x });
+      expectRows(who, "App-Daten: Rechnungen", 0, n(d.invoices.length));
+      expectRows(who, "App-Daten: Kontaktdaten Bauherren", 0, n(d.bauherren.length));
+      expectRows(who, "Dashboard: Summe nicht versendeter Rechnungen", 0, n(unsentInvoiceTotal(alerts, d)));
+      expectRows(who, "Dashboard: Warnungen zu Rechnungen", 0, n(alerts.filter((a) => a.kind === "invoice_unsent").length));
+      expectRows(who, "App-Daten: Projekte", 3, n(d.projects.length));
       await app.auth.signOut();
     } catch (e) {
-      check(who, "App-Daten laden", "ok", `Fehler: ${e instanceof Error ? e.message : e}`);
+      const err = e as DbError;
+      record(who, "App-Daten laden", "ok", `UNERWARTETER FEHLER (${errorText({ message: err?.message ?? String(e), code: err?.code })})`, false);
     }
   }
   await sb.auth.signOut();
@@ -152,5 +214,7 @@ for (const k of mitPasswort) {
 await ref.sb.auth.signOut();
 
 console.log(table(["Konto", "Prüfung", "Erwartet", "Ist", "Ergebnis"], rows));
+const skipped = rows.filter((r) => r[4] === "–").length;
 console.log(failed ? `\n${failed} Prüfung(en) FEHLGESCHLAGEN.` : `\nAlle ${rows.filter((r) => r[4] === "ok").length} Prüfungen bestanden.`);
+if (skipped) console.log(`${skipped} Konto/Konten übersprungen (kein Passwort in konten.local.json): für diese Rolle ist damit nichts geprüft.`);
 process.exit(failed ? 1 : 0);
