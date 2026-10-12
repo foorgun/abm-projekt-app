@@ -15,6 +15,7 @@ import type {
   Mailbox,
   Project,
   ProjectDocument,
+  ProjectDraftRecord,
   ProjectParty,
   Salesperson,
   StepDates,
@@ -34,12 +35,13 @@ export const COLS = {
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, architect_id, planer_id, baubetreuung, intake_month, notes, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
-  bauherren: "id, name, address, phone, email, building_address",
+  bauherren: "id, name, address, phone, email, building_address, name2, phone2, email2",
   project_parties: "project_id, role, name, contact",
-  documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at",
+  documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
+  project_drafts: "id, status, fields, form, doc_type, file_name, file_size, file_mime, storage_path, project_id, created_by, created_at, updated_at",
   tasks: "id, project_id, title, due_on, assignee_id, status, source, source_key, created_at, done_at",
   activities: "id, project_id, kind, text, actor, at",
   mailboxes: "id, label, address, provider, status, last_checked_at, watch_folder",
@@ -107,6 +109,8 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   baubetreuung: r.baubetreuung ?? null,
   intakeMonth: r.intake_month ?? null,
   notes: r.notes ?? null,
+  flurstueck: r.flurstueck ?? null,
+  gemarkung: r.gemarkung ?? null,
   steps,
 });
 
@@ -131,7 +135,19 @@ export function toBauherrContacts(bauherren: Row[], projects: Row[]): BauherrCon
   const out: BauherrContact[] = [];
   for (const p of projects) {
     const b = p.bauherr_id ? byId.get(p.bauherr_id) : undefined;
-    if (b) out.push({ projectId: p.id, name: b.name, address: b.address ?? null, phone: b.phone ?? null, email: b.email ?? null, buildingAddress: b.building_address ?? null });
+    if (b) {
+      out.push({
+        projectId: p.id,
+        name: b.name,
+        address: b.address ?? null,
+        phone: b.phone ?? null,
+        email: b.email ?? null,
+        buildingAddress: b.building_address ?? null,
+        name2: b.name2 ?? null,
+        phone2: b.phone2 ?? null,
+        email2: b.email2 ?? null,
+      });
+    }
   }
   return out;
 }
@@ -152,6 +168,23 @@ export const toDocument = (r: Row, names: Map<string, string> = new Map()): Proj
   // Anzeigename statt Benutzer-ID; bei Agent-Dateien steht dort, wer die Ablage bestätigt hat
   uploadedBy: r.uploaded_by ? names.get(r.uploaded_by) ?? null : null,
   createdAt: stamp(r.created_at),
+  docType: r.doc_type ?? null,
+  meta: r.meta && typeof r.meta === "object" ? r.meta : {},
+});
+
+/** Entwurf aus der Datenbank. `fields` und `form` sind JSON, das die App selbst geschrieben hat. */
+export const toProjectDraft = (r: Row, names: Map<string, string> = new Map()): ProjectDraftRecord => ({
+  id: r.id,
+  status: r.status,
+  draft: r.fields,
+  form: r.form,
+  docType: r.doc_type,
+  file: { name: r.file_name, size: num(r.file_size) ?? 0, type: r.file_mime ?? "" },
+  storagePath: r.storage_path ?? null,
+  projectId: r.project_id ?? null,
+  createdBy: r.created_by ? names.get(r.created_by) ?? null : null,
+  createdAt: stamp(r.created_at),
+  updatedAt: stamp(r.updated_at),
 });
 
 export const toTask = (r: Row): Task => ({

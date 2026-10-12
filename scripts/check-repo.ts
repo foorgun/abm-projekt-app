@@ -54,7 +54,7 @@ try {
   await step("load", async () => {
     await reload();
     expect(d.stepDefinitions.length >= 12, "Schritte fehlen");
-    expect(d.folderTemplates.length === 126, `Ordnervorlage hat ${d.folderTemplates.length} statt 126 Ordner`);
+    expect(d.folderTemplates.length === 127, `Ordnervorlage hat ${d.folderTemplates.length} statt 127 Ordner`);
     return `${d.projects.length} Projekte, ${d.companies.length} Hausbaufirmen, ${d.folderTemplates.length} Ordner`;
   });
 

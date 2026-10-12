@@ -142,7 +142,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
-select test.expect('Mitarbeiter sieht Ordnervorlage (126 Ordner)', (select count(*) from public.folder_templates), 126);
+select test.expect('Mitarbeiter sieht Ordnervorlage (127 Ordner)', (select count(*) from public.folder_templates), 127);
 select test.expect('Mitarbeiter sieht Aufgaben',      (select count(*) from public.tasks), 2);
 select test.expect('Mitarbeiter sieht Aktivitäten',   (select count(*) from public.activities), 1);
 select test.expect('Mitarbeiter sieht Postfächer',    (select count(*) from public.mailboxes), 1);
@@ -190,7 +190,7 @@ rollback;
 begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
-select test.expect('Freiberufler sieht Ordnervorlage',               (select count(*) from public.folder_templates), 126);
+select test.expect('Freiberufler sieht Ordnervorlage',               (select count(*) from public.folder_templates), 127);
 select test.expect('Freiberufler sieht Beteiligte nur seines Projekts', (select count(*) from public.project_parties), 2);
 select test.expect('Freiberufler sieht Dokumente seines Projekts',   (select count(*) from public.documents), 1);
 select test.expect('Freiberufler sieht KEINE Aufgaben',              (select count(*) from public.tasks), 0);
@@ -552,6 +552,112 @@ select test.throws('Freiberufler darf Kontaktdaten nicht über die Funktion setz
   $$select public.set_project_bauherr('a0000000-0000-4000-8000-000000000001', '{"phone": "1"}')$$);
 select test.throws('Freiberufler darf die Aufgabe nicht abgleichen',
   $$select public.sync_followup_task('a0000000-0000-4000-8000-000000000001', 'X', null)$$);
+rollback;
+
+-- Neues Projekt aus Dokument (Migration 0010) -----------------------------------
+-- Entwürfe, Dokumenttyp, Flurstück/Gemarkung, zweiter Bauherr, Protokoll der Auslesungen, Entwurfsspeicher
+
+begin;
+set local role anon;
+select test.throws('anon darf Entwürfe nicht ansprechen',        $$select count(*) from public.project_drafts$$);
+select test.throws('anon darf das Auslese-Protokoll nicht ansprechen', $$select count(*) from public.extraction_log$$);
+rollback;
+
+-- Mitarbeiter: Entwurf anlegen, fortsetzen, abschließen; Projekt mit den neuen Feldern
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+insert into public.project_drafts (fields, form, doc_type, file_name, file_size, file_mime)
+values ('{"felder": {"bauherrLabel": {"wert": "Hoffmann", "quelle": null, "sicherheit": "mittel"}}}', '{"project": {"bauherrLabel": "Hoffmann"}}', 'werkvertrag', 'scan.pdf', 1234, 'application/pdf');
+select test.expect('Mitarbeiter legt einen Entwurf an (Ersteller wird gesetzt, Status offen)',
+  (select count(*) from public.project_drafts where status = 'offen' and created_by = '00000000-0000-4000-8000-0000000000a2' and storage_path is null), 1);
+select test.expect('Mitarbeiter setzt Formularstand und Speicherpfad',
+  test.affected($$update public.project_drafts set form = '{"project": {"bauherrLabel": "Hofmann"}}', storage_path = 'drafts/x/scan.pdf' where file_name = 'scan.pdf'$$), 1);
+select test.throws('Entwurf: Felder müssen ein Objekt sein', $$update public.project_drafts set fields = '[]'$$);
+select test.throws('Entwurf: negative Dateigröße wird abgelehnt', $$insert into public.project_drafts (file_name, file_size) values ('x.pdf', -1)$$);
+select test.throws('Entwurf löschen geht nicht (nur Status)', $$delete from public.project_drafts$$);
+select test.throws('Entwurf: Ersteller lässt sich nicht umschreiben', $$update public.project_drafts set created_by = '00000000-0000-4000-8000-0000000000a1'$$);
+
+insert into storage.objects (bucket_id, name) values ('project-documents', 'drafts/x/scan.pdf');
+select test.expect('Mitarbeiter sieht die Datei des Entwurfs im Speicher', (select count(*) from storage.objects where name = 'drafts/x/scan.pdf'), 1);
+
+select public.create_project(
+  '{"bauherr_label": "Hoffmann", "kind": "neubau", "flurstueck": " 412/3 ", "gemarkung": "Blaustein"}',
+  '{"name": "Jonas Hoffmann", "phone": "0731 000111", "name2": "Anna Hoffmann", "phone2": " 0171 0001112 ", "email2": ""}',
+  null, 'Fehlende Angaben nachfragen: Bauadresse, Hausbaufirma, Verkäufer, Vermesser', '2026-10-19');
+select test.expect('Projekt mit Flurstück und Gemarkung (bereinigt)',
+  (select count(*) from public.projects where bauherr_label = 'Hoffmann' and flurstueck = '412/3' and gemarkung = 'Blaustein'), 1);
+select test.expect('Zweiter Bauherr liegt bei den Kontaktdaten (leere E-Mail wird null)',
+  (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id
+   where p.flurstueck = '412/3' and b.name2 = 'Anna Hoffmann' and b.phone2 = '0171 0001112' and b.email2 is null), 1);
+select test.expect('Aufgabenregel läuft wie bei manuell angelegten Projekten',
+  (select count(*) from public.tasks t join public.projects p on p.id = t.project_id where p.flurstueck = '412/3' and t.status = 'offen' and t.source_key like 'angaben:%'), 1);
+select test.expect('Vertrag anlegen erzeugt keine Rechnung',
+  (select count(*) from public.invoices i join public.projects p on p.id = i.project_id where p.flurstueck = '412/3'), 0);
+
+select public.update_project((select id from public.projects where flurstueck = '412/3'), '{"gemarkung": "Söflingen", "flurstueck": null}',
+  '{"name": "Jonas Hoffmann", "phone": "0731 000111", "name2": null, "phone2": null, "email2": "anna@example.com"}');
+select test.expect('Bearbeiten: Gemarkung geändert, Flurstück geleert',
+  (select count(*) from public.projects where bauherr_label = 'Hoffmann' and gemarkung = 'Söflingen' and flurstueck is null), 1);
+select test.expect('Bearbeiten: zweiter Bauherr geändert',
+  (select count(*) from public.bauherren where name = 'Jonas Hoffmann' and name2 is null and email2 = 'anna@example.com'), 1);
+
+insert into public.documents (project_id, name, storage_path, folder_path, doc_type, meta, uploaded_by)
+select id, 'scan.pdf', id::text || '/x/scan.pdf', '00 Verträge', 'werkvertrag', '{"vertragsdatum": "2026-10-02", "vertragspreis": "312.450,00 €"}', auth.uid()
+from public.projects where bauherr_label = 'Hoffmann' and gemarkung = 'Söflingen';
+select test.expect('Dokument mit Typ und Metadaten abgelegt',
+  (select count(*) from public.documents where doc_type = 'werkvertrag' and meta->>'vertragsdatum' = '2026-10-02' and folder_path = '00 Verträge'), 1);
+select test.throws('Dokument: unbekannter Typ wird abgelehnt',
+  $$insert into public.documents (project_id, name, storage_path, doc_type, uploaded_by) values ('a0000000-0000-4000-8000-000000000001', 'x.pdf', 'a/x.pdf', 'rechnung', auth.uid())$$);
+select test.throws('Dokument: Metadaten müssen ein Objekt sein',
+  $$insert into public.documents (project_id, name, storage_path, meta, uploaded_by) values ('a0000000-0000-4000-8000-000000000001', 'x.pdf', 'a/y.pdf', '"text"', auth.uid())$$);
+select test.expect('Ordner 00 Verträge steht in der Vorlage', (select count(*) from public.folder_templates where path = '00 Verträge' and parent_path is null), 1);
+
+select test.expect('Entwurf abschließen (übernommen, Projekt und Dokument gesetzt)',
+  test.affected($$update public.project_drafts set status = 'uebernommen', storage_path = null,
+                  project_id = (select id from public.projects where bauherr_label = 'Hoffmann' and gemarkung = 'Söflingen'),
+                  document_id = (select id from public.documents where doc_type = 'werkvertrag') where file_name = 'scan.pdf'$$), 1);
+
+-- Protokoll der Auslesungen: kein Client schreibt, Mitarbeiter sehen nichts
+select test.throws('Mitarbeiter darf das Auslese-Protokoll nicht beschreiben',
+  $$insert into public.extraction_log (user_id, model) values ('00000000-0000-4000-8000-0000000000a2', 'x')$$);
+select test.expect('Mitarbeiter sieht im Auslese-Protokoll keine Zeile', (select count(*) from public.extraction_log), 0);
+rollback;
+
+-- Die Funktion (service_role) schreibt das Protokoll; Admin liest es, kann es aber nicht ändern
+begin;
+set local role service_role;
+insert into public.extraction_log (user_id, model, images, input_tokens, output_tokens, cost_eur)
+values ('00000000-0000-4000-8000-0000000000a2', 'claude-sonnet-5-5', 1, 2000, 900, 0.013);
+insert into public.project_drafts (file_name, file_size, created_by) values ('fremd.pdf', 10, '00000000-0000-4000-8000-0000000000a2');
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+insert into storage.objects (bucket_id, name) values ('project-documents', 'drafts/y/fremd.pdf');
+select test.expect('Admin legt eine Datei im Entwurfsspeicher ab', (select count(*) from storage.objects where name = 'drafts/y/fremd.pdf'), 1);
+select test.expect('Admin liest das Auslese-Protokoll', (select count(*) from public.extraction_log where cost_eur = 0.013), 1);
+select test.throws('Admin darf das Auslese-Protokoll nicht beschreiben', $$insert into public.extraction_log (user_id, model) values ('00000000-0000-4000-8000-0000000000a1', 'x')$$);
+select test.throws('Admin darf das Auslese-Protokoll nicht ändern', $$update public.extraction_log set cost_eur = 0$$);
+select test.throws('Admin darf das Auslese-Protokoll nicht löschen', $$delete from public.extraction_log$$);
+select test.expect('Admin sieht Entwürfe anderer', (select count(*) from public.project_drafts where file_name = 'fremd.pdf'), 1);
+
+-- Freiberufler: nichts lesen, nichts schreiben, auch nicht im Entwurfsspeicher
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht keinen Entwurf', (select count(*) from public.project_drafts), 0);
+select test.throws('Freiberufler darf keinen Entwurf anlegen', $$insert into public.project_drafts (file_name, file_size) values ('x.pdf', 1)$$);
+select test.expect('Freiberufler ändert keinen Entwurf', test.affected($$update public.project_drafts set status = 'verworfen'$$), 0);
+select test.expect('Freiberufler sieht im Auslese-Protokoll nichts', (select count(*) from public.extraction_log), 0);
+select test.throws('Freiberufler darf das Auslese-Protokoll nicht beschreiben', $$insert into public.extraction_log (user_id, model) values ('00000000-0000-4000-8000-0000000000a3', 'x')$$);
+select test.expect('Freiberufler sieht keine Entwurfsdatei im Speicher', (select count(*) from storage.objects where name like 'drafts/%'), 0);
+select test.throws('Freiberufler darf nichts im Entwurfsspeicher ablegen', $$insert into storage.objects (bucket_id, name) values ('project-documents', 'drafts/z/x.pdf')$$);
+select test.throws('Freiberufler darf nichts in einem fremden Projekt ablegen', $$insert into storage.objects (bucket_id, name) values ('project-documents', 'a0000000-0000-4000-8000-000000000002/x.pdf')$$);
+select test.expect('Freiberufler sieht den zweiten Bauherrn nicht', (select count(*) from public.bauherren where name2 is not null or name2 is null), 0);
+select test.expect('Freiberufler sieht Flurstück und Gemarkung seines Projekts (kein Kontaktdatum)', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and flurstueck is null), 1);
+select test.throws('Freiberufler darf kein Projekt aus einem Entwurf anlegen', $$select public.create_project('{"bauherr_label": "Hoffmann", "flurstueck": "1/2"}')$$);
+
+-- ohne Rolle: wie Freiberufler ohne Zuweisung
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('Ohne Rolle: kein Entwurf sichtbar', (select count(*) from public.project_drafts), 0);
+select test.throws('Ohne Rolle: kein Entwurf anlegbar', $$insert into public.project_drafts (file_name, file_size) values ('x.pdf', 1)$$);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------

@@ -8,6 +8,7 @@ export function Dialog({
   children,
   footer,
   wide,
+  xwide,
 }: {
   title: string;
   onClose: () => void;
@@ -15,6 +16,8 @@ export function Dialog({
   footer?: ReactNode;
   /** Breiterer Dialog für zweispaltige Formulare */
   wide?: boolean;
+  /** Sehr breiter Dialog für zwei Spalten (Dokument-Vorschau neben den Feldern) */
+  xwide?: boolean;
 }) {
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -31,7 +34,7 @@ export function Dialog({
   }, [onClose]);
   return (
     <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={wide ? "dialog dialog-wide" : "dialog"} role="dialog" aria-modal="true" aria-labelledby={id} ref={ref}>
+      <div className={xwide ? "dialog dialog-xwide" : wide ? "dialog dialog-wide" : "dialog"} role="dialog" aria-modal="true" aria-labelledby={id} ref={ref}>
         <div className="dialog-head">
           <h2 id={id}>{title}</h2>
           <IconButton label="Schließen" size="sm" onClick={onClose} data-close>

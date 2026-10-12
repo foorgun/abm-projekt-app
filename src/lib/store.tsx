@@ -22,7 +22,7 @@ interface DataValue {
   allAlerts: Alert[];
   /** Offene Aufgaben, die heute fällig oder überfällig sind. */
   dueTaskCount: number;
-  /** Offene Prüfungen des Agenten (Anhänge mit Status "pruefen"). */
+  /** Offene Prüfungen: Anhänge des Agenten mit Status "pruefen" und offene Projektentwürfe aus Dokumenten. */
   reviewCount: number;
   reload: () => Promise<void>;
   /** Führt eine Änderung über das Repo aus und lädt danach neu. Fehler werden zurückgegeben, nicht geworfen. */
@@ -86,7 +86,8 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
     const allAlerts = data ? computeAlerts(data, today) : [];
     const alerts = data ? visibleAlerts(allAlerts, data.tasks) : [];
     const dueTaskCount = data ? data.tasks.filter((t) => t.status === "offen" && t.dueOn && t.dueOn <= today).length : 0;
-    const reviewCount = data ? data.inboxAttachments.filter((a) => a.status === "pruefen").length : 0;
+    // Zur Prüfung: unsichere Anhänge des Agenten und offene Entwürfe "Neues Projekt vorgeschlagen"
+    const reviewCount = data ? data.inboxAttachments.filter((a) => a.status === "pruefen").length + data.projectDrafts.filter((d) => d.status === "offen").length : 0;
     return { repo, data, loading, error, today, alerts, allAlerts, dueTaskCount, reviewCount, reload, mutate };
   }, [repo, data, loading, error, today, reload, mutate]);
 

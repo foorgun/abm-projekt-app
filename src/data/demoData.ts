@@ -500,6 +500,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     ],
     agentSettings: { autoFileThreshold: 0.9, suggestThreshold: 0.6 },
     agentFeedback: [],
+    projectDrafts: [],
   };
 }
 

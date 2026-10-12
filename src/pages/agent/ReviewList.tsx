@@ -1,17 +1,19 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertOctagon, Check, ClipboardCheck, FileText, FlaskConical, ListPlus, Pencil, Search, ShieldAlert, X } from "lucide-react";
+import { AlertOctagon, Check, ClipboardCheck, FilePlus2, FileText, FlaskConical, ListPlus, Pencil, Search, ShieldAlert, X } from "lucide-react";
 import { FolderPicker } from "../../components/FolderPicker";
+import { useNewProject } from "../../components/NewProjectDialog";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
-import { Button, buttonClass, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from "../../components/ui";
+import { Button, buttonClass, Card, CardHead, EmptyState, ErrorState, Field, Input, Select, Skeleton } from "../../components/ui";
 import { concretePath, DATE_TOKEN, displayPath } from "../../lib/folders";
 import { formatBytes, formatDate, formatRelative } from "../../lib/format";
 import { projectTitle } from "../../lib/projects";
 import type { ReviewResolution } from "../../lib/repo";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
-import type { InboxAttachment, InboxItem, Project } from "../../lib/types";
+import { VERTRAGSART_LABEL } from "../../lib/extract/types";
+import type { InboxAttachment, InboxItem, Project, ProjectDraftRecord } from "../../lib/types";
 import { ConfidencePill } from "./agentUi";
 
 type Remember = NonNullable<ReviewResolution["rememberRule"]> | "";
@@ -78,11 +80,15 @@ export function ReviewList() {
     );
   }
 
+  const drafts = data.projectDrafts.filter((d) => d.status === "offen");
+
   return (
     <>
       {head}
       <div className="stack">
+        {drafts.length > 0 && <DraftsCard drafts={drafts} />}
         {cards.review.length === 0 ? (
+          drafts.length > 0 ? null : (
           <Card>
             <EmptyState
               icon={<ClipboardCheck size={18} />}
@@ -95,6 +101,7 @@ export function ReviewList() {
               }
             />
           </Card>
+          )
         ) : (
           cards.review.map(({ att, item }) => <ReviewCard key={att.id} att={att} item={item} />)
         )}
@@ -361,4 +368,47 @@ function templateFromConcrete(path: string, templates: string[]): string | null 
   if (templates.includes(path)) return path;
   const generic = path.replace(/\d{2}\.\d{2}\.\d{4}/g, DATE_TOKEN);
   return templates.includes(generic) ? generic : null;
+}
+
+/** Offene Entwürfe "Neues Projekt aus Dokument": fortsetzen (Prüfmaske) oder verwerfen. */
+function DraftsCard({ drafts }: { drafts: ProjectDraftRecord[] }) {
+  const { mutate } = useData();
+  const toast = useToast();
+  const openNewProject = useNewProject();
+
+  async function discard(d: ProjectDraftRecord) {
+    const res = await mutate((r) => r.discardProjectDraft(d.id));
+    toast(res.ok ? "Entwurf verworfen" : res.error, res.ok ? "ok" : "danger");
+  }
+
+  return (
+    <Card>
+      <CardHead
+        icon={<FilePlus2 size={16} />}
+        title="Neues Projekt vorgeschlagen"
+        sub={drafts.length === 1 ? "Ein Vertrag wartet auf die Prüfung." : `${drafts.length} Verträge warten auf die Prüfung.`}
+      />
+      <div className="card-body flush">
+        {drafts.map((d) => {
+          const name = d.form.project.bauherrLabel?.trim();
+          return (
+            <div key={d.id} className="draft-row">
+              <div className="draft-main">
+                <span className="draft-title">{name ? `Bauherr ${name}` : "Bauherr noch offen"}</span>
+                <span className="draft-sub">
+                  {VERTRAGSART_LABEL[d.docType]} · {d.file.name} ({formatBytes(d.file.size)}) · {d.createdBy ?? "Unbekannt"}, {formatRelative(d.createdAt)}
+                </span>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => void discard(d)}>
+                Verwerfen
+              </Button>
+              <Button size="sm" variant="primary" onClick={() => openNewProject(d.id)}>
+                Prüfen und anlegen
+              </Button>
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
 }

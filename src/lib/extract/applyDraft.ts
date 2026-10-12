@@ -2,11 +2,30 @@
 
 import { compactText } from "../projectFilters";
 import type { NewProject } from "../repo";
-import type { BauherrContact, Company, Project, Salesperson } from "../types";
+import type { BauherrContact, Company, ContractMeta, Project } from "../types";
 import type { DraftFieldKey, ProjectDraft } from "./types";
 
 /** Formularfelder, zu denen der Entwurf eine Herkunft liefern kann. */
-export type FormKey = "bauherrLabel" | "bauherrName" | "phone" | "email" | "address" | "buildingAddress" | "location" | "companyId" | "salespersonId" | "hausbauNr" | "abmNr" | "vermesser";
+export type FormKey =
+  | "bauherrLabel"
+  | "bauherrName"
+  | "phone"
+  | "email"
+  | "address"
+  | "name2"
+  | "phone2"
+  | "email2"
+  | "companyId"
+  | "buildingAddress"
+  | "location"
+  | "flurstueck"
+  | "gemarkung"
+  | "vermesser"
+  | "vertragsart"
+  | "vertragsdatum"
+  | "vertragspreis"
+  | "angebotsnummer"
+  | "haustyp";
 
 /** Welches Entwurfsfeld ein Formularfeld speist. */
 export const FORM_SOURCE: Record<FormKey, DraftFieldKey> = {
@@ -15,29 +34,41 @@ export const FORM_SOURCE: Record<FormKey, DraftFieldKey> = {
   phone: "phone",
   email: "email",
   address: "address",
+  name2: "bauherr2Name",
+  phone2: "bauherr2Phone",
+  email2: "bauherr2Email",
+  companyId: "company",
   buildingAddress: "buildingAddress",
   location: "location",
-  companyId: "company",
-  salespersonId: "salesperson",
-  hausbauNr: "hausbauNr",
-  abmNr: "abmNr",
+  flurstueck: "flurstueck",
+  gemarkung: "gemarkung",
   vermesser: "vermesser",
+  vertragsart: "vertragsart",
+  vertragsdatum: "vertragsdatum",
+  vertragspreis: "vertragspreis",
+  angebotsnummer: "angebotsnummer",
+  haustyp: "haustyp",
 };
+
+/** Telefon und E-Mail: bei Scans und Handschrift immer zur Kontrolle hervorheben, egal wie sicher der Extractor ist. */
+export const ALWAYS_CHECK: FormKey[] = ["phone", "email", "phone2", "email2"];
 
 const same = (a: string, b: string) => compactText(a) === compactText(b);
 const contains = (a: string, b: string) => compactText(a).includes(compactText(b)) || compactText(b).includes(compactText(a));
 
 export interface AppliedDraft {
   form: NewProject;
+  meta: ContractMeta;
   /** Erkannt, aber in den Stammdaten nicht gefunden: der Mensch wählt oder legt an. */
-  unmatched: { company?: string; salesperson?: string };
+  unmatched: { company?: string };
 }
 
 /**
- * Trägt die erkannten Werte in das Formular ein. Firma und Verkäufer werden gegen die Stammdaten abgeglichen
- * (nichts wird automatisch angelegt). Ein Flurstück wird an die Bauadresse angehängt, weil es dafür kein eigenes Feld gibt.
+ * Trägt die erkannten Werte in das Formular ein. Die Hausbaufirma wird gegen die Stammdaten abgeglichen
+ * (nichts wird automatisch angelegt). Vertragsdatum, Vertragspreis, Angebotsnummer und Haustyp sind Metadaten
+ * des Dokuments und keine Projektfelder. Die Hausbau-Nr. wird nie aus dem Vertrag übernommen.
  */
-export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { companies: Company[]; salespeople: Salesperson[] }): AppliedDraft {
+export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { companies: Company[] }): AppliedDraft {
   const f = draft.felder;
   const v = (k: DraftFieldKey) => f[k].wert?.trim() || null;
   const unmatched: AppliedDraft["unmatched"] = {};
@@ -45,39 +76,55 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
   const companyName = v("company");
   const company = companyName ? (ctx.companies.find((c) => same(c.name, companyName)) ?? ctx.companies.find((c) => contains(c.name, companyName))) : undefined;
   if (companyName && !company) unmatched.company = companyName;
-  const salesName = v("salesperson")?.replace(/^(Herr|Frau)\s+/, "") ?? null;
-  const sales = salesName && company ? ctx.salespeople.find((s) => s.companyId === company.id && same(s.name, salesName)) : undefined;
-  if (salesName && !sales) unmatched.salesperson = salesName;
-
-  const flurstueck = v("flurstueck");
-  const street = v("buildingAddress");
-  const buildingAddress = street && flurstueck ? `${street} (${flurstueck})` : (street ?? flurstueck);
 
   const form: NewProject = {
     ...base,
     bauherrLabel: v("bauherrLabel") ?? base.bauherrLabel,
-    abmNr: v("abmNr") ?? base.abmNr,
-    hausbauNr: v("hausbauNr") ?? base.hausbauNr,
     location: v("location") ?? base.location,
     companyId: company?.id ?? base.companyId,
-    salespersonId: sales?.id ?? base.salespersonId,
+    // andere Firma als im leeren Formular: ein vorgewählter Verkäufer passt nicht mehr
+    salespersonId: company && company.id !== base.companyId ? null : base.salespersonId,
     vermesser: v("vermesser") ?? base.vermesser ?? null,
+    flurstueck: v("flurstueck"),
+    gemarkung: v("gemarkung"),
     bauherr: {
       name: v("bauherrName"),
       phone: v("phone"),
       email: v("email"),
       address: v("address"),
-      buildingAddress,
+      buildingAddress: v("buildingAddress"),
+      name2: v("bauherr2Name"),
+      phone2: v("bauherr2Phone"),
+      email2: v("bauherr2Email"),
     },
   };
-  return { form, unmatched };
+  const meta: ContractMeta = {};
+  for (const k of ["vertragsdatum", "vertragspreis", "angebotsnummer", "haustyp"] as const) {
+    const value = v(k);
+    if (value) meta[k] = value;
+  }
+  return { form, meta, unmatched };
 }
+
+/** Metadaten für die Ablage: nur gefüllte Werte, ohne Rand-Leerzeichen. */
+export function cleanMeta(meta: ContractMeta): ContractMeta {
+  const out: ContractMeta = {};
+  for (const k of ["vertragsdatum", "vertragspreis", "angebotsnummer", "haustyp"] as const) {
+    const value = meta[k]?.trim();
+    if (value) out[k] = value.slice(0, 200);
+  }
+  return out;
+}
+
+export type SimilarReason = "bauherr" | "adresse" | "flurstueck";
 
 export interface SimilarProject {
   project: Project;
   /** Warum das Projekt ähnlich ist, für die Anzeige. */
-  grund: "bauherr" | "adresse" | "beides";
+  gruende: SimilarReason[];
 }
+
+export const SIMILAR_LABEL: Record<SimilarReason, string> = { bauherr: "gleicher Bauherr", adresse: "gleiche Bauadresse", flurstueck: "gleiches Flurstück" };
 
 /** Adresse vergleichbar machen: ohne Zusätze in Klammern, "Straße" und "Str." gleich. */
 function addressKey(s: string | null | undefined): string {
@@ -85,24 +132,35 @@ function addressKey(s: string | null | undefined): string {
   return compactText(s.replace(/\(.*?\)/g, "").replace(/stra(ß|ss)e/gi, "str"));
 }
 
-const flurKey = (s: string | null | undefined) => s?.match(/Flurst(?:ü|ue)ck\s*(\d+(?:\/\d+)?)/i)?.[1] ?? "";
+/** Flurstück vergleichbar machen: nur Ziffern und Schrägstrich ("Flst. 412/3" = "412/3"). */
+function parcelKey(s: string | null | undefined): string {
+  return s?.match(/\d+(?:\s*\/\s*\d+)?/)?.[0].replace(/\s/g, "") ?? "";
+}
 
 /**
- * Ähnliche Projekte vor dem Speichern: gleicher Bauherr (Nachname) oder gleiche Bauadresse bzw. gleiches Flurstück.
- * Stornierte Projekte zählen nicht. `bauherren` ist für Freiberufler leer; dann greift nur der Name.
+ * Ähnliche Projekte vor dem Speichern: gleicher Bauherr (Nachname), gleiche Bauadresse oder gleiches Flurstück.
+ * Beim Flurstück muss die Gemarkung passen, wenn beide Seiten eine nennen (dieselbe Nummer gibt es in jeder Gemarkung).
+ * Stornierte Projekte zählen nicht. `bauherren` ist für Freiberufler leer; dann greifen nur Name und Flurstück.
  */
-export function similarProjects(input: { bauherrLabel: string; buildingAddress: string | null }, projects: Project[], bauherren: BauherrContact[]): SimilarProject[] {
+export function similarProjects(
+  input: { bauherrLabel: string; buildingAddress: string | null; flurstueck?: string | null; gemarkung?: string | null },
+  projects: Project[],
+  bauherren: BauherrContact[],
+): SimilarProject[] {
   const name = compactText(input.bauherrLabel);
   const addr = addressKey(input.buildingAddress);
-  const flur = flurKey(input.buildingAddress);
+  const parcel = parcelKey(input.flurstueck);
+  const district = compactText(input.gemarkung ?? "");
   const contact = new Map(bauherren.map((b) => [b.projectId, b]));
   const out: SimilarProject[] = [];
   for (const p of projects) {
     if (p.status === "storno") continue;
-    const sameName = name.length >= 2 && compactText(p.bauherrLabel) === name;
-    const other = contact.get(p.id)?.buildingAddress;
-    const sameAddr = Boolean((addr && addressKey(other) === addr) || (flur && flurKey(other) === flur));
-    if (sameName || sameAddr) out.push({ project: p, grund: sameName && sameAddr ? "beides" : sameName ? "bauherr" : "adresse" });
+    const gruende: SimilarReason[] = [];
+    if (name.length >= 2 && compactText(p.bauherrLabel) === name) gruende.push("bauherr");
+    if (addr && addressKey(contact.get(p.id)?.buildingAddress) === addr) gruende.push("adresse");
+    const otherDistrict = compactText(p.gemarkung ?? "");
+    if (parcel && parcelKey(p.flurstueck) === parcel && (!district || !otherDistrict || district === otherDistrict)) gruende.push("flurstueck");
+    if (gruende.length) out.push({ project: p, gruende });
   }
   return out;
 }

@@ -40,3 +40,24 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Soll die Aufgabe "Fehlende Angaben nachfragen" nach 7 Tagen fällig sein, und an wen geht sie, wenn kein Architekt gewählt ist?
 - Sicherung: Sollen auch die Dateien aus dem Speicher gesichert werden, und wohin? Wer führt `export:backup` wie oft aus?
   Ein Skript zur Wiederherstellung aus der Sicherung gibt es noch nicht.
+
+## Zu "Neues Projekt aus einem Vertrag"
+
+- **Ablageort des Werkvertrags:** vorläufig der neue Ordner `00 Verträge` (Migration 0010, `docs/ordnerstruktur.md`). Wo legt ABM
+  den Werkvertrag heute ab? Sobald das klar ist: Ordner in der Vorlage umbenennen bzw. `CONTRACT_FOLDER` in
+  `src/lib/extract/filing.ts` anpassen (eigene Migration). Dokumente vom Typ "Sonstiges" landen bis dahin ebenfalls dort.
+- **Hausbau-Nr.:** Steht sie im Werkvertrag, und ist sie dieselbe Nummer wie die Angebotsnummer? Bis das geklärt ist, bleibt das
+  Feld beim Anlegen aus einem Vertrag leer (es wird nicht geraten); die Angebotsnummer steht als Metadatum am Dokument.
+- **Vermessungsauftrag erzeugen:** Der Vermessungsauftrag ist eine leere Vorlage, die ABM ausfüllt, kein Dokument zum Auslesen.
+  Spätere Funktion: den Auftrag aus den Projektdaten (Bauherr, Baugrundstück, Flurstück, Gemarkung, Vermesser) vorausgefüllt als
+  PDF erzeugen. Noch nicht gebaut. Dafür braucht es die Vorlage des jeweiligen Vermessungsbüros und die Liste der Leistungen.
+- **KfW/WEF-Förderung:** Ist sie im Vertrag angekreuzt, zeigt die Prüfmaske die Frist (15 Monate ab Vertragsdatum) nur als Hinweis.
+  Soll daraus eine Aufgabe oder Warnung werden, und stimmt die Frist für alle Hausbaufirmen?
+- **Baugrundstück:** Bauadresse, Flurstück und Gemarkung stehen nicht im Werkvertrag. Kommen sie verlässlich aus der Mail des
+  Verkäufers oder erst aus dem Vermessungsauftrag? Davon hängt ab, ob der Posteingangs-Agent sie später vorschlagen kann.
+- **Zweiter Bauherr:** gespeichert als zweiter Kontakt (Name, Telefon, E-Mail) bei den Kontaktdaten des Bauherrn, nicht am Projekt,
+  damit Freiberufler ihn nicht sehen. Reicht das, oder braucht es mehr als zwei Bauherren (Bauherrengemeinschaft)?
+- **AVV und Freigabe:** Die KI-Auslesung sendet Seite 1 des Vertrags (Name, Anschrift, Telefon, E-Mail der Bauherren) als Bild an
+  den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) braucht es den Auftragsverarbeitungsvertrag mit dem Anbieter und
+  die Zustimmung von ABM. Siehe `docs/vertrag-extraktion.md`.
+- **Limits der Auslesung:** 20 je Person und Tag, 100 je Tag, 20 € im Monat sind Annahmen. Passen sie zum Büro?

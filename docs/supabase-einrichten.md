@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0009). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0010). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 
@@ -94,7 +94,7 @@ npm run dev:demo     # Demo-Modus mit erfundenen Daten auf http://localhost:5199
 ```
 
 Anmeldung mit E-Mail und Passwort. Nach den Migrationen ist die Datenbank leer: Dashboard und Listen zeigen leere Zustände,
-bis Projekte angelegt oder Demo-Daten geladen sind (Abschnitt 8, `npm run seed:demo`). Schritte, Ordnervorlage (126 Ordner) und die Schwellen des
+bis Projekte angelegt oder Demo-Daten geladen sind (Abschnitt 8, `npm run seed:demo`). Schritte, Ordnervorlage (127 Ordner) und die Schwellen des
 Agenten sind schon da, die kommen aus den Migrationen.
 
 Was im Pilotbetrieb noch **nicht** geht: Der Posteingangs-Agent liest keine Postfächer ("Jetzt prüfen" ist gesperrt, Schritt 9).

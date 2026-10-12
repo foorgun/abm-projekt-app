@@ -102,13 +102,30 @@ async function signIn(k: Konto): Promise<{ sb: SupabaseClient; id: string } | nu
   return { sb, id: data.user.id };
 }
 
+/**
+ * Edge Function extract-project aufrufen, ohne dass je ein Bild an den KI-Dienst geht: die Anfrage enthält kein Bild.
+ * Die Funktion prüft in dieser Reihenfolge Anmeldung, Rolle, Freischaltung, Eingabe. Freiberufler scheitern an der Rolle (403),
+ * Admin und Mitarbeiter kommen weiter und scheitern an "nicht freigeschaltet" (503) oder an der leeren Eingabe (400).
+ */
+async function extractorStatus(sb: SupabaseClient): Promise<number | "nicht erreichbar"> {
+  const { error, response } = (await sb.functions.invoke("extract-project", { body: { images: [] } })) as { error: { context?: Response } | null; response?: Response };
+  return error?.context?.status ?? response?.status ?? (error ? "nicht erreichbar" : 200);
+}
+/** Datei-Ablage im Speicher versuchen. Eine wider Erwarten angelegte Datei wird gleich wieder entfernt. */
+async function uploadAttempt(sb: SupabaseClient, path: string): Promise<Outcome> {
+  const up = await sb.storage.from("project-documents").upload(path, new Blob(["Rollenprüfung"], { type: "text/plain" }), { upsert: false });
+  if (!up.error) await sb.storage.from("project-documents").remove([path]);
+  return outcome(up.error as DbError | null, 1);
+}
+const NEVER = { fields: {}, form: {}, file_name: "rollenpruefung.pdf", file_size: -1 }; // file_size -1: die Datenbank lehnt den Wert erst NACH der Berechtigungsprüfung ab
+
 const konten = readKonten();
 const mitPasswort = konten.filter((k) => k.passwort);
 for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.rolle})`, "Anmeldung", "–", "übersprungen: kein Passwort in konten.local.json", "–"]);
 
 // ---- nicht angemeldet
 const anon = publicClient();
-for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 
 // ---- Bezugswerte: was ein Admin sieht
 const adminKonto = mitPasswort.find((k) => k.rolle === "admin");
@@ -137,6 +154,29 @@ for (const k of mitPasswort) {
   expectText(who, "Rolle laut Datenbank", k.rolle, own[0]?.role ?? "keine");
   // secret_ref (Verweis auf die Zugangsdaten der Postfächer) ist für JEDE Rolle gesperrt, auch für Admins
   expectDenied(who, "mailboxes.secret_ref lesen", await count(sb, "mailboxes", undefined, "secret_ref"));
+
+  // ---- Neues Projekt aus Dokument (Migration 0010)
+  const fn = await extractorStatus(sb);
+  if (fn === 404 || fn === "nicht erreichbar") rows.push([who, "Auslesung (Edge Function) aufrufen", "–", "übersprungen: Funktion extract-project ist nicht deployt", "–"]);
+  else if (k.rolle === "freiberufler") expectText(who, "Auslesung (Edge Function) aufrufen", "403 abgewiesen", fn === 403 ? "403 abgewiesen" : `Status ${fn}`);
+  else expectText(who, "Auslesung (Edge Function): Rolle zugelassen", "nicht abgewiesen", fn === 401 || fn === 403 ? `Status ${fn}` : "nicht abgewiesen");
+  // Das Protokoll der Auslesungen schreibt nur die Funktion (service_role): für JEDE Rolle gesperrt
+  expectDenied(who, "extraction_log beschreiben", await attempt(sb.from("extraction_log").insert({ user_id: id, model: "rollenpruefung" }).select("id")));
+
+  if (k.rolle === "admin" || k.rolle === "mitarbeiter") {
+    const drafts = await count(sb, "project_drafts");
+    record(who, "Entwürfe lesen (project_drafts)", "lesbar", show(drafts), drafts.kind === "zeilen");
+    // mit Berechtigung scheitert der Versuch erst am ungültigen Wert (kein "gesperrt"), es entsteht keine Zeile
+    const write = await attempt(sb.from("project_drafts").insert(NEVER).select("id"));
+    record(who, "Entwürfe anlegen: Berechtigung vorhanden", "abgelehnt nur wegen ungültigem Wert", show(write), write.kind === "fehler");
+    const log = await count(sb, "extraction_log");
+    if (k.rolle === "admin") record(who, "extraction_log lesen (nur Admin)", "lesbar", show(log), log.kind === "zeilen");
+    else expectRows(who, "extraction_log: sieht keine Zeile", 0, log);
+    expectRows(who, "neue Spalten lesbar (projects.flurstueck)", all.projects, await count(sb, "projects", undefined, "flurstueck"));
+    expectRows(who, "neue Spalten lesbar (bauherren.name2)", all.bauherren, await count(sb, "bauherren", undefined, "name2"));
+    const docs = await count(sb, "documents", undefined, "doc_type");
+    record(who, "neue Spalten lesbar (documents.doc_type)", "lesbar", show(docs), docs.kind === "zeilen");
+  }
 
   if (k.rolle === "admin") {
     expectRows(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
@@ -181,6 +221,17 @@ for (const k of mitPasswort) {
       expectRows(who, `sieht nichts in ${t}`, 0, await count(sb, t));
     }
     expectRows(who, "sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
+    // Entwürfe und Protokoll der Auslesungen: nichts lesen, nichts schreiben
+    expectRows(who, "sieht keine Entwürfe (project_drafts)", 0, await count(sb, "project_drafts"));
+    expectDenied(who, "Entwurf anlegen", await attempt(sb.from("project_drafts").insert(NEVER).select("id")));
+    expectBlocked(who, "Entwurf ändern", await attempt(sb.from("project_drafts").update({ status: "verworfen" }).neq("id", NIL).select("id")));
+    expectRows(who, "sieht nichts in extraction_log", 0, await count(sb, "extraction_log"));
+    expectRows(who, "zweiter Bauherr (bauherren.name2) nicht lesbar", 0, await count(sb, "bauherren", undefined, "name2"));
+    // Dokument-Ablage nur mit Berechtigung: weder im Entwurfsspeicher noch in einem fremden Projekt
+    const draftFiles = await sb.storage.from("project-documents").list("drafts");
+    expectRows(who, "Dateien von Entwürfen im Speicher", 0, outcome(draftFiles.error as DbError | null, draftFiles.data?.length ?? 0));
+    expectDenied(who, "Datei im Entwurfsspeicher ablegen", await uploadAttempt(sb, `drafts/${NIL}/rollenpruefung.txt`));
+    if (foreign) expectDenied(who, "Datei in einem fremden Projekt ablegen", await uploadAttempt(sb, `${foreign.id}/rollenpruefung/rollenpruefung.txt`));
     if (mine[0]) {
       // leerer Bauherr: mit Berechtigung käme "Bitte den Nachnamen …", ohne "Keine Berechtigung"
       expectDenied(who, "Projektdaten bearbeiten", await attempt(sb.rpc("update_project", { p_id: mine[0].id, p_project: { bauherr_label: "" } })));

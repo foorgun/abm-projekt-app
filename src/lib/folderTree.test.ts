@@ -19,8 +19,8 @@ const docs = [
 const tree = buildFolderTree(templates, docs);
 
 describe("Ordnerbaum", () => {
-  it("hat die 11 Hauptordner der Vorlage", () => {
-    expect(tree.map((n) => n.label.slice(0, 2))).toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]);
+  it("hat die Hauptordner der Vorlage (00 Verträge und 01 bis 11)", () => {
+    expect(tree.map((n) => n.label.slice(0, 2))).toEqual(["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]);
   });
 
   it("zählt Dateien je Ordner und je Teilbaum", () => {

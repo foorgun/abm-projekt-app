@@ -4729,34 +4729,6 @@ li:first-child > .doc-card {
   margin-left: auto;
 }
 
-.contract-extra {
-  display: flex;
-  gap: var(--sp-6);
-  margin: 0;
-  min-height: var(--ctl-h);
-  align-items: center;
-}
-
-.contract-extra dt {
-  font-size: var(--fs-12);
-  color: var(--muted);
-}
-
-.contract-extra dd {
-  margin: 0;
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-}
-
-.contract-similar ul {
-  margin: var(--sp-1) 0 0;
-  padding-left: var(--sp-5);
-}
-
-.contract-similar a {
-  text-decoration: underline;
-}
-
 /* Herkunft und Sicherheit unter einem vorbefüllten Feld */
 .field-src {
   display: flex;
@@ -4777,10 +4749,185 @@ li:first-child > .doc-card {
   white-space: nowrap;
 }
 
-/* Unsicher und noch nicht angefasst: Feld hervorheben */
-.field:has(.field-src[data-level="niedrig"]:not([data-edited])) .input,
-.field:has(.field-src[data-level="niedrig"]:not([data-edited])) .select {
+/* Unsicher oder bei Scans immer zu kontrollieren, und noch nicht angefasst: Feld hervorheben */
+.field:has(.field-src[data-check]) .input,
+.field:has(.field-src[data-check]) .select {
   border-color: var(--warn);
+}
+
+/* Prüfmaske: links das Dokument (Seite 1), rechts die Felder; schmal untereinander */
+.dialog-xwide {
+  width: min(1120px, 100%);
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+  gap: var(--sp-5);
+  align-items: start;
+}
+
+.review-doc {
+  position: sticky;
+  top: 0;
+  display: grid;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.review-page {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 70vh;
+  object-fit: contain;
+  object-position: top;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+}
+
+.review-nopage {
+  padding: var(--sp-8) var(--sp-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-ctl);
+  text-align: center;
+  font-size: var(--fs-13);
+}
+
+.review-pages {
+  font-size: var(--fs-12);
+}
+
+.review-plan-row {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.review-plan-row .input {
+  width: 96px;
+}
+
+.contract-samples {
+  text-align: center;
+  font-size: var(--fs-13);
+  color: var(--muted);
+}
+
+.contract-notes {
+  margin: 0;
+  padding-left: var(--sp-5);
+  font-size: var(--fs-13);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.form-more {
+  justify-self: start;
+}
+
+.dialog-foot-left {
+  margin-right: auto;
+}
+
+/* Duplikate: ein ähnliches Projekt je Zeile mit Direktaktion */
+.dup-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+}
+
+.dup-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.dup-list li:first-child {
+  border-top: 0;
+}
+
+.dup-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-13);
+}
+
+.dup-title {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* Prüfliste: vorgeschlagene Projekte aus Dokumenten */
+.draft-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  border-top: 1px solid var(--border);
+}
+
+.draft-row:first-of-type {
+  border-top: 0;
+}
+
+.draft-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.draft-title {
+  font-weight: 600;
+  font-size: var(--fs-14);
+  color: var(--text);
+}
+
+.draft-sub {
+  font-size: var(--fs-12);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 860px) {
+  .review-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .review-doc {
+    position: static;
+  }
+
+  .review-page {
+    max-height: 50vh;
+  }
+
+  .dup-list li,
+  .draft-row {
+    flex-wrap: wrap;
+  }
+
+  .dialog-foot-left {
+    margin-right: 0;
+  }
+
+  /* drei Knöpfe passen schmal nicht nebeneinander */
+  .dialog-xwide .dialog-foot {
+    flex-wrap: wrap;
+  }
+
+  .dialog-xwide .dialog-foot .btn {
+    flex: 1 1 auto;
+  }
 }
 
 /* ---------------------------------------------------------------- Einführung im Pilot */

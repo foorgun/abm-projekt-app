@@ -4,7 +4,8 @@
 
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
-import type { AgentRule, AgentSettings, Company, Dataset, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, Salesperson, Task, TeamMember } from "./types";
+import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
+import type { AgentRule, AgentSettings, Company, ContractMeta, Dataset, DocumentType, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Salesperson, Task, TeamMember } from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -20,6 +21,8 @@ export interface NewProject {
   intakeMonth: string | null;
   /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */
   vermesser?: string | null;
+  flurstueck?: string | null;
+  gemarkung?: string | null;
   /** Kontaktdaten des Bauherrn (nur Admin und Mitarbeiter). */
   bauherr?: BauherrInput | null;
   /** Projektordner aus der Vorlage anlegen (im Echtbetrieb im Speicher; im Demo-Modus protokolliert) */
@@ -33,12 +36,16 @@ export interface BauherrInput {
   email: string | null;
   address: string | null;
   buildingAddress: string | null;
+  /** Zweiter Bauherr. Nicht genannt (undefined) = unverändert. */
+  name2?: string | null;
+  phone2?: string | null;
+  email2?: string | null;
 }
 
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
   Project,
-  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung"
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung"
 >;
 
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */
@@ -68,6 +75,31 @@ export interface UploadInput {
   file: { name: string; size: number; type: string };
   /** Inhalt der Datei. Im Demo-Modus ungenutzt (dort werden nur die Angaben gespeichert). */
   blob?: Blob;
+  /** Vertrag: Typ und Metadaten (Vertragsdatum, Vertragspreis, Angebotsnummer, Haustyp). */
+  docType?: DocumentType | null;
+  meta?: ContractMeta;
+}
+
+/** Entwurf speichern: ohne `id` neu anlegen (dann mit Datei), mit `id` den Stand der Prüfmaske aktualisieren. */
+export interface DraftInput {
+  id?: string;
+  draft: ProjectDraft;
+  form: DraftFormState;
+  docType: DocumentType;
+  file: { name: string; size: number; type: string };
+  /** Inhalt der Datei, nur beim ersten Speichern nötig. */
+  blob?: Blob;
+}
+
+/** Vertrag aus der Prüfmaske in ein Projekt ablegen und den Entwurf abschließen. */
+export interface ContractFiling {
+  projectId: string;
+  docType: DocumentType;
+  meta: ContractMeta;
+  file: { name: string; size: number; type: string };
+  blob?: Blob;
+  /** Entwurf, der damit erledigt ist (wird als übernommen markiert, seine Datei im Entwurfsspeicher entfernt). */
+  draftId?: string | null;
 }
 
 export type NewAgentRule = Pick<AgentRule, "kind" | "match" | "projectId" | "folderPath">;
@@ -147,6 +179,17 @@ export interface Repo {
   resolveReview(attachmentId: string, resolution: ReviewResolution): Promise<void>;
   /** Automatisch abgelegter Anhang war falsch: zurück in die Prüfliste (zählt gegen die Trefferquote). */
   reportWrongFiling(attachmentId: string): Promise<void>;
+
+  // --- Neues Projekt aus einem Vertrag (nur Admin und Mitarbeiter) ---
+  saveProjectDraft(input: DraftInput): Promise<ProjectDraftRecord>;
+  /** Entwurf verwerfen (Status, kein Löschen der Zeile); die Datei im Entwurfsspeicher wird entfernt. */
+  discardProjectDraft(id: string): Promise<void>;
+  /** Datei eines offenen Entwurfs zum Fortsetzen (Vorschau, spätere Ablage). null, wenn sie fehlt. */
+  draftFile(id: string): Promise<Blob | null>;
+  /** Legt den Vertrag im Zielordner seines Typs ab (privater Speicher) und schließt den Entwurf ab. */
+  fileContract(input: ContractFiling): Promise<ProjectDocument>;
+  /** Nur Echtbetrieb: KI-Auslesung über die Edge Function extract-project. Fehlt im Demo-Modus. */
+  extractProject?(request: ExtractRequest): Promise<ExtractResponse>;
 
   /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
   resetDemo?(): Promise<void>;

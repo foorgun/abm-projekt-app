@@ -194,6 +194,13 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
                   <Row label="Anschrift">{contact.address}</Row>
                   <Row label="Telefon">{contact.phone && <a href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}>{contact.phone}</a>}</Row>
                   <Row label="E-Mail">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}</Row>
+                  {(contact.name2 || contact.phone2 || contact.email2) && (
+                    <>
+                      <Row label="Zweiter Bauherr">{contact.name2}</Row>
+                      <Row label="Telefon (2)">{contact.phone2 && <a href={`tel:${contact.phone2.replace(/[^\d+]/g, "")}`}>{contact.phone2}</a>}</Row>
+                      <Row label="E-Mail (2)">{contact.email2 && <a href={`mailto:${contact.email2}`}>{contact.email2}</a>}</Row>
+                    </>
+                  )}
                 </dl>
               ) : (
                 <p className="muted">Noch keine Kontaktdaten eingetragen. Über den Stift oben rechts lassen sie sich nachtragen.</p>
@@ -206,6 +213,7 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
           canEdit={staff}
           form={(close) => <ProjectDataForm project={project} data={data} onClose={close} />}
           view={
+            <>
             <dl className="dl">
               <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
               <Row label="Hausbaufirma">{company?.name}</Row>
@@ -215,6 +223,14 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
               <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
               <Row label="Baubetreuung">{project.baubetreuung}</Row>
             </dl>
+            <details className="dl-more">
+              <summary>Weitere Angaben{project.flurstueck || project.gemarkung ? "" : " · noch leer"}</summary>
+              <dl className="dl">
+                <Row label="Flurstück">{project.flurstueck}</Row>
+                <Row label="Gemarkung">{project.gemarkung}</Row>
+              </dl>
+            </details>
+            </>
           }
         />
       </div>
@@ -331,6 +347,8 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
     planerId: project.planerId ?? "",
     intakeMonth: project.intakeMonth?.slice(0, 7) ?? "",
     baubetreuung: project.baubetreuung ?? "",
+    flurstueck: project.flurstueck ?? "",
+    gemarkung: project.gemarkung ?? "",
   });
   const architects = data.team.filter((t) => t.role === "architekt");
   const planers = data.team.filter((t) => t.role === "planer");
@@ -351,6 +369,8 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
           planerId: v.planerId || null,
           intakeMonth: v.intakeMonth ? `${v.intakeMonth}-01` : null,
           baubetreuung: v.baubetreuung,
+          flurstueck: v.flurstueck,
+          gemarkung: v.gemarkung,
         },
       },
       onClose,
@@ -401,18 +421,34 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
       <Field label="Baubetreuung" htmlFor={`${id}-bb`} hint="Freitext wie in der Projektliste, z. B. 3.1+3.2">
         <Input id={`${id}-bb`} value={v.baubetreuung} onChange={(e) => setV({ ...v, baubetreuung: e.target.value })} />
       </Field>
+      <div className="dialog-row">
+        <Field label="Flurstück" htmlFor={`${id}-flst`}>
+          <Input id={`${id}-flst`} value={v.flurstueck} onChange={(e) => setV({ ...v, flurstueck: e.target.value })} placeholder="z. B. 412/3" autoComplete="off" />
+        </Field>
+        <Field label="Gemarkung" htmlFor={`${id}-gem`}>
+          <Input id={`${id}-gem`} value={v.gemarkung} onChange={(e) => setV({ ...v, gemarkung: e.target.value })} autoComplete="off" />
+        </Field>
+      </div>
     </EditForm>
   );
 }
 
 function ContactForm({ project, data, contact, onClose }: { project: Project; data: Dataset; contact: BauherrContact | null; onClose: () => void }) {
   const { save, busy, error, clearError } = useProjectSave(project, data);
-  const [v, setV] = useState({ name: contact?.name ?? "", address: contact?.address ?? "", phone: contact?.phone ?? "", email: contact?.email ?? "" });
+  const [v, setV] = useState({
+    name: contact?.name ?? "",
+    address: contact?.address ?? "",
+    phone: contact?.phone ?? "",
+    email: contact?.email ?? "",
+    name2: contact?.name2 ?? "",
+    phone2: contact?.phone2 ?? "",
+    email2: contact?.email2 ?? "",
+  });
   const id = `pc-${project.id}`;
 
   function submit() {
     // Die Bauadresse steht in der Kachel "Projektbeteiligte" und bleibt hier unverändert
-    void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null } }, onClose);
+    void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, name2: v.name2, phone2: v.phone2, email2: v.email2 } }, onClose);
   }
 
   return (
@@ -429,6 +465,17 @@ function ContactForm({ project, data, contact, onClose }: { project: Project; da
         </Field>
         <Field label="E-Mail" htmlFor={`${id}-mail`}>
           <Input id={`${id}-mail`} type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} autoComplete="off" />
+        </Field>
+      </div>
+      <Field label="Zweiter Bauherr (Name)" htmlFor={`${id}-name2`}>
+        <Input id={`${id}-name2`} value={v.name2} onChange={(e) => setV({ ...v, name2: e.target.value })} autoComplete="off" />
+      </Field>
+      <div className="dialog-row">
+        <Field label="Telefon (zweiter Bauherr)" htmlFor={`${id}-tel2`}>
+          <Input id={`${id}-tel2`} type="tel" value={v.phone2} onChange={(e) => setV({ ...v, phone2: e.target.value })} autoComplete="off" />
+        </Field>
+        <Field label="E-Mail (zweiter Bauherr)" htmlFor={`${id}-mail2`}>
+          <Input id={`${id}-mail2`} type="email" value={v.email2} onChange={(e) => setV({ ...v, email2: e.target.value })} autoComplete="off" />
         </Field>
       </div>
     </EditForm>

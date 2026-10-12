@@ -28,7 +28,7 @@ if (!key.startsWith("sb_publishable_")) console.warn("Hinweis: der Schlüssel in
 const TABLES = [
   "companies", "salespeople", "team_members", "step_definitions", "folder_templates", "bauherren", "projects", "project_steps",
   "project_parties", "invoices", "documents", "tasks", "activities", "mailboxes", "inbox_items", "inbox_attachments",
-  "agent_runs", "agent_rules", "agent_settings", "agent_feedback", "user_roles", "project_members",
+  "agent_runs", "agent_rules", "agent_settings", "agent_feedback", "user_roles", "project_members", "project_drafts", "extraction_log",
 ];
 const FUNCTIONS = ["list_user_names", "current_user_name", "is_staff", "is_admin", "current_app_role"];
 const h = { apikey: key, "content-type": "application/json" };

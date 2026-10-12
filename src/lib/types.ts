@@ -1,5 +1,6 @@
 // Domänentypen der App. Spiegeln das Schema in supabase/migrations (snake_case → camelCase).
 
+import type { DraftFormState, ProjectDraft } from "./extract/types";
 import type { StepDefinition } from "./steps";
 
 export type ProjectKind = "neubau" | "bauvoranfrage";
@@ -46,6 +47,9 @@ export interface Project {
   baubetreuung: string | null;
   intakeMonth: string | null;
   notes: string | null;
+  /** Flurstück und Gemarkung des Baugrundstücks (optional; dienen auch der Duplikatprüfung). */
+  flurstueck?: string | null;
+  gemarkung?: string | null;
   steps: StepDates;
 }
 
@@ -92,6 +96,10 @@ export interface BauherrContact {
   phone: string | null;
   email: string | null;
   buildingAddress: string | null;
+  /** Zweiter Bauherr (z. B. Ehepartner): nur Name, Telefon und E-Mail, keine eigene Entität. */
+  name2?: string | null;
+  phone2?: string | null;
+  email2?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -111,6 +119,15 @@ export interface FolderTemplate {
 }
 
 export type DocumentSource = "upload" | "agent";
+/** Typ eines abgelegten Vertrags; bestimmt den Zielordner (lib/extract/filing.ts). */
+export type DocumentType = "werkvertrag" | "vermessungsvertrag" | "sonstiges";
+/** Metadaten eines Vertrags am Dokument (keine Projektfelder): Texte, wie sie in der Prüfmaske bestätigt wurden. */
+export interface ContractMeta {
+  vertragsdatum?: string;
+  vertragspreis?: string;
+  angebotsnummer?: string;
+  haustyp?: string;
+}
 
 export interface ProjectDocument {
   id: string;
@@ -127,6 +144,8 @@ export interface ProjectDocument {
   receivedOn: string | null;
   uploadedBy: string | null;
   createdAt: string;
+  docType?: DocumentType | null;
+  meta?: ContractMeta;
 }
 
 // ---------------------------------------------------------------------------
@@ -283,4 +302,29 @@ export interface Dataset extends Snapshot {
   agentRules: AgentRule[];
   agentSettings: AgentSettings;
   agentFeedback: AgentFeedback[];
+  /** Entwürfe "Neues Projekt aus Dokument". Leer für Freiberufler (RLS). */
+  projectDrafts: ProjectDraftRecord[];
+}
+
+// ---------------------------------------------------------------------------
+// Entwürfe: neues Projekt aus einem Vertrag
+// ---------------------------------------------------------------------------
+
+export type DraftStatus = "offen" | "uebernommen" | "verworfen";
+
+export interface ProjectDraftRecord {
+  id: string;
+  status: DraftStatus;
+  /** Ergebnis des Extractors (Felder mit Wert, Quelle, Sicherheit). */
+  draft: ProjectDraft;
+  /** Stand der Prüfmaske, damit man später weitermachen kann. */
+  form: DraftFormState;
+  docType: DocumentType;
+  file: { name: string; size: number; type: string };
+  /** Pfad der Datei im privaten Speicher, solange der Entwurf offen ist. */
+  storagePath: string | null;
+  projectId: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

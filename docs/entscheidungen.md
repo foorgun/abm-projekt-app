@@ -50,7 +50,7 @@ Neueste Einträge unten.
 
 ## Schritt 2 – Datenschicht
 
-- **Ordnervorlage aus einer Quelle:** `docs/ordnerstruktur.md` wird geparst (`src/lib/folders.ts`, 126 Ordner).
+- **Ordnervorlage aus einer Quelle:** `docs/ordnerstruktur.md` wird geparst (`src/lib/folders.ts`, 127 Ordner).
   Die App nutzt den Parser direkt, Migration 0002 enthält dieselben Zeilen, erzeugt mit `npm run gen:folders`.
   Ein Test schlägt fehl, wenn beides auseinanderläuft. Schlüsselwörter je Ordner stehen in `src/data/folderHints.ts`.
 - **Pfade:** Trenner `/`, Datumsplatzhalter (alle Schreibweisen, auch "… am" ohne Datum) normalisiert zu `{datum}`.
@@ -450,3 +450,33 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Einführung beim ersten Login** (`PilotIntro`), einmal je Konto und Gerät (im Browser gemerkt, nicht in der Datenbank), jederzeit
   unter "Hilfe" nachzulesen. Die Hilfeseite ersetzt den bisherigen Platzhalter.
 - **Dialoge:** Kopf und Fuß bleiben stehen, nur der Inhalt scrollt. Vorher scrollte der ganze Dialog, auf dem Handy rutschte der Titel weg.
+
+## Neues Projekt aus einem Vertrag (Migration 0010)
+
+- **Entwurf getrennt vom Datenmodell:** Der Extractor liefert je Feld `{wert, quelle, sicherheit}` (`src/lib/extract/types.ts`).
+  Erst die Prüfmaske macht daraus ein Projekt, und ein Mensch bestätigt. Nichts wird ohne Bestätigung angelegt, auch keine
+  Stammdaten (eine unbekannte Hausbaufirma wird nur gemeldet).
+- **Metadaten am Dokument, nicht am Projekt:** Vertragsdatum, Vertragspreis, Angebotsnummer und Haustyp stehen in
+  `documents.meta`. Der Vertragspreis belegt keine Rechnungen vor.
+- **Flurstück und Gemarkung** sind optionale Projektfelder und dienen der Duplikatprüfung (gleiche Nummer zählt nur, wenn die
+  Gemarkung passt oder auf einer Seite fehlt).
+- **Zweiter Bauherr bei den Kontaktdaten** (`bauherren.name2/phone2/email2`), nicht in `projects`: Projekte sehen auch
+  Freiberufler, Kontaktdaten der Bauherren nie. Abweichung vom ersten Entwurf ("am Projekt"), aus genau diesem Grund.
+- **Im Werkvertrag steht kein Baugrundstück.** Bauadresse, Bauort, Flurstück und Gemarkung werden daraus nie übernommen, weder
+  vom Mock noch aus der Antwort des Bildmodells (`normalizeFields` verwirft sie).
+- **Geburtsdatum und Beruf** werden nicht ausgelesen und haben weder Feld noch Spalte.
+- **Dokumenttyp bestimmt den Ordner** (`src/lib/extract/filing.ts`): Werkvertrag und Sonstiges nach `00 Verträge` (vorläufig),
+  Vermessungsvertrag nach `04 Vermesser`. Der neue Ordner hat keine Schlüsselwörter, der Posteingangs-Agent sortiert dort
+  vorerst nichts von selbst ein.
+- **Entwürfe** (`project_drafts`) entstehen sofort nach dem Auslesen und halten Felder, Formularstand und die Datei
+  (Speicher unter `drafts/<Entwurf>/…`, nur Admin und Mitarbeiter). Beim Bestätigen wird die Datei unter der Projekt-ID neu
+  abgelegt und die Entwurfsdatei entfernt. Entwürfe werden nie gelöscht, nur als übernommen oder verworfen markiert.
+- **Seitenbilder im Browser:** PDFs rendert pdf.js lokal (eigene Dateien im Build, kein CDN). Gesendet wird nur Seite 1,
+  auf Wunsch zusätzlich die Plan-Seite, mit höchstens 1600 px Kantenlänge.
+- **Mock im Demo-Modus:** Scans kann er nicht lesen. Nur im Demo-Modus liefert er dafür erfundene Beispielwerte und sagt das
+  in der Prüfmaske dazu; mit echten Daten rät er höchstens aus dem Dateinamen.
+- **Edge Function:** reine Logik in `logic.ts` (ohne Importe, von vitest geprüft), Aufruf in `index.ts`. Einrichtung und
+  Absicherung: `docs/vertrag-extraktion.md`.
+- **Datenbanktests ohne lokales Postgres:** `tools/test-db.sh` braucht eine Postgres-Installation. Für diesen Schritt wurden
+  Migrationen, Seed und `rls_test.sql` ersatzweise gegen PGlite (Postgres als WASM) ausgeführt, Anweisung für Anweisung wie
+  `psql`. Vor dem Einspielen in Supabase trotzdem einmal `bash tools/test-db.sh` auf einem Rechner mit Postgres laufen lassen.

@@ -21,9 +21,9 @@ describe("normalizeLabel", () => {
 });
 
 describe("parseFolderTemplate", () => {
-  it("enthält die Hauptordner 01 bis 11 in Reihenfolge", () => {
+  it("enthält die Hauptordner 00 bis 11 in Reihenfolge", () => {
     const top = folders.filter((f) => f.parentPath === null).map((f) => f.label.slice(0, 2));
-    expect(top).toEqual(["01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]);
+    expect(top).toEqual(["00", "01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11"]);
   });
 
   it("baut verschachtelte Pfade", () => {

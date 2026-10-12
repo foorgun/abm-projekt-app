@@ -7,6 +7,9 @@ import { buildDemoMailQueue, demoAi, type QueuedMail } from "../agent/demoMailSo
 import type { ClassifyContext } from "../agent/types";
 import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
+import { cleanMeta } from "./extract/applyDraft";
+import { checkContractFile } from "./extract/contractFile";
+import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { planProjectUpdate } from "./projectEdit";
@@ -15,6 +18,8 @@ import { todayIso } from "./format";
 import {
   PermissionError,
   type AgentRunSummary,
+  type ContractFiling,
+  type DraftInput,
   type MailboxInput,
   type ProjectPatch,
   type NewAgentRule,
@@ -26,7 +31,7 @@ import {
   type UploadInput,
 } from "./repo";
 import type { SessionUser } from "./session";
-import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, Task } from "./types";
+import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -68,6 +73,7 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     agentRuns: [],
     agentRules: [],
     agentFeedback: [],
+    projectDrafts: [],
   };
 }
 
@@ -90,6 +96,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     db.activities.unshift({ id: newId("a"), at: now(), actor: user.name, ...a });
   };
   const stepLabel = (key: string) => db.stepDefinitions.find((s) => s.key === key)?.label ?? key;
+  /** Dateien offener Entwürfe (im Demo-Modus nur im Speicher des Browsers) */
+  const draftBlobs = new Map<string, Blob>();
 
   /** Legt eine Kopie ab (Metadaten). Bei Namenskonflikt Zähler anhängen, nie überschreiben. */
   function storeDocument(input: {
@@ -99,6 +107,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     source: ProjectDocument["source"];
     sourceItemId: string | null;
     receivedOn: string;
+    docType?: ProjectDocument["docType"];
+    meta?: ProjectDocument["meta"];
   }): ProjectDocument {
     if (input.folderPath.includes("{datum}")) throw new Error("Für diesen Ordner fehlt das Datum");
     if (!isAllowedFolder(input.folderPath, db.folderTemplates)) throw new Error("Ordner gehört nicht zur Vorlage");
@@ -122,6 +132,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       receivedOn: input.receivedOn,
       uploadedBy: input.source === "upload" ? user.name : null,
       createdAt: now(),
+      docType: input.docType ?? null,
+      meta: input.meta ? cleanMeta(input.meta) : {},
     };
     db.documents.push(doc);
     return doc;
@@ -188,6 +200,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       mailQueue = null;
       batch = 0;
       delivered.clear();
+      draftBlobs.clear();
       return done(undefined);
     },
 
@@ -227,6 +240,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         baubetreuung: null,
         intakeMonth: input.intakeMonth,
         notes: null,
+        flurstueck: input.flurstueck?.trim() || null,
+        gemarkung: input.gemarkung?.trim() || null,
         steps: {},
       };
       db.projects.unshift(p);
@@ -234,8 +249,18 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
       const b = input.bauherr;
       const val = (v: string | null | undefined) => v?.trim() || null;
-      if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name))) {
-        db.bauherren.push({ projectId: p.id, name: val(b.name) ?? p.bauherrLabel, address: val(b.address), phone: val(b.phone), email: val(b.email), buildingAddress: val(b.buildingAddress) });
+      if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2))) {
+        db.bauherren.push({
+          projectId: p.id,
+          name: val(b.name) ?? p.bauherrLabel,
+          address: val(b.address),
+          phone: val(b.phone),
+          email: val(b.email),
+          buildingAddress: val(b.buildingAddress),
+          name2: val(b.name2),
+          phone2: val(b.phone2),
+          email2: val(b.email2),
+        });
       }
       log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
       if (input.createFolders) log({ projectId: p.id, kind: "projekt", text: `Projektordner aus der Vorlage angelegt (${db.folderTemplates.length} Ordner)` });
@@ -252,7 +277,17 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (first) throw new Error(first);
       Object.assign(p, plan.project);
       if (plan.bauherr) {
-        const row = { projectId, name: plan.bauherr.name ?? p.bauherrLabel, address: plan.bauherr.address, phone: plan.bauherr.phone, email: plan.bauherr.email, buildingAddress: plan.bauherr.buildingAddress };
+        const row = {
+          projectId,
+          name: plan.bauherr.name ?? p.bauherrLabel,
+          address: plan.bauherr.address,
+          phone: plan.bauherr.phone,
+          email: plan.bauherr.email,
+          buildingAddress: plan.bauherr.buildingAddress,
+          name2: plan.bauherr.name2,
+          phone2: plan.bauherr.phone2,
+          email2: plan.bauherr.email2,
+        };
         const cur = db.bauherren.find((b) => b.projectId === projectId);
         if (cur) Object.assign(cur, row);
         else db.bauherren.push(row);
@@ -315,12 +350,72 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(undefined);
     },
 
-    async uploadDocument({ projectId, folderPath, file }: UploadInput) {
+    async uploadDocument({ projectId, folderPath, file, docType, meta }: UploadInput) {
       // Wie RLS: Mitarbeiter überall, Freiberufler nur in zugewiesenen Projekten
       const p = project(projectId);
       if (!isStaff() && p.planerId !== DEMO_FREELANCER_TEAM_ID) throw new PermissionError();
-      const doc = storeDocument({ projectId, folderPath, file, source: "upload", sourceItemId: null, receivedOn: todayIso() });
+      const doc = storeDocument({ projectId, folderPath, file, source: "upload", sourceItemId: null, receivedOn: todayIso(), docType, meta });
       log({ projectId, kind: "datei", text: `${file.name} abgelegt` });
+      return done(structuredClone(doc));
+    },
+
+    // ------------------------------------------------------------- Neues Projekt aus einem Vertrag
+
+    async saveProjectDraft(input: DraftInput) {
+      requireStaff();
+      if (input.id) {
+        const cur = db.projectDrafts.find((d) => d.id === input.id && d.status === "offen");
+        if (!cur) throw new Error("Der Entwurf ist nicht mehr offen.");
+        Object.assign(cur, { draft: structuredClone(input.draft), form: structuredClone(input.form), docType: input.docType, updatedAt: now() });
+        return done(structuredClone(cur));
+      }
+      const check = checkContractFile(input.file);
+      if (!check.ok) throw new Error(check.reason);
+      const id = newId("e");
+      const rec: ProjectDraftRecord = {
+        id,
+        status: "offen",
+        draft: structuredClone(input.draft),
+        form: structuredClone(input.form),
+        docType: input.docType,
+        file: { ...input.file },
+        storagePath: `drafts/${id}/${input.file.name}`,
+        projectId: null,
+        createdBy: user.name,
+        createdAt: now(),
+        updatedAt: now(),
+      };
+      db.projectDrafts.unshift(rec);
+      if (input.blob) draftBlobs.set(id, input.blob);
+      return done(structuredClone(rec));
+    },
+
+    async discardProjectDraft(id) {
+      requireStaff();
+      const cur = db.projectDrafts.find((d) => d.id === id);
+      if (!cur) throw new Error("Entwurf nicht gefunden");
+      Object.assign(cur, { status: "verworfen", storagePath: null, updatedAt: now() });
+      draftBlobs.delete(id);
+      return done(undefined);
+    },
+
+    async draftFile(id) {
+      requireStaff();
+      return done(draftBlobs.get(id) ?? null);
+    },
+
+    async fileContract({ projectId, docType, meta, file, draftId }: ContractFiling) {
+      requireStaff();
+      project(projectId);
+      const check = checkContractFile(file);
+      if (!check.ok) throw new Error(check.reason);
+      const doc = storeDocument({ projectId, folderPath: contractFolder(docType, db.folderTemplates), file, source: "upload", sourceItemId: null, receivedOn: todayIso(), docType, meta });
+      log({ projectId, kind: "datei", text: `${file.name} abgelegt` });
+      const draft = draftId ? db.projectDrafts.find((d) => d.id === draftId) : null;
+      if (draft) {
+        Object.assign(draft, { status: "uebernommen", projectId, storagePath: null, updatedAt: now() });
+        draftBlobs.delete(draft.id);
+      }
       return done(structuredClone(doc));
     },
 

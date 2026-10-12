@@ -17,6 +17,8 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
   planerId: "Planer",
   intakeMonth: "Eingangsmonat",
   baubetreuung: "Baubetreuung",
+  flurstueck: "Flurstück",
+  gemarkung: "Gemarkung",
 };
 
 export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
@@ -25,6 +27,9 @@ export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
   email: "E-Mail",
   address: "Anschrift",
   buildingAddress: "Bauadresse",
+  name2: "Zweiter Bauherr",
+  phone2: "Telefon (zweiter Bauherr)",
+  email2: "E-Mail (zweiter Bauherr)",
 };
 
 export const PARTY_LABEL: Record<PartyRole, string> = {
@@ -93,6 +98,9 @@ export function planProjectUpdate(
     email: contact?.email ?? null,
     address: contact?.address ?? null,
     buildingAddress: contact?.buildingAddress ?? null,
+    name2: contact?.name2 ?? null,
+    phone2: contact?.phone2 ?? null,
+    email2: contact?.email2 ?? null,
   };
   let after = before;
   let bauherr: Required<BauherrInput> | null = null;
@@ -103,6 +111,10 @@ export function planProjectUpdate(
       email: clean(patch.bauherr.email),
       address: clean(patch.bauherr.address),
       buildingAddress: clean(patch.bauherr.buildingAddress),
+      // zweiter Bauherr: nicht genannt = unverändert
+      name2: patch.bauherr.name2 === undefined ? before.name2 : clean(patch.bauherr.name2),
+      phone2: patch.bauherr.phone2 === undefined ? before.phone2 : clean(patch.bauherr.phone2),
+      email2: patch.bauherr.email2 === undefined ? before.email2 : clean(patch.bauherr.email2),
     };
     const diff = (Object.keys(BAUHERR_LABEL) as (keyof BauherrInput)[]).filter((k) => after[k] !== before[k]);
     if (diff.length) {

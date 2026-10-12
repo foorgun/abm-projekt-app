@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import migration from "../../supabase/migrations/0002_agent_aufgaben_ordner.sql?raw";
+import migration10 from "../../supabase/migrations/0010_projektentwurf_aus_dokument.sql?raw";
 import migration3 from "../../supabase/migrations/0003_stufen_und_kurznamen.sql?raw";
 import { CORE_STEPS } from "../lib/steps";
 import { PROPOSED_STEPS, buildFolderTemplates } from "./templates";
 
-describe("Migration 0002 ist synchron mit der App", () => {
+describe("Migrationen 0002 und 0010 sind synchron mit der App", () => {
   it("enthält jede Vorlagenzeile genau so, wie die App sie erzeugt (sonst: npm run gen:folders)", () => {
-    const block = migration.match(/-- BEGIN folder_templates([\s\S]*?)-- END folder_templates/)?.[1] ?? "";
+    // Vorlage = Grundbestand aus 0002 plus spätere Ergänzungen (0010: "00 Verträge")
+    const block = [migration, migration10].map((m) => m.match(/-- BEGIN folder_templates([\s\S]*?)-- END folder_templates/)?.[1] ?? "").join("\n");
     const templates = buildFolderTemplates();
     expect(block.match(/^\s+\('/gm)?.length).toBe(templates.length);
     for (const t of templates) expect(block, t.path).toContain(`('${t.path.replace(/'/g, "''")}', `);

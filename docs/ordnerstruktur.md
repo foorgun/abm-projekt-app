@@ -8,6 +8,7 @@ Der Posteingangs-Agent legt Dateien in genau diese Ziele ab. Die Struktur ist in
 gespeichert (Tabelle `folder_templates`), damit ABM sie später selbst ändern kann.
 
 ```
+00 Verträge                        (Werkvertrag mit der Hausbaufirma; vorläufiger Ort, siehe offene-fragen.md)
 01 Projektbeteiligte
    Liste.docx                      (Felder: ABM Nr., Hausbau Nr., Bauherr, Bauadresse, Verkäufer, Vermesser, Erdbauer, Strom, Wasser, Elektriker Baustrom)
 02 Schriftverkehr

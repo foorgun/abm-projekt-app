@@ -30,6 +30,8 @@ const TABLES: Record<string, string[]> = {
   agent_rules: ["id"],
   agent_settings: ["id"],
   agent_feedback: ["id"],
+  project_drafts: ["id"],
+  extraction_log: ["id"],
   user_roles: ["user_id"],
 };
 

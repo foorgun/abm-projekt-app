@@ -4,6 +4,10 @@
 
 import type { PostgrestError, SupabaseClient } from "@supabase/supabase-js";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
+import { cleanMeta } from "./extract/applyDraft";
+import { checkContractFile } from "./extract/contractFile";
+import { contractFolder } from "./extract/filing";
+import type { ExtractResponse } from "./extract/types";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
@@ -12,6 +16,8 @@ import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewPro
 import {
   PermissionError,
   type BauherrInput,
+  type ContractFiling,
+  type DraftInput,
   type MailboxInput,
   type ProjectFields,
   type ProjectPatch,
@@ -44,6 +50,7 @@ import {
   toMailbox,
   toParty,
   toProject,
+  toProjectDraft,
   toSalesperson,
   toStepDefinition,
   toTask,
@@ -98,6 +105,8 @@ const PROJECT_COLUMN: Record<keyof ProjectFields, string> = {
   planerId: "planer_id",
   intakeMonth: "intake_month",
   baubetreuung: "baubetreuung",
+  flurstueck: "flurstueck",
+  gemarkung: "gemarkung",
 };
 
 /** Projektfelder → Spaltennamen. Nur genannte Felder; leere Texte werden zu null. */
@@ -112,7 +121,7 @@ export function projectJson(fields: Partial<ProjectFields>): Record<string, stri
 
 export function bauherrJson(b: BauherrInput): Record<string, string | null> {
   const v = (x: string | null | undefined) => x?.trim() || null;
-  return { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress) };
+  return { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress), name2: v(b.name2), phone2: v(b.phone2), email2: v(b.email2) };
 }
 
 export function createSupabaseRepo(): Repo {
@@ -149,14 +158,24 @@ export function createSupabaseRepo(): Repo {
     return new Map(((data ?? []) as Row[]).map((r) => [r.user_id, r.full_name || "Unbekannt"]));
   }
 
-  return {
+  /** Pfad einer Entwurfsdatei im Speicher: "drafts/<Entwurf>/<Dateiname>". Nur Admin und Mitarbeiter (Migration 0010). */
+  const draftPath = (id: string, name: string) => `drafts/${id}/${storageSafeName(name)}`;
+
+  async function draftRow(id: string): Promise<Row> {
+    const { data, error } = await sb.from("project_drafts").select(COLS.project_drafts).eq("id", id).maybeSingle();
+    if (error) fail(error, "Entwurf konnte nicht geladen werden");
+    if (!data) throw new Error("Entwurf nicht gefunden");
+    return data as unknown as Row;
+  }
+
+  const repo: Repo = {
     mode: "supabase",
 
     async load(u) {
       if (u.id !== uid) last = null;
       user = u;
       uid = u.id ?? null;
-      const [companies, salespeople, team, stepDefs, folders, projects, steps, invoices, bauherren, parties, documents, tasks, activities, mailboxes, items, atts, runs, rules, feedback, settings, names] =
+      const [companies, salespeople, team, stepDefs, folders, projects, steps, invoices, bauherren, parties, documents, tasks, activities, mailboxes, items, atts, runs, rules, feedback, drafts, settings, names] =
         await Promise.all([
           all(sb, "companies", COLS.companies, ["name", "id"]),
           all(sb, "salespeople", COLS.salespeople, ["name", "id"]),
@@ -177,10 +196,13 @@ export function createSupabaseRepo(): Repo {
           latest(sb, "agent_runs", COLS.agent_runs, "started_at", RUN_LIMIT),
           all(sb, "agent_rules", COLS.agent_rules, ["created_at", "id"]),
           all(sb, "agent_feedback", COLS.agent_feedback, ["created_at", "id"]),
+          // Entwürfe: Freiberufler bekommen von der Datenbank keine Zeile
+          sb.from("project_drafts").select(COLS.project_drafts).eq("status", "offen").order("created_at", { ascending: false }).limit(PAGE),
           sb.from("agent_settings").select(COLS.agent_settings).maybeSingle(),
           userNames(),
         ]);
       if (settings.error) fail(settings.error, "Einstellungen des Agenten konnten nicht geladen werden");
+      if (drafts.error) fail(drafts.error, "Entwürfe konnten nicht geladen werden");
       const s = settings.data as Row | null;
       const stepsByProject = groupSteps(steps);
       const data: Dataset = {
@@ -203,6 +225,7 @@ export function createSupabaseRepo(): Repo {
         agentRuns: runs.map(toAgentRun).reverse(),
         agentRules: rules.map((r) => toAgentRule(r, names)),
         agentFeedback: feedback.map((f) => toAgentFeedback(f, names)),
+        projectDrafts: ((drafts.data ?? []) as unknown as Row[]).map((d) => toProjectDraft(d, names)),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
       last = data;
@@ -245,6 +268,8 @@ export function createSupabaseRepo(): Repo {
             architectId: input.architectId,
             planerId: input.planerId,
             intakeMonth: input.intakeMonth,
+            flurstueck: input.flurstueck ?? null,
+            gemarkung: input.gemarkung ?? null,
           }),
           kind: input.kind,
         },
@@ -330,7 +355,7 @@ export function createSupabaseRepo(): Repo {
       if (inv) await log(inv.project_id, "rechnung", `Rechnung versendet: ${inv.label}`);
     },
 
-    async uploadDocument({ projectId, folderPath, file, blob }: UploadInput) {
+    async uploadDocument({ projectId, folderPath, file, blob, docType, meta }: UploadInput) {
       if (folderPath.includes("{datum}")) throw new Error("Für diesen Ordner fehlt das Datum");
       if (!isAllowedFolder(folderPath, templates())) throw new Error("Ordner gehört nicht zur Vorlage");
       const check = checkFile(file.name, file.size);
@@ -354,6 +379,8 @@ export function createSupabaseRepo(): Repo {
           source: "upload",
           received_on: todayIso(),
           uploaded_by: me,
+          doc_type: docType ?? null,
+          meta: meta ? cleanMeta(meta) : {},
         })
         .select(COLS.documents)
         .single();
@@ -546,5 +573,87 @@ export function createSupabaseRepo(): Repo {
       const { error } = await sb.rpc("report_wrong_filing", { p_attachment: attachmentId });
       if (error) fail(error);
     },
+    // ------------------------------------------------------------- Neues Projekt aus einem Vertrag
+
+    async saveProjectDraft(input: DraftInput) {
+      requireStaff();
+      const names = new Map([[await userId(), user.name]]);
+      if (input.id) {
+        const { data, error } = await sb.from("project_drafts").update({ fields: input.draft, form: input.form, doc_type: input.docType }).eq("id", input.id).eq("status", "offen").select(COLS.project_drafts).maybeSingle();
+        if (error) fail(error, "Entwurf konnte nicht gespeichert werden");
+        if (!data) throw new Error("Der Entwurf ist nicht mehr offen.");
+        return toProjectDraft(data as unknown as Row, names);
+      }
+      const check = checkContractFile(input.file);
+      if (!check.ok) throw new Error(check.reason);
+      if (!input.blob) throw new Error("Die Datei fehlt (nur Angaben zur Datei übergeben)");
+      const created = await sb
+        .from("project_drafts")
+        .insert({ fields: input.draft, form: input.form, doc_type: input.docType, file_name: input.file.name, file_size: input.file.size, file_mime: input.file.type || null })
+        .select("id")
+        .single();
+      if (created.error) fail(created.error, "Entwurf konnte nicht gespeichert werden");
+      const id = (created.data as Row).id as string;
+      const path = draftPath(id, input.file.name);
+      const up = await sb.storage.from(BUCKET).upload(path, input.blob, { contentType: input.file.type || "application/octet-stream", upsert: false });
+      if (up.error) {
+        // ohne Datei ist der Entwurf nicht fortsetzbar: gleich wieder schließen
+        await sb.from("project_drafts").update({ status: "verworfen" }).eq("id", id);
+        fail({ message: up.error.message }, "Datei konnte nicht hochgeladen werden");
+      }
+      const { data, error } = await sb.from("project_drafts").update({ storage_path: path }).eq("id", id).select(COLS.project_drafts).single();
+      if (error) fail(error, "Entwurf konnte nicht gespeichert werden");
+      return toProjectDraft(data as unknown as Row, names);
+    },
+
+    async discardProjectDraft(id) {
+      requireStaff();
+      const row = await draftRow(id);
+      if (row.storage_path) await sb.storage.from(BUCKET).remove([row.storage_path]);
+      const { error } = await sb.from("project_drafts").update({ status: "verworfen", storage_path: null }).eq("id", id).eq("status", "offen");
+      if (error) fail(error, "Entwurf konnte nicht verworfen werden");
+    },
+
+    async draftFile(id) {
+      requireStaff();
+      const row = await draftRow(id);
+      if (!row.storage_path) return null;
+      const { data, error } = await sb.storage.from(BUCKET).download(row.storage_path);
+      if (error || !data) return null;
+      return data;
+    },
+
+    async fileContract({ projectId, docType, meta, file, blob, draftId }: ContractFiling) {
+      requireStaff();
+      const check = checkContractFile(file);
+      if (!check.ok) throw new Error(check.reason);
+      const draft = draftId ? await draftRow(draftId) : null;
+      let content = blob ?? null;
+      if (!content && draft?.storage_path) content = (await sb.storage.from(BUCKET).download(draft.storage_path)).data;
+      if (!content) throw new Error("Die Datei zum Vertrag fehlt. Bitte das Dokument noch einmal auswählen.");
+      // Der Typ bestimmt den Ordner; abgelegt wird unter der Projekt-ID (Zugriffsregel des Speichers)
+      const doc = await repo.uploadDocument({ projectId, folderPath: contractFolder(docType, templates()), file, blob: content, docType, meta });
+      if (draft) {
+        const { error } = await sb.from("project_drafts").update({ status: "uebernommen", project_id: projectId, document_id: doc.id, storage_path: null }).eq("id", draft.id);
+        if (error) console.warn("Entwurf nicht abgeschlossen:", error.message);
+        else if (draft.storage_path) await sb.storage.from(BUCKET).remove([draft.storage_path]);
+      }
+      return doc;
+    },
+
+    async extractProject(request): Promise<ExtractResponse> {
+      requireStaff();
+      // Die Funktion prüft Anmeldung, Rolle, Freischaltung und Limits selbst; der Schlüssel zum KI-Dienst liegt nur dort.
+      const { data, error } = await sb.functions.invoke("extract-project", { body: request });
+      if (error) {
+        // Fehlerantwort der Funktion (z. B. 403, 429): die Meldung steht im Antworttext
+        const body = await (error as { context?: Response }).context?.json?.().catch(() => null);
+        if (body && typeof body === "object" && body.ok === false && typeof body.message === "string") return body as ExtractResponse;
+        return { ok: false, code: "error", message: "Die Auslesung ist gerade nicht erreichbar." };
+      }
+      if (!data || typeof data !== "object" || typeof (data as { ok?: unknown }).ok !== "boolean") return { ok: false, code: "error", message: "Unerwartete Antwort der Auslesung." };
+      return data as ExtractResponse;
+    },
   };
+  return repo;
 }

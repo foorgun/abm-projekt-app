@@ -1,0 +1,5 @@
+# Einstellungen für die Supabase CLI (nur Edge Functions; die Datenbank wird über supabase/migrations gepflegt).
+# Die Funktion prüft Anmeldung (Token gegen den Auth-Dienst) und Rolle selbst, siehe index.ts. Die Vorprüfung der Plattform
+# ist aus, weil sie mit den neuen Signaturschlüsseln (Publishable/Secret keys) gültige Anmeldungen abweisen kann.
+[functions.extract-project]
+verify_jwt = false
