@@ -2,16 +2,24 @@
 // und dass ihre Feldliste zur App passt. Der Aufruf des KI-Dienstes selbst wird hier nicht ausgeführt.
 import { describe, expect, it } from "vitest";
 import {
+  apiErrorInfo,
+  base64Bytes,
   checkLimits,
   DEFAULT_LIMITS,
   DEFAULT_MODEL,
   estimateCostEur,
   FIELDS,
   isEnabled,
+  imageDimensions,
   limitsFromEnv,
-  MAX_IMAGE_BASE64,
+  MAX_IMAGE_BYTES,
+  MAX_IMAGE_EDGE_PX,
   MAX_TOKENS,
+  describeImages,
+  outputConfig,
   outputSchema,
+  supportsEffort,
+  UNSUPPORTED_SCHEMA_KEYWORDS,
   parseRequest,
   periodStarts,
   SYSTEM_PROMPT,
@@ -21,7 +29,22 @@ import {
 import source from "../../../supabase/functions/extract-project/index.ts?raw";
 import { DRAFT_FIELDS, normalizeFields } from "./types";
 
-const img = (data = "A".repeat(400), mediaType = "image/jpeg") => ({ mediaType, data });
+import { JPEG_QUALITY, MAX_IMAGE_EDGE } from "./pageImage";
+
+/** Kleinste Bilddateien mit echtem Kopf (Signatur und Pixelmaße), aufgefüllt auf `bytes`. */
+function jpeg(width: number, height: number, bytes = 600): string {
+  const head = [0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00];
+  const sof = [0xff, 0xc0, 0x00, 0x11, 0x08, height >> 8, height & 255, width >> 8, width & 255, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1];
+  return Buffer.concat([Buffer.from([...head, ...sof]), Buffer.alloc(Math.max(0, bytes - head.length - sof.length), 0x2a)]).toString("base64");
+}
+function png(width: number, height: number, bytes = 600): string {
+  const b = Buffer.alloc(Math.max(bytes, 33), 0x2a);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]).copy(b, 0);
+  b.writeUInt32BE(width, 16);
+  b.writeUInt32BE(height, 20);
+  return b.toString("base64");
+}
+const img = (data = jpeg(1109, 1568), mediaType = "image/jpeg") => ({ mediaType, data });
 
 describe("Edge Function: Feldliste und Schema", () => {
   it("nutzt genau die Felder der App", () => {
@@ -63,9 +86,33 @@ describe("Edge Function: Feldliste und Schema", () => {
 });
 
 describe("Edge Function: Eingabe", () => {
-  it("nimmt ein oder zwei Bilder", () => {
-    expect(parseRequest({ images: [img()] })).toMatchObject({ ok: true });
-    expect(parseRequest({ images: [img(), img("B".repeat(400), "image/png")] })).toMatchObject({ ok: true });
+  it("nimmt ein oder zwei Bilder und liest Typ, Pixelmaße und Größe aus dem Kopf der Datei", () => {
+    const one = parseRequest({ images: [img()] });
+    expect(one).toMatchObject({ ok: true, images: [{ mediaType: "image/jpeg", width: 1109, height: 1568, bytes: 600 }] });
+    const two = parseRequest({ images: [img(), img(png(800, 1131, 900), "image/png")] });
+    expect(two).toMatchObject({ ok: true, images: [{}, { mediaType: "image/png", width: 800, height: 1131, bytes: 900 }] });
+    if (two.ok) expect(describeImages(two.images)).toBe("1109x1568 px, 1 kB, image/jpeg | 800x1131 px, 1 kB, image/png");
+    expect(imageDimensions(jpeg(2, 3))).toEqual({ mediaType: "image/jpeg", width: 2, height: 3 });
+    expect(imageDimensions(Buffer.alloc(300, 1).toString("base64"))).toBeNull();
+    expect(base64Bytes("QUJD")).toBe(3);
+    expect(base64Bytes("QUI=")).toBe(2);
+  });
+
+  it("die App verkleinert vor dem Senden auf 1568 px und JPEG-Qualität 85, deutlich unter den Grenzen der Funktion", () => {
+    expect(MAX_IMAGE_EDGE).toBe(1568);
+    expect(JPEG_QUALITY).toBe(0.85);
+    expect(MAX_IMAGE_EDGE).toBeLessThanOrEqual(MAX_IMAGE_EDGE_PX);
+    expect(MAX_IMAGE_BYTES).toBe(5 * 1024 * 1024);
+  });
+
+  it("lehnt Bilder über 5 MB, über 2576 px und mit falschem Typ ab, mit Zahlen in der Meldung", () => {
+    expect(parseRequest({ images: [img(jpeg(1000, 1000, MAX_IMAGE_BYTES + 3))] })).toMatchObject({ ok: false, message: expect.stringMatching(/zu groß \(\d+ kB, erlaubt sind höchstens 5 MB\)/) });
+    expect(parseRequest({ images: [img(jpeg(1000, 1000, MAX_IMAGE_BYTES))] })).toMatchObject({ ok: true });
+    expect(parseRequest({ images: [img(jpeg(4000, 3000))] })).toMatchObject({ ok: false, message: expect.stringContaining("4000×3000 px") });
+    expect(parseRequest({ images: [img(jpeg(MAX_IMAGE_EDGE_PX, 100))] })).toMatchObject({ ok: true });
+    // PNG-Inhalt als JPEG angegeben: der KI-Dienst würde mit Fehler 400 ablehnen
+    expect(parseRequest({ images: [img(png(800, 600), "image/jpeg")] })).toMatchObject({ ok: false, message: expect.stringContaining("passen nicht zusammen") });
+    expect(parseRequest({ images: [img(Buffer.alloc(600, 7).toString("base64"))] })).toMatchObject({ ok: false, message: expect.stringContaining("weder JPEG noch PNG") });
   });
 
   it("lehnt mehr als zwei Bilder, fremde Typen, zu große und unlesbare Bilder ab", () => {
@@ -73,10 +120,67 @@ describe("Edge Function: Eingabe", () => {
     expect(parseRequest({ images: [] })).toMatchObject({ ok: false });
     expect(parseRequest({})).toMatchObject({ ok: false });
     expect(parseRequest(null)).toMatchObject({ ok: false });
-    expect(parseRequest({ images: [img("A".repeat(400), "application/pdf")] })).toMatchObject({ ok: false });
-    expect(parseRequest({ images: [img("A".repeat(MAX_IMAGE_BASE64 + 4))] })).toMatchObject({ ok: false, message: expect.stringContaining("zu groß") });
+    expect(parseRequest({ images: [img(jpeg(10, 10), "application/pdf")] })).toMatchObject({ ok: false });
+    expect(parseRequest({ images: [img(jpeg(10, 10) + "A")] })).toMatchObject({ ok: false });
     expect(parseRequest({ images: [img("<script>".repeat(50))] })).toMatchObject({ ok: false });
     expect(parseRequest({ images: [img("kurz")] })).toMatchObject({ ok: false });
+  });
+});
+
+describe("Edge Function: Parameter und Schema passen zum KI-Dienst", () => {
+  it("sendet 'effort' nur an Modelle, die den Parameter kennen", () => {
+    for (const m of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6"]) expect(supportsEffort(m), m).toBe(true);
+    for (const m of ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-sonnet-5-5-20260101", "irgendwas"]) expect(supportsEffort(m), m).toBe(false);
+    expect(outputConfig(DEFAULT_MODEL)).toMatchObject({ effort: "low", format: { type: "json_schema" } });
+    expect(Object.keys(outputConfig("claude-haiku-4-5"))).toEqual(["format"]);
+  });
+
+  it("sendet weder thinking noch temperature noch tool_choice (je nach Modell ungültig)", () => {
+    const call = source.slice(source.indexOf("client.messages.create("), source.indexOf("const inputTokens"));
+    expect(call).not.toMatch(/thinking|temperature|top_p|top_k|tool_choice|budget_tokens|output_format/);
+    expect(call).toContain("output_config: outputConfig(model)");
+    expect(call).toContain("max_tokens: MAX_TOKENS");
+  });
+
+  it("das Schema nutzt nur, was die strukturierte Ausgabe annimmt", () => {
+    const seen: string[] = [];
+    const walk = (node: unknown, path: string) => {
+      if (!node || typeof node !== "object") return;
+      const n = node as Record<string, unknown>;
+      for (const k of Object.keys(n)) if (UNSUPPORTED_SCHEMA_KEYWORDS.includes(k) && path.split(".").pop() !== "properties") seen.push(`${path}.${k}`);
+      if (n.type === "object") {
+        // jedes Objekt: additionalProperties false und alle Eigenschaften als Pflicht (keine optionalen, keine null-Varianten)
+        expect(n.additionalProperties, path).toBe(false);
+        expect([...(n.required as string[])].sort(), path).toEqual(Object.keys(n.properties as object).sort());
+      }
+      expect(Array.isArray(n.type), `${path}: keine Typ-Listen`).toBe(false);
+      for (const [k, v] of Object.entries(n)) walk(v, `${path}.${k}`);
+    };
+    const schema = outputSchema();
+    walk(schema, "schema");
+    expect(seen).toEqual([]);
+    const text = JSON.stringify(schema);
+    expect(text).not.toMatch(/\$ref|anyOf|allOf|"null"|"format"/);
+    // nur die Grundtypen object, array, string, integer
+    expect([...new Set([...text.matchAll(/"type":"(\w+)"/g)].map((m) => m[1]))].sort()).toEqual(["array", "integer", "object", "string"]);
+  });
+});
+
+describe("Edge Function: Fehler des KI-Dienstes im Log", () => {
+  it("liest Typ und Meldung aus der Antwort des Dienstes", () => {
+    const body = { type: "error", error: { type: "invalid_request_error", message: "output_config.format.schema: Unsupported keyword 'minimum'" }, request_id: "req_1" };
+    expect(apiErrorInfo({ status: 400, error: body })).toEqual({ type: "invalid_request_error", message: "output_config.format.schema: Unsupported keyword 'minimum'" });
+    expect(apiErrorInfo({ type: "billing_error", error: { error: { message: "Your credit balance is too low" } } })).toEqual({ type: "billing_error", message: "Your credit balance is too low" });
+    expect(apiErrorInfo(new Error("kaputt"))).toEqual({ type: "unbekannt", message: "ohne Meldung" });
+    expect(apiErrorInfo(null)).toEqual({ type: "unbekannt", message: "ohne Meldung" });
+  });
+
+  it("entfernt Bilddaten und Schlüssel aus der Meldung und kürzt sie", () => {
+    const leak = { error: { error: { type: "invalid_request_error", message: `image ${"QUJD".repeat(40)} invalid, key sk-ant-api03-abcDEF_123 ${"wort ".repeat(200)}` } } };
+    const info = apiErrorInfo(leak);
+    expect(info.message).not.toMatch(/QUJDQUJD|sk-ant-/);
+    expect(info.message).toContain("[…]");
+    expect(info.message.length).toBeLessThanOrEqual(400);
   });
 });
 
@@ -134,8 +238,14 @@ describe("Edge Function: Ablauf im Quelltext", () => {
   it("liest den Schlüssel nur aus dem Secret und protokolliert keine Inhalte", () => {
     expect(source).toContain('env("ANTHROPIC_API_KEY")');
     expect(source).not.toMatch(/sk-ant-/);
-    // Logs: nur feste Texte oder der Statuscode, nie Anfrage, Antwort oder Fehlertext
-    for (const m of source.matchAll(/console\.(?:log|error|warn)\(([^)]*)\)/g)) expect(m[1], m[0]).not.toMatch(/body|parsed|response|images|text|message|error\)/);
-    expect(source).not.toMatch(/console\.log/);
+    // Logs: feste Texte, Statuscode, Bildmaße und der bereinigte Fehlertyp samt Meldung des Dienstes (apiErrorInfo).
+    // Nie die Anfrage, die Antwort, ein Bild oder ein rohes Fehlerobjekt.
+    const logs = [...source.matchAll(/console\.(\w+)\((.*)\);/g)];
+    expect(logs.length).toBeGreaterThan(5);
+    for (const m of logs) {
+      expect(["info", "error"], m[0]).toContain(m[1]);
+      expect(m[2], m[0]).not.toMatch(/\bbody\b|\.data\b|response|raw|text\b|JSON\.stringify|\berror\)|error\.message|error\.error/);
+      for (const v of m[2].matchAll(/\$\{([^}]*)\}/g)) expect(v[1], m[0]).toMatch(/^(model|parsed\.images\.length|describeImages\(parsed\.images\)|error\.status \?\? "ohne Status"|info\.type|info\.message|apiErrorInfo\(error\)\.(type|message))$/);
+    }
   });
 });

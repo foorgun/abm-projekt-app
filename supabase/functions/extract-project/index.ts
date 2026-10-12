@@ -11,13 +11,15 @@
 import Anthropic from "npm:@anthropic-ai/sdk@0.133.0";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
+  apiErrorInfo,
   checkLimits,
   DEFAULT_MODEL,
+  describeImages,
   estimateCostEur,
   isEnabled,
   limitsFromEnv,
   MAX_TOKENS,
-  outputSchema,
+  outputConfig,
   parseRequest,
   periodStarts,
   SYSTEM_PROMPT,
@@ -89,14 +91,16 @@ Deno.serve(async (req) => {
   }
 
   // --- Aufruf des Bildmodells --------------------------------------------------------------------------
+  // Nur Maße und Größe der Bilder ins Log (hilft bei abgelehnten Anfragen), nie der Inhalt
+  console.info(`Auslesung: Modell ${model}, ${parsed.images.length} Bild(er): ${describeImages(parsed.images)}`);
   const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 0 });
   try {
     const response = await client.messages.create({
       model,
       max_tokens: MAX_TOKENS,
       system: SYSTEM_PROMPT,
-      // wenig Nachdenken: es ist reines Ablesen, und die Antwort muss in max_tokens passen
-      output_config: { effort: "low", format: { type: "json_schema", schema: outputSchema() } },
+      // JSON-Schema immer; "effort" nur bei Modellen, die den Parameter kennen (logic.ts)
+      output_config: outputConfig(model),
       messages: [
         {
           role: "user",
@@ -126,21 +130,20 @@ Deno.serve(async (req) => {
     }
     return json(toResponse(raw));
   } catch (error) {
-    // Nur die Art des Fehlers protokollieren, nie Inhalte
-    if (error instanceof Anthropic.AuthenticationError) {
-      console.error("KI-Dienst: Schlüssel ungültig");
-      return fail("disabled", "Auslesung noch nicht freigeschaltet (Schlüssel ungültig).", 503);
-    }
-    if (error instanceof Anthropic.RateLimitError) {
-      console.error("KI-Dienst: Rate-Limit");
-      return fail("limit", "Der KI-Dienst ist gerade ausgelastet. Bitte in ein paar Minuten erneut versuchen oder von Hand anlegen.", 429);
-    }
+    // Ins Log kommen nur Status, Fehlertyp und Meldung des KI-Dienstes (nennen Parameter und Grund), nie Inhalte.
+    // Die Bildmaße stehen in der Zeile "Auslesung: …" darüber.
     if (error instanceof Anthropic.APIConnectionTimeoutError) {
       console.error("KI-Dienst: Zeitüberschreitung");
       return fail("error", "Die Auslesung hat zu lange gedauert. Bitte erneut versuchen oder von Hand anlegen.", 504);
     }
     if (error instanceof Anthropic.APIError) {
-      console.error(`KI-Dienst: Fehler ${error.status ?? "ohne Status"}`);
+      const info = apiErrorInfo(error);
+      console.error(`KI-Dienst: Fehler ${error.status ?? "ohne Status"} · ${info.type} · ${info.message}`);
+      if (error instanceof Anthropic.AuthenticationError) return fail("disabled", "Auslesung noch nicht freigeschaltet (Schlüssel ungültig).", 503);
+      if (error instanceof Anthropic.RateLimitError) return fail("limit", "Der KI-Dienst ist gerade ausgelastet. Bitte in ein paar Minuten erneut versuchen oder von Hand anlegen.", 429);
+      if (error instanceof Anthropic.BadRequestError) {
+        return fail("error", `Der KI-Dienst hat die Anfrage abgelehnt (${info.type}). Einzelheiten stehen im Log der Funktion. Bitte von Hand anlegen.`, 502);
+      }
       return fail("error", "Die Auslesung ist fehlgeschlagen. Bitte von Hand anlegen.", 502);
     }
     console.error("Unerwarteter Fehler bei der Auslesung");

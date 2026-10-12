@@ -77,7 +77,7 @@ die manuelle Anlage an).
 |---|---|---|
 | `ANTHROPIC_API_KEY` | keiner | Schlüssel zum KI-Dienst. Nur hier. |
 | `EXTRACTOR_ENABLED` | `false` | Nur der Wert `true` schaltet frei. |
-| `EXTRACTOR_MODEL` | `claude-sonnet-5-5` | Modell. Bei einem anderen Modell die Preise in `logic.ts` (`PRICES_USD_PER_MTOK`) ergänzen, sonst rechnet die Kostenbremse mit dem teuersten Satz. |
+| `EXTRACTOR_MODEL` | `claude-sonnet-5-5` | Modell-ID genau wie in der Anthropic-Dokumentation, ohne Datumsanhang. Das Modell muss Bilder und strukturierte Ausgabe (JSON-Schema) können. Bei einem anderen Modell die Preise in `logic.ts` (`PRICES_USD_PER_MTOK`) ergänzen, sonst rechnet die Kostenbremse mit dem teuersten Satz. Den Parameter `effort` sendet die Funktion nur an Modelle, die ihn kennen (`supportsEffort`). |
 | `EXTRACTOR_LIMIT_USER_PER_DAY` | `20` | Auslesungen je Person und Tag |
 | `EXTRACTOR_LIMIT_TOTAL_PER_DAY` | `100` | Auslesungen je Tag im ganzen Büro |
 | `EXTRACTOR_MONTHLY_BUDGET_EUR` | `20` | geschätztes Monatsbudget in Euro |
@@ -93,14 +93,19 @@ Reihenfolge je Aufruf, der KI-Dienst kommt zuletzt:
    aus, weil sie mit den neuen Signaturschlüsseln gültige Anmeldungen abweisen kann; die Funktion prüft selbst.)
 2. Rolle aus `user_roles`: nur `admin` und `mitarbeiter`. Freiberufler und Konten ohne Rolle bekommen 403.
 3. `EXTRACTOR_ENABLED`: sonst "Auslesung noch nicht freigeschaltet", kein Aufruf.
-4. Eingabe: höchstens 2 Bilder, JPEG oder PNG, je höchstens rund 2,2 MB.
+4. Eingabe: höchstens 2 Bilder, JPEG oder PNG, je höchstens 5 MB (Grenze des KI-Dienstes) und 2576 px Kantenlänge.
+   Geprüft wird der Kopf der Bilddatei: Typ und Pixelmaße müssen stimmen. Die App sendet Seiten mit höchstens 1568 px
+   als JPEG (Qualität 85), das sind typischerweise 150 bis 500 kB.
 5. Kostenbremse: Zählung in `extraction_log`. Bei Überschreitung "Tageslimit erreicht" bzw. "Monatsbudget erreicht",
    kein Aufruf.
 6. Aufruf mit `max_tokens` 2000, Zeitlimit 60 Sekunden, ohne Wiederholung. Die Antwort ist an ein JSON-Schema
    gebunden (je Feld Wert, Quelle, Seite, Sicherheit), Freitext daneben ist nicht möglich.
 
 `extraction_log` enthält nur Person, Zeit, Modell, Bildanzahl, Tokens, geschätzte Kosten und ob es geklappt hat.
-Bilder, Feldwerte und Fehlermeldungen des KI-Dienstes stehen weder dort noch in den Logs der Funktion. Schreiben kann
+Bilder und Feldwerte stehen weder dort noch in den Logs der Funktion. Die Logs der Funktion (Dashboard → Edge Functions →
+extract-project → Logs) enthalten je Aufruf eine Zeile mit Modell, Pixelmaßen und Dateigröße der Bilder und, wenn der
+KI-Dienst ablehnt, Status, Fehlertyp und Fehlermeldung des Dienstes (z. B. `invalid_request_error` mit dem betroffenen
+Parameter). Lange Zeichenfolgen und Schlüssel werden aus der Meldung entfernt. Schreiben kann
 die Tabelle nur die Funktion (service_role); Admins dürfen lesen, sonst niemand.
 
 Die Kosten sind eine Schätzung aus Tokens und Listenpreis. Maßgeblich ist die Abrechnung in der Anthropic Console;
@@ -131,6 +136,7 @@ bewusst aus, weil das Ausweichmodell zu anderen Preisen abrechnet und die Kosten
 |---|---|---|
 | "Auslesung noch nicht freigeschaltet" | `EXTRACTOR_ENABLED` ist nicht `true`, oder der Schlüssel fehlt bzw. ist ungültig | Secrets prüfen (`supabase secrets list`) |
 | "Tageslimit erreicht" / "Monatsbudget … erreicht" | Kostenbremse | morgen erneut, oder Limit per Secret anheben |
+| "Der KI-Dienst hat die Anfrage abgelehnt (…)" | Fehler 400 des KI-Dienstes: ungültiger Parameter, Modell nicht verfügbar, Guthaben aufgebraucht o. Ä. | Log der Funktion lesen: die Zeile "KI-Dienst: Fehler 400 · Typ · Meldung" nennt den Grund |
 | "Die Auslesung ist gerade nicht erreichbar" | Funktion nicht deployt oder Netzfehler | `supabase functions deploy extract-project`, Logs im Dashboard unter Edge Functions |
 | "Keine Berechtigung für diese Aktion" | Konto ist Freiberufler oder hat keine Rolle | gewollt |
 | "Die erste Seite ließ sich nicht als Bild lesen" | beschädigtes oder geschütztes PDF | Seite als JPG/PNG fotografieren oder von Hand anlegen |

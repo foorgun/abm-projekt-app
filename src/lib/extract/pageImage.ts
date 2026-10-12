@@ -3,9 +3,13 @@
 
 import type { ExtractImage } from "./types";
 
-/** Längste Kante der Bilder, die zur Auslesung gesendet werden (Datenminimierung, Kosten). */
-export const MAX_IMAGE_EDGE = 1600;
-const JPEG_QUALITY = 0.82;
+/**
+ * Längste Kante der Bilder, die zur Auslesung gesendet werden (Datenminimierung, Kosten). 1568 px ist die Größe,
+ * bis zu der ältere Modelle ohne Verkleinern auskommen; neuere verarbeiten mehr, für Vertragsseiten reicht es.
+ * Als JPEG mit Qualität 85 bleibt eine Seite weit unter der Grenze des KI-Dienstes von 5 MB je Bild.
+ */
+export const MAX_IMAGE_EDGE = 1568;
+export const JPEG_QUALITY = 0.85;
 
 export interface PageImage {
   /** Seite ab 1 */

@@ -472,7 +472,7 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   (Speicher unter `drafts/<Entwurf>/…`, nur Admin und Mitarbeiter). Beim Bestätigen wird die Datei unter der Projekt-ID neu
   abgelegt und die Entwurfsdatei entfernt. Entwürfe werden nie gelöscht, nur als übernommen oder verworfen markiert.
 - **Seitenbilder im Browser:** PDFs rendert pdf.js lokal (eigene Dateien im Build, kein CDN). Gesendet wird nur Seite 1,
-  auf Wunsch zusätzlich die Plan-Seite, mit höchstens 1600 px Kantenlänge.
+  auf Wunsch zusätzlich die Plan-Seite, mit höchstens 1568 px Kantenlänge als JPEG (Qualität 85).
 - **Mock im Demo-Modus:** Scans kann er nicht lesen. Nur im Demo-Modus liefert er dafür erfundene Beispielwerte und sagt das
   in der Prüfmaske dazu; mit echten Daten rät er höchstens aus dem Dateinamen.
 - **Edge Function:** reine Logik in `logic.ts` (ohne Importe, von vitest geprüft), Aufruf in `index.ts`. Einrichtung und
