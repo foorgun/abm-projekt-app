@@ -82,6 +82,7 @@ die manuelle Anlage an).
 | `EXTRACTOR_LIMIT_TOTAL_PER_DAY` | `100` | Auslesungen je Tag im ganzen Büro |
 | `EXTRACTOR_MONTHLY_BUDGET_EUR` | `20` | geschätztes Monatsbudget in Euro |
 | `EXTRACTOR_USD_EUR` | `1.0` | Umrechnung der Dollar-Listenpreise; 1,0 schätzt eher zu hoch |
+| `EXTRACTOR_STRICT` | `true` | `false` verzichtet ganz auf die Schema-Bindung: die Anweisung verlangt reines JSON, die Funktion prüft es. Nur nötig, wenn der Dienst auch das kleine Schema ablehnt. |
 
 `SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` stellt Supabase der Funktion von selbst bereit.
 
@@ -98,8 +99,16 @@ Reihenfolge je Aufruf, der KI-Dienst kommt zuletzt:
    als JPEG (Qualität 85), das sind typischerweise 150 bis 500 kB.
 5. Kostenbremse: Zählung in `extraction_log`. Bei Überschreitung "Tageslimit erreicht" bzw. "Monatsbudget erreicht",
    kein Aufruf.
-6. Aufruf mit `max_tokens` 2000, Zeitlimit 60 Sekunden, ohne Wiederholung. Die Antwort ist an ein JSON-Schema
-   gebunden (je Feld Wert, Quelle, Seite, Sicherheit), Freitext daneben ist nicht möglich.
+6. Aufruf mit `max_tokens` 2000 und Zeitlimit 60 Sekunden je Aufruf. Die Antwort ist an ein kleines JSON-Schema gebunden:
+   ein flaches Array `felder` mit Einträgen `{feld, wert, quelle, seite, sicherheit}` und `hinweise`. Die erlaubten
+   Feldnamen und Sicherheitsstufen stehen in der Anweisung, nicht im Schema (ein Schema mit einem Unterobjekt je Feld
+   lehnt der KI-Dienst als zu groß ab: "The compiled grammar is too large").
+7. Die Funktion prüft die Antwort selbst: unbekannte Feldnamen werden verworfen (auch z. B. ein Geburtsdatum), die
+   Sicherheitsstufe wird vereinheitlicht, fehlende Felder gelten als leer. Erst danach geht das Ergebnis im gewohnten
+   Format `{wert, quelle, sicherheit}` je Feld an die App.
+8. Ausweichweg: Lehnt der Dienst das Schema selbst ab, versucht die Funktion es genau einmal ohne Schema-Bindung
+   (die Anweisung verlangt dann reines JSON). Ist eine Antwort kein gültiges JSON, fragt sie genau einmal nach.
+   Je Auslesung also höchstens drei Aufrufe; ihr Verbrauch wird zusammengezählt und zählt als eine Auslesung.
 
 `extraction_log` enthält nur Person, Zeit, Modell, Bildanzahl, Tokens, geschätzte Kosten und ob es geklappt hat.
 Bilder und Feldwerte stehen weder dort noch in den Logs der Funktion. Die Logs der Funktion (Dashboard → Edge Functions →
@@ -137,6 +146,7 @@ bewusst aus, weil das Ausweichmodell zu anderen Preisen abrechnet und die Kosten
 | "Auslesung noch nicht freigeschaltet" | `EXTRACTOR_ENABLED` ist nicht `true`, oder der Schlüssel fehlt bzw. ist ungültig | Secrets prüfen (`supabase secrets list`) |
 | "Tageslimit erreicht" / "Monatsbudget … erreicht" | Kostenbremse | morgen erneut, oder Limit per Secret anheben |
 | "Der KI-Dienst hat die Anfrage abgelehnt (…)" | Fehler 400 des KI-Dienstes: ungültiger Parameter, Modell nicht verfügbar, Guthaben aufgebraucht o. Ä. | Log der Funktion lesen: die Zeile "KI-Dienst: Fehler 400 · Typ · Meldung" nennt den Grund |
+| "Die Auslesung lieferte kein verwertbares Ergebnis" | Antwort war auch nach einer Nachfrage kein gültiges JSON | erneut versuchen; tritt es öfter auf, im Log nachsehen und `EXTRACTOR_STRICT` prüfen |
 | "Die Auslesung ist gerade nicht erreichbar" | Funktion nicht deployt oder Netzfehler | `supabase functions deploy extract-project`, Logs im Dashboard unter Edge Functions |
 | "Keine Berechtigung für diese Aktion" | Konto ist Freiberufler oder hat keine Rolle | gewollt |
 | "Die erste Seite ließ sich nicht als Bild lesen" | beschädigtes oder geschütztes PDF | Seite als JPG/PNG fotografieren oder von Hand anlegen |

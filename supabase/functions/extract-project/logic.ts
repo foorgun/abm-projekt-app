@@ -125,29 +125,29 @@ export function parseRequest(body: unknown): { ok: true; images: ImageInput[] } 
 }
 
 /**
- * JSON-Schema der Antwort: je Feld {wert, quelle, seite, sicherheit}, dazu Hinweise. Kein Freitext außerhalb.
- * Leerer Text bzw. 0 heißt "nicht vorhanden" (das Schema kommt so ohne null-Varianten aus).
+ * JSON-Schema der Antwort, bewusst klein: ein flaches Array "felder" mit Einträgen {feld, wert, quelle, seite, sicherheit}
+ * und "hinweise". Keine enums, keine Objekte je Feldname: die frühere Form (ein Unterobjekt je Feld) ergab beim
+ * KI-Dienst eine zu große Grammatik ("The compiled grammar is too large", Fehler 400). Welche Feldnamen und
+ * Sicherheitsstufen erlaubt sind, steht in der Anweisung; geprüft wird das hier in toResponse.
  */
 export function outputSchema(): Record<string, unknown> {
-  const field = {
-    type: "object",
-    properties: {
-      wert: { type: "string" },
-      quelle: { type: "string" },
-      seite: { type: "integer" },
-      sicherheit: { type: "string", enum: ["hoch", "mittel", "niedrig"] },
-    },
-    required: ["wert", "quelle", "seite", "sicherheit"],
-    additionalProperties: false,
-  };
   return {
     type: "object",
     properties: {
       felder: {
-        type: "object",
-        properties: Object.fromEntries(FIELDS.map((k) => [k, field])),
-        required: [...FIELDS],
-        additionalProperties: false,
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            feld: { type: "string" },
+            wert: { type: "string" },
+            quelle: { type: "string" },
+            seite: { type: "integer" },
+            sicherheit: { type: "string" },
+          },
+          required: ["feld", "wert", "quelle", "seite", "sicherheit"],
+          additionalProperties: false,
+        },
       },
       hinweise: { type: "array", items: { type: "string" } },
     },
@@ -170,13 +170,59 @@ export function supportsEffort(model: string): boolean {
 }
 
 /**
- * Parameter der Ausgabe, passend zum Modell: immer das JSON-Schema, "effort" nur wo es gültig ist.
- * Bewusst nicht gesetzt: thinking, temperature, tool_choice (je nach Modell ungültig und hier nicht nötig).
+ * Parameter der Ausgabe, passend zum Modell. `strict`: Antwort an das JSON-Schema binden (strukturierte Ausgabe).
+ * Ohne strict verlangt nur die Anweisung reines JSON (JSON_ONLY), und die Funktion prüft die Antwort selbst.
+ * "effort" nur wo es gültig ist. Bewusst nicht gesetzt: thinking, temperature, tool_choice.
+ * Liefert undefined, wenn gar kein Parameter nötig ist.
  */
-export function outputConfig(model: string): { format: { type: "json_schema"; schema: Record<string, unknown> }; effort?: "low" } {
-  const format = { type: "json_schema" as const, schema: outputSchema() };
+export function outputConfig(model: string, strict = true): { format?: { type: "json_schema"; schema: Record<string, unknown> }; effort?: "low" } | undefined {
+  const out: { format?: { type: "json_schema"; schema: Record<string, unknown> }; effort?: "low" } = {};
   // wenig Nachdenken: es ist reines Ablesen, und die Antwort muss in max_tokens passen
-  return supportsEffort(model) ? { effort: "low", format } : { format };
+  if (supportsEffort(model)) out.effort = "low";
+  if (strict) out.format = { type: "json_schema", schema: outputSchema() };
+  return out.effort || out.format ? out : undefined;
+}
+
+/** Nur der genaue Text "false" schaltet die Schema-Bindung ab (Secret EXTRACTOR_STRICT, Standard: an). */
+export function strictEnabled(value: string | undefined): boolean {
+  return value?.trim().toLowerCase() !== "false";
+}
+
+/**
+ * Lehnt der KI-Dienst das Schema selbst ab (zu große Grammatik, nicht unterstütztes Schlüsselwort)? Dann lohnt ein
+ * zweiter Versuch ohne Schema-Bindung. Andere Fehler 400 (Bild, Guthaben, Modell) würden genauso wieder scheitern.
+ */
+export function isSchemaRejection(info: { type: string; message: string }): boolean {
+  return info.type === "invalid_request_error" && /grammar|schema|output_config|structured output|json_schema/i.test(info.message);
+}
+
+/** Zusatz zur Anweisung, wenn die Antwort nicht an ein Schema gebunden ist. */
+export const JSON_ONLY = `
+
+Antworte ausschließlich mit einem einzigen JSON-Objekt in genau dieser Form, ohne Text davor oder danach und ohne Markdown:
+{"felder": [{"feld": "bauherrLabel", "wert": "…", "quelle": "…", "seite": 1, "sicherheit": "mittel"}], "hinweise": []}`;
+
+/** Nachfrage, wenn die Antwort kein gültiges JSON war. Enthält nur die Fehlerart, nichts aus dem Dokument. */
+export function repairMessage(problem: string): string {
+  return `Deine Antwort ließ sich nicht als JSON lesen (${problem}). Antworte noch einmal, diesmal ausschließlich mit dem JSON-Objekt {"felder": [...], "hinweise": [...]} wie beschrieben: kein Text davor oder danach, kein Markdown, alle Zeichenketten in doppelten Anführungszeichen.`;
+}
+
+/**
+ * JSON-Objekt aus einer Antwort lesen. Verträgt Markdown-Zäune und Text um das Objekt herum.
+ * Liefert den geparsten Wert oder eine kurze Fehlerart (ohne Inhalte), z. B. für die Nachfrage.
+ */
+export function extractJson(text: string): { ok: true; value: unknown } | { ok: false; problem: string } {
+  const cleaned = text.replace(/^\s*```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start < 0 || end <= start) return { ok: false, problem: "kein JSON-Objekt gefunden" };
+  try {
+    const value: unknown = JSON.parse(cleaned.slice(start, end + 1));
+    if (!value || typeof value !== "object" || Array.isArray(value)) return { ok: false, problem: "kein JSON-Objekt" };
+    return { ok: true, value };
+  } catch {
+    return { ok: false, problem: "ungültiges JSON" };
+  }
 }
 
 /**
@@ -221,32 +267,53 @@ Felder:
 - vertragsart: genau einer der Werte werkvertrag, vermessungsvertrag, sonstiges.
 - vertragsdatum: Datum des Vertrags als JJJJ-MM-TT. vertragspreis: Betrag wie im Vertrag, z. B. "312.450,00 €". angebotsnummer: Angebots- oder Auftragsnummer, wie sie dasteht. haustyp: Bezeichnung des Hauses.
 - rechtsform: "Eheleute" oder "Bauherrengemeinschaft", nur wenn angekreuzt oder eingetragen.
-- foerderung: "ja", wenn eine KfW- oder WEF-Förderung angekreuzt ist, sonst leer.
+- foerderung: "ja", wenn eine KfW- oder WEF-Förderung angekreuzt ist, sonst weglassen.
 
-Je Feld:
-- wert: der gelesene Wert, oder leerer Text, wenn nichts dasteht oder du es nicht lesen kannst.
-- quelle: die Stelle im Dokument in wenigen Wörtern (Beschriftung und Eintrag), höchstens 80 Zeichen; leer, wenn wert leer ist.
-- seite: Nummer des Bildes, auf dem die Stelle steht (1 oder 2), 0, wenn wert leer ist.
-- sicherheit: hoch nur bei klar gedrucktem Text; mittel bei gut lesbarer Handschrift; niedrig, sobald ein Zeichen unsicher ist. Telefonnummern und E-Mail-Adressen in Handschrift sind höchstens mittel.
+Ausgabe: ein Array "felder" mit einem Eintrag je gefundenem Feld und ein Array "hinweise".
+Erlaubte Werte für "feld" (genau diese Schreibweise, jedes höchstens einmal, keine anderen): ${FIELDS.join(", ")}.
+Felder, zu denen nichts dasteht oder die du nicht lesen kannst, lässt du einfach weg.
+Je Eintrag:
+- feld: einer der erlaubten Feldnamen.
+- wert: der gelesene Wert.
+- quelle: die Stelle im Dokument in wenigen Wörtern (Beschriftung und Eintrag), höchstens 80 Zeichen.
+- seite: Nummer des Bildes, auf dem die Stelle steht (1 oder 2).
+- sicherheit: genau eines der Wörter hoch, mittel, niedrig. hoch nur bei klar gedrucktem Text; mittel bei gut lesbarer Handschrift; niedrig, sobald ein Zeichen unsicher ist. Telefonnummern und E-Mail-Adressen in Handschrift sind höchstens mittel.
 
 Nicht auslesen und nirgends wiedergeben: Geburtsdatum, Beruf, Bankverbindung, Ausweisdaten.
-Leere Vorlagen (Formular ohne Eintragungen): alle Felder außer vertragsart und ggf. company/vermesser leer lassen und das in hinweise sagen.
+Leere Vorlagen (Formular ohne Eintragungen): nur vertragsart und ggf. company/vermesser liefern und das in hinweise sagen.
 hinweise: höchstens drei kurze Sätze für den prüfenden Menschen (z. B. schwer lesbare Stelle, leere Vorlage). Keine personenbezogenen Daten in hinweise.`;
 
-/** Antwort des Modells in die Form der App bringen: leere Werte werden null, nur bekannte Felder. */
-export function toResponse(raw: unknown): { ok: true; felder: Record<FieldKey, { wert: string | null; quelle: { text: string; seite: number | null } | null; sicherheit: string }>; hinweise: string[] } | Failure {
-  const r = raw as { felder?: Record<string, { wert?: unknown; quelle?: unknown; seite?: unknown; sicherheit?: unknown }>; hinweise?: unknown };
-  if (!r || typeof r !== "object" || !r.felder || typeof r.felder !== "object") return { ok: false, code: "error", message: "Die Auslesung lieferte kein verwertbares Ergebnis." };
-  const felder = {} as Record<FieldKey, { wert: string | null; quelle: { text: string; seite: number | null } | null; sicherheit: string }>;
-  for (const k of FIELDS) {
-    const f = r.felder[k];
-    const wert = typeof f?.wert === "string" && f.wert.trim() ? f.wert.trim() : null;
-    const text = typeof f?.quelle === "string" ? f.quelle.trim() : "";
-    const seite = typeof f?.seite === "number" && f.seite >= 1 && f.seite <= MAX_IMAGES ? f.seite : null;
-    const sicherheit = f?.sicherheit === "hoch" || f?.sicherheit === "mittel" ? f.sicherheit : "niedrig";
-    felder[k] = { wert, quelle: wert && text ? { text, seite } : null, sicherheit: wert ? sicherheit : "niedrig" };
+const LEVELS: Record<string, "hoch" | "mittel" | "niedrig"> = { hoch: "hoch", high: "hoch", mittel: "mittel", medium: "mittel", niedrig: "niedrig", low: "niedrig", gering: "niedrig" };
+
+/** Sicherheitsstufe vereinheitlichen; alles Unbekannte gilt als "niedrig". */
+export function normalizeLevel(raw: unknown): "hoch" | "mittel" | "niedrig" {
+  return typeof raw === "string" ? (LEVELS[raw.trim().toLowerCase()] ?? "niedrig") : "niedrig";
+}
+
+type AppField = { wert: string | null; quelle: { text: string; seite: number | null } | null; sicherheit: "hoch" | "mittel" | "niedrig" };
+
+/**
+ * Antwort des Modells prüfen und in die Form der App bringen ({wert, quelle, sicherheit} je Feld).
+ * Das Schema bindet nur die Form; hier wird der Inhalt geprüft: unbekannte Feldnamen werden verworfen, bei doppelten
+ * zählt der erste Eintrag mit Wert, die Sicherheitsstufe wird vereinheitlicht, fehlende Felder sind leer.
+ */
+export function toResponse(raw: unknown): { ok: true; felder: Record<FieldKey, AppField>; hinweise: string[] } | Failure {
+  const r = raw as { felder?: unknown; hinweise?: unknown };
+  if (!r || typeof r !== "object" || !Array.isArray(r.felder)) return { ok: false, code: "error", message: "Die Auslesung lieferte kein verwertbares Ergebnis." };
+  const felder = Object.fromEntries(FIELDS.map((k) => [k, { wert: null, quelle: null, sicherheit: "niedrig" }])) as Record<FieldKey, AppField>;
+  for (const entry of r.felder as { feld?: unknown; wert?: unknown; quelle?: unknown; seite?: unknown; sicherheit?: unknown }[]) {
+    if (!entry || typeof entry !== "object") continue;
+    const name = typeof entry.feld === "string" ? entry.feld.trim() : "";
+    if (!(FIELDS as readonly string[]).includes(name)) continue; // unbekanntes Feld (z. B. Geburtsdatum): verwerfen
+    const key = name as FieldKey;
+    if (felder[key].wert) continue;
+    const wert = typeof entry.wert === "string" && entry.wert.trim() ? entry.wert.trim().slice(0, 300) : null;
+    if (!wert) continue;
+    const text = typeof entry.quelle === "string" ? entry.quelle.trim().slice(0, 120) : "";
+    const seite = typeof entry.seite === "number" && Number.isInteger(entry.seite) && entry.seite >= 1 && entry.seite <= MAX_IMAGES ? entry.seite : null;
+    felder[key] = { wert, quelle: text ? { text, seite } : null, sicherheit: normalizeLevel(entry.sicherheit) };
   }
-  const hinweise = Array.isArray(r.hinweise) ? r.hinweise.filter((h): h is string => typeof h === "string").slice(0, 3) : [];
+  const hinweise = Array.isArray(r.hinweise) ? r.hinweise.filter((h): h is string => typeof h === "string" && h.trim().length > 0).map((h) => h.trim().slice(0, 200)).slice(0, 3) : [];
   return { ok: true, felder, hinweise };
 }
 

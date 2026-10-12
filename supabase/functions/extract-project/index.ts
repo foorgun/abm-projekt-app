@@ -16,12 +16,17 @@ import {
   DEFAULT_MODEL,
   describeImages,
   estimateCostEur,
+  extractJson,
   isEnabled,
+  isSchemaRejection,
+  JSON_ONLY,
   limitsFromEnv,
   MAX_TOKENS,
   outputConfig,
   parseRequest,
   periodStarts,
+  repairMessage,
+  strictEnabled,
   SYSTEM_PROMPT,
   TIMEOUT_MS,
   toResponse,
@@ -94,42 +99,86 @@ Deno.serve(async (req) => {
   // Nur Maße und Größe der Bilder ins Log (hilft bei abgelehnten Anfragen), nie der Inhalt
   console.info(`Auslesung: Modell ${model}, ${parsed.images.length} Bild(er): ${describeImages(parsed.images)}`);
   const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 0 });
-  try {
+  const question: Anthropic.MessageParam = {
+    role: "user",
+    content: [
+      ...parsed.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
+      { type: "text" as const, text: parsed.images.length > 1 ? "Bild 1 ist Seite 1 des Vertrags, Bild 2 die Plan-Seite (für den Haustyp). Fülle die Felder." : "Das Bild ist Seite 1 des Vertrags. Fülle die Felder." },
+    ],
+  };
+  // Tokens über alle Versuche dieser Auslesung (höchstens drei Aufrufe: mit Schema, ohne Schema, eine Nachfrage)
+  let inputTokens = 0;
+  let outputTokens = 0;
+  const saveUsage = (ok: boolean) =>
+    admin
+      .from("extraction_log")
+      .update({ input_tokens: inputTokens, output_tokens: outputTokens, cost_eur: estimateCostEur(model, inputTokens, outputTokens, Number(env("EXTRACTOR_USD_EUR")) || 1), ok })
+      .eq("id", reserved.data.id);
+
+  /** Ein Aufruf. `strict`: Antwort an das JSON-Schema binden; sonst verlangt nur die Anweisung reines JSON. */
+  async function ask(strict: boolean, followUp: Anthropic.MessageParam[]) {
+    const config = outputConfig(model, strict);
     const response = await client.messages.create({
       model,
       max_tokens: MAX_TOKENS,
-      system: SYSTEM_PROMPT,
-      // JSON-Schema immer; "effort" nur bei Modellen, die den Parameter kennen (logic.ts)
-      output_config: outputConfig(model),
-      messages: [
-        {
-          role: "user",
-          content: [
-            ...parsed.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
-            { type: "text" as const, text: parsed.images.length > 1 ? "Bild 1 ist Seite 1 des Vertrags, Bild 2 die Plan-Seite (für den Haustyp). Fülle die Felder." : "Das Bild ist Seite 1 des Vertrags. Fülle die Felder." },
-          ],
-        },
-      ],
+      system: strict ? SYSTEM_PROMPT : SYSTEM_PROMPT + JSON_ONLY,
+      ...(config ? { output_config: config } : {}),
+      messages: [question, ...followUp],
     });
+    inputTokens += response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
+    outputTokens += response.usage.output_tokens;
+    return response;
+  }
 
-    const inputTokens = response.usage.input_tokens + (response.usage.cache_creation_input_tokens ?? 0) + (response.usage.cache_read_input_tokens ?? 0);
-    const outputTokens = response.usage.output_tokens;
-    const cost = estimateCostEur(model, inputTokens, outputTokens, Number(env("EXTRACTOR_USD_EUR")) || 1);
-    const usable = response.stop_reason === "end_turn";
-    await admin.from("extraction_log").update({ input_tokens: inputTokens, output_tokens: outputTokens, cost_eur: cost, ok: usable }).eq("id", reserved.data.id);
-
-    if (response.stop_reason === "refusal") return fail("error", "Das Dokument konnte nicht ausgelesen werden. Bitte von Hand ausfüllen.", 200);
-    if (response.stop_reason === "max_tokens") return fail("error", "Die Auslesung wurde abgeschnitten. Bitte von Hand ausfüllen.", 200);
-    const text = response.content.find((b) => b.type === "text");
-    if (!text || text.type !== "text") return fail("error", "Die Auslesung lieferte kein Ergebnis.", 200);
-    let raw: unknown;
+  try {
+    let strict = strictEnabled(env("EXTRACTOR_STRICT"));
+    let response: Anthropic.Message;
     try {
-      raw = JSON.parse(text.text);
-    } catch {
-      return fail("error", "Die Auslesung lieferte kein verwertbares Ergebnis.", 200);
+      response = await ask(strict, []);
+    } catch (error) {
+      // Lehnt der Dienst das Schema selbst ab (z. B. "compiled grammar is too large"), einmal ohne Schema-Bindung versuchen
+      const info = apiErrorInfo(error);
+      if (!strict || !(error instanceof Anthropic.BadRequestError) || !isSchemaRejection(info)) throw error;
+      console.error(`KI-Dienst: Schema abgelehnt · ${info.type} · ${info.message} · zweiter Versuch ohne Schema-Bindung`);
+      strict = false;
+      response = await ask(false, []);
     }
-    return json(toResponse(raw));
+
+    let result: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (response.stop_reason === "refusal") {
+        await saveUsage(false);
+        return fail("error", "Das Dokument konnte nicht ausgelesen werden. Bitte von Hand ausfüllen.", 200);
+      }
+      if (response.stop_reason === "max_tokens") {
+        await saveUsage(false);
+        return fail("error", "Die Auslesung wurde abgeschnitten. Bitte von Hand ausfüllen.", 200);
+      }
+      const text = response.content.find((b) => b.type === "text");
+      const read = text && text.type === "text" ? extractJson(text.text) : ({ ok: false, problem: "leere Antwort" } as const);
+      if (read.ok) {
+        result = read.value;
+        break;
+      }
+      if (attempt === 1) {
+        console.error("Auslesung: Antwort auch nach der Nachfrage kein gültiges JSON");
+        await saveUsage(false);
+        return fail("error", "Die Auslesung lieferte kein verwertbares Ergebnis. Bitte von Hand ausfüllen.", 200);
+      }
+      // Einmal nachfragen: die Antwort unverändert zurückgeben (samt Denkblöcken) und die Fehlerart nennen
+      console.error("Auslesung: Antwort war kein gültiges JSON, eine Nachfrage");
+      response = await ask(strict, [
+        { role: "assistant", content: response.content },
+        { role: "user", content: repairMessage(read.problem) },
+      ]);
+    }
+
+    const answer = toResponse(result);
+    await saveUsage(answer.ok);
+    return json(answer);
   } catch (error) {
+    // Tokens der bis hierher gelungenen Aufrufe festhalten (bei Fehler im ersten Aufruf: 0)
+    await saveUsage(false);
     // Ins Log kommen nur Status, Fehlertyp und Meldung des KI-Dienstes (nennen Parameter und Grund), nie Inhalte.
     // Die Bildmaße stehen in der Zeile "Auslesung: …" darüber.
     if (error instanceof Anthropic.APIConnectionTimeoutError) {

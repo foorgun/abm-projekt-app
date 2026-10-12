@@ -8,20 +8,26 @@ import {
   DEFAULT_LIMITS,
   DEFAULT_MODEL,
   estimateCostEur,
+  extractJson,
   FIELDS,
   isEnabled,
+  isSchemaRejection,
   imageDimensions,
+  JSON_ONLY,
   limitsFromEnv,
   MAX_IMAGE_BYTES,
   MAX_IMAGE_EDGE_PX,
   MAX_TOKENS,
   describeImages,
+  normalizeLevel,
   outputConfig,
   outputSchema,
   supportsEffort,
   UNSUPPORTED_SCHEMA_KEYWORDS,
   parseRequest,
   periodStarts,
+  repairMessage,
+  strictEnabled,
   SYSTEM_PROMPT,
   TIMEOUT_MS,
   toResponse,
@@ -51,18 +57,28 @@ describe("Edge Function: Feldliste und Schema", () => {
     expect([...FIELDS]).toEqual([...DRAFT_FIELDS]);
   });
 
-  it("gibt je Feld wert, quelle, seite und sicherheit vor und erlaubt keinen Freitext daneben", () => {
-    const schema = outputSchema() as { additionalProperties: boolean; required: string[]; properties: { felder: { required: string[]; additionalProperties: boolean; properties: Record<string, { required: string[]; additionalProperties: boolean; properties: { sicherheit: { enum: string[] } } }> } } };
+  it("ist klein und flach: ein Array von Einträgen {feld, wert, quelle, seite, sicherheit}, ohne enum und ohne Objekt je Feldname", () => {
+    const schema = outputSchema() as { additionalProperties: boolean; required: string[]; properties: { felder: { type: string; items: { type: string; required: string[]; additionalProperties: boolean; properties: Record<string, { type: string }> } }; hinweise: { type: string; items: { type: string } } } };
     expect(schema.additionalProperties).toBe(false);
     expect(schema.required).toEqual(["felder", "hinweise"]);
-    expect(schema.properties.felder.required).toEqual([...DRAFT_FIELDS]);
-    expect(schema.properties.felder.additionalProperties).toBe(false);
-    for (const k of DRAFT_FIELDS) {
-      const f = schema.properties.felder.properties[k];
-      expect(f.required, k).toEqual(["wert", "quelle", "seite", "sicherheit"]);
-      expect(f.additionalProperties).toBe(false);
-      expect(f.properties.sicherheit.enum).toEqual(["hoch", "mittel", "niedrig"]);
-    }
+    expect(schema.properties.felder.type).toBe("array");
+    const item = schema.properties.felder.items;
+    expect(item.required).toEqual(["feld", "wert", "quelle", "seite", "sicherheit"]);
+    expect(item.additionalProperties).toBe(false);
+    expect(Object.fromEntries(Object.entries(item.properties).map(([k, v]) => [k, v.type]))).toEqual({ feld: "string", wert: "string", quelle: "string", seite: "integer", sicherheit: "string" });
+    expect(schema.properties.hinweise).toEqual({ type: "array", items: { type: "string" } });
+    const text = JSON.stringify(schema);
+    // Die frühere Form (ein Unterobjekt je Feld, mit enum) war dem KI-Dienst zu groß: "The compiled grammar is too large"
+    expect(text).not.toMatch(/enum/);
+    for (const k of DRAFT_FIELDS) expect(text, k).not.toContain(`"${k}"`);
+    expect(text.length).toBeLessThan(500);
+    expect((text.match(/"type":"object"/g) ?? []).length).toBe(2);
+  });
+
+  it("nennt Feldnamen und Sicherheitsstufen stattdessen in der Anweisung", () => {
+    for (const k of DRAFT_FIELDS) expect(SYSTEM_PROMPT, k).toContain(k);
+    expect(SYSTEM_PROMPT).toContain(`Erlaubte Werte für "feld" (genau diese Schreibweise, jedes höchstens einmal, keine anderen): ${DRAFT_FIELDS.join(", ")}.`);
+    expect(SYSTEM_PROMPT).toMatch(/sicherheit: genau eines der Wörter hoch, mittel, niedrig/);
   });
 
   it("weist an: keine Bauadresse aus dem Werkvertrag, kein Geburtsdatum, kein Beruf", () => {
@@ -71,17 +87,54 @@ describe("Edge Function: Feldliste und Schema", () => {
     expect(FIELDS.join(" ")).not.toMatch(/geburt|beruf|hausbau/i);
   });
 
-  it("bringt die Antwort in die Form der App", () => {
-    const felder = Object.fromEntries(FIELDS.map((k) => [k, { wert: "", quelle: "", seite: 0, sicherheit: "niedrig" }]));
-    const r = toResponse({ felder: { ...felder, bauherrLabel: { wert: " Hoffmann ", quelle: "1. Bauherr", seite: 1, sicherheit: "mittel" }, phone: { wert: "0731", quelle: "", seite: 9, sicherheit: "hoch" } }, hinweise: ["a", "b", "c", "d", 5] });
+  it("prüft die Antwort selbst und baut sie in die Form der App um", () => {
+    const r = toResponse({
+      felder: [
+        { feld: "bauherrLabel", wert: " Hoffmann ", quelle: "1. Bauherr", seite: 1, sicherheit: "mittel" },
+        { feld: "phone", wert: "0731", quelle: "", seite: 9, sicherheit: "HOCH " },
+        { feld: "haustyp", wert: "Beispielhaus 140", quelle: "Haustyp", seite: 2, sicherheit: "high" },
+        { feld: "email", wert: "a@example.com", quelle: "E-Mail", seite: 1, sicherheit: "sehr sicher" },
+        // unbekannte Felder werden verworfen
+        { feld: "geburtsdatum", wert: "01.01.1990", quelle: "geb.", seite: 1, sicherheit: "hoch" },
+        { feld: "hausbauNr", wert: "HB-1", quelle: "", seite: 1, sicherheit: "hoch" },
+        // doppelt: der erste Eintrag mit Wert zählt
+        { feld: "bauherrLabel", wert: "Hofmann", quelle: "x", seite: 1, sicherheit: "hoch" },
+        // leerer Wert und kaputte Einträge zählen nicht
+        { feld: "address", wert: "  ", quelle: "Anschrift", seite: 1, sicherheit: "hoch" },
+        { feld: "company", wert: 5 },
+        null,
+        "text",
+      ],
+      hinweise: ["a", " ", "b", "c", "d", 5],
+    });
     if (!r.ok) throw new Error("erwartet ok");
+    expect(Object.keys(r.felder).sort()).toEqual([...DRAFT_FIELDS].sort());
     expect(r.felder.bauherrLabel).toEqual({ wert: "Hoffmann", quelle: { text: "1. Bauherr", seite: 1 }, sicherheit: "mittel" });
     expect(r.felder.phone).toEqual({ wert: "0731", quelle: null, sicherheit: "hoch" });
-    expect(r.felder.email).toEqual({ wert: null, quelle: null, sicherheit: "niedrig" });
+    expect(r.felder.haustyp).toEqual({ wert: "Beispielhaus 140", quelle: { text: "Haustyp", seite: 2 }, sicherheit: "hoch" });
+    expect(r.felder.email.sicherheit).toBe("niedrig");
+    // fehlende Felder sind leer
+    for (const k of ["address", "company", "vertragsdatum", "bauherr2Name"] as const) expect(r.felder[k], k).toEqual({ wert: null, quelle: null, sicherheit: "niedrig" });
+    expect(JSON.stringify(r)).not.toMatch(/1990|HB-1|Hofmann/);
     expect(r.hinweise).toEqual(["a", "b", "c"]);
-    // die App begrenzt Scans danach zusätzlich auf "mittel"
+    // die App begrenzt Scans danach zusätzlich auf "mittel" (unverändert)
     expect(normalizeFields(r.felder, true).phone.sicherheit).toBe("mittel");
+  });
+
+  it("kommt mit leeren und falsch geformten Antworten zurecht", () => {
+    const empty = toResponse({ felder: [], hinweise: [] });
+    if (!empty.ok) throw new Error("erwartet ok");
+    expect(DRAFT_FIELDS.every((k) => empty.felder[k].wert === null)).toBe(true);
+    expect(toResponse({ felder: [] })).toMatchObject({ ok: true, hinweise: [] });
+    // alte Form (Objekt je Feld), Text oder nichts: kein verwertbares Ergebnis
+    expect(toResponse({ felder: { bauherrLabel: { wert: "Hoffmann" } }, hinweise: [] })).toMatchObject({ ok: false, code: "error" });
     expect(toResponse("kaputt")).toMatchObject({ ok: false, code: "error" });
+    expect(toResponse(null)).toMatchObject({ ok: false, code: "error" });
+  });
+
+  it("vereinheitlicht die Sicherheitsstufe", () => {
+    expect(["hoch", " Mittel", "NIEDRIG", "high", "medium", "low"].map(normalizeLevel)).toEqual(["hoch", "mittel", "niedrig", "hoch", "mittel", "niedrig"]);
+    expect([undefined, 3, "", "sicher"].map(normalizeLevel)).toEqual(["niedrig", "niedrig", "niedrig", "niedrig"]);
   });
 });
 
@@ -132,14 +185,19 @@ describe("Edge Function: Parameter und Schema passen zum KI-Dienst", () => {
     for (const m of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6"]) expect(supportsEffort(m), m).toBe(true);
     for (const m of ["claude-haiku-4-5", "claude-sonnet-4-5", "claude-sonnet-5-5-20260101", "irgendwas"]) expect(supportsEffort(m), m).toBe(false);
     expect(outputConfig(DEFAULT_MODEL)).toMatchObject({ effort: "low", format: { type: "json_schema" } });
-    expect(Object.keys(outputConfig("claude-haiku-4-5"))).toEqual(["format"]);
+    expect(Object.keys(outputConfig("claude-haiku-4-5")!)).toEqual(["format"]);
+    // ohne Schema-Bindung: kein format; gibt es dann gar keinen Parameter, entfällt output_config ganz
+    expect(outputConfig(DEFAULT_MODEL, false)).toEqual({ effort: "low" });
+    expect(outputConfig("claude-haiku-4-5", false)).toBeUndefined();
   });
 
   it("sendet weder thinking noch temperature noch tool_choice (je nach Modell ungültig)", () => {
-    const call = source.slice(source.indexOf("client.messages.create("), source.indexOf("const inputTokens"));
-    expect(call).not.toMatch(/thinking|temperature|top_p|top_k|tool_choice|budget_tokens|output_format/);
-    expect(call).toContain("output_config: outputConfig(model)");
+    const from = source.indexOf("client.messages.create(");
+    const call = source.slice(from, source.indexOf("});", from));
+    expect(call).not.toMatch(/thinking|temperature|top_p|top_k|tool_choice|budget_tokens|output_format|strict: true/);
+    expect(call).toContain("...(config ? { output_config: config } : {})");
     expect(call).toContain("max_tokens: MAX_TOKENS");
+    expect(source.match(/client\.messages\.create\(/g)).toHaveLength(1);
   });
 
   it("das Schema nutzt nur, was die strukturierte Ausgabe annimmt", () => {
@@ -160,9 +218,68 @@ describe("Edge Function: Parameter und Schema passen zum KI-Dienst", () => {
     walk(schema, "schema");
     expect(seen).toEqual([]);
     const text = JSON.stringify(schema);
-    expect(text).not.toMatch(/\$ref|anyOf|allOf|"null"|"format"/);
+    expect(text).not.toMatch(/\$ref|anyOf|allOf|"null"|"format"|enum/);
     // nur die Grundtypen object, array, string, integer
     expect([...new Set([...text.matchAll(/"type":"(\w+)"/g)].map((m) => m[1]))].sort()).toEqual(["array", "integer", "object", "string"]);
+  });
+});
+
+describe("Edge Function: ohne Schema-Bindung (Ausweichweg)", () => {
+  it("erkennt, wenn der Dienst das Schema selbst ablehnt, und nur dann", () => {
+    const grammar = { type: "invalid_request_error", message: "The compiled grammar is too large, which would cause performance issues. Simplify your tool schemas or reduce the number of strict tools." };
+    expect(isSchemaRejection(grammar)).toBe(true);
+    expect(isSchemaRejection({ type: "invalid_request_error", message: "output_config.format.schema: Unsupported keyword 'minimum'" })).toBe(true);
+    // andere Fehler 400 würden ohne Schema genauso scheitern: kein zweiter Versuch
+    expect(isSchemaRejection({ type: "invalid_request_error", message: "messages.0.content.0.image.source.base64: image exceeds 5 MB maximum" })).toBe(false);
+    expect(isSchemaRejection({ type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." })).toBe(false);
+    expect(isSchemaRejection({ type: "overloaded_error", message: "grammar" })).toBe(false);
+  });
+
+  it("lässt sich per Secret ganz abschalten (EXTRACTOR_STRICT=false), Standard ist an", () => {
+    expect(strictEnabled(undefined)).toBe(true);
+    expect(strictEnabled("true")).toBe(true);
+    expect(strictEnabled("")).toBe(true);
+    expect(strictEnabled(" FALSE ")).toBe(false);
+  });
+
+  it("verlangt dann in der Anweisung reines JSON in derselben Form", () => {
+    expect(JSON_ONLY).toMatch(/ausschließlich mit einem einzigen JSON-Objekt/);
+    const example = extractJson(JSON_ONLY.slice(JSON_ONLY.indexOf("{")));
+    if (!example.ok) throw new Error("Beispiel muss gültiges JSON sein");
+    expect(toResponse(example.value)).toMatchObject({ ok: true });
+  });
+
+  it("liest JSON auch aus Markdown-Zäunen und mit Text drumherum", () => {
+    const obj = { felder: [{ feld: "bauherrLabel", wert: "Hoffmann", quelle: "x", seite: 1, sicherheit: "mittel" }], hinweise: [] };
+    const j = JSON.stringify(obj);
+    for (const text of [j, `\`\`\`json\n${j}\n\`\`\``, `Hier das Ergebnis:\n${j}\nFertig.`, `  ${j}  `]) expect(extractJson(text), text).toEqual({ ok: true, value: obj });
+  });
+
+  it("meldet bei ungültigem JSON nur die Fehlerart, nichts aus der Antwort", () => {
+    expect(extractJson("Ich kann das nicht lesen.")).toEqual({ ok: false, problem: "kein JSON-Objekt gefunden" });
+    expect(extractJson('{"felder": [{"feld": "bauherrLabel", "wert": "Hoffmann"')).toEqual({ ok: false, problem: "kein JSON-Objekt gefunden" });
+    expect(extractJson("{'felder': []}")).toEqual({ ok: false, problem: "ungültiges JSON" });
+    expect(extractJson("")).toMatchObject({ ok: false });
+    const repair = repairMessage("ungültiges JSON");
+    expect(repair).toContain("ungültiges JSON");
+    expect(repair).toMatch(/ausschließlich mit dem JSON-Objekt/);
+  });
+
+  it("Ablauf im Quelltext: erst mit Schema, bei Schema-Ablehnung einmal ohne, bei ungültigem JSON genau eine Nachfrage", () => {
+    const i = (needle: string) => {
+      const at = source.indexOf(needle);
+      expect(at, needle).toBeGreaterThan(-1);
+      return at;
+    };
+    expect(i('strictEnabled(env("EXTRACTOR_STRICT"))')).toBeLessThan(i("response = await ask(strict, []);"));
+    expect(i("response = await ask(strict, []);")).toBeLessThan(i("isSchemaRejection(info)"));
+    expect(i("isSchemaRejection(info)")).toBeLessThan(i("response = await ask(false, []);"));
+    expect(source).toContain("for (let attempt = 0; attempt < 2; attempt++)");
+    expect(source).toContain('{ role: "assistant", content: response.content }');
+    expect(source).toContain("repairMessage(read.problem)");
+    // höchstens drei Aufrufe je Auslesung, der Verbrauch aller Versuche wird zusammengezählt
+    expect(source.match(/await ask\(/g)).toHaveLength(3);
+    expect(source).toContain("inputTokens += response.usage.input_tokens");
   });
 });
 

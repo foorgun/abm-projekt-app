@@ -477,6 +477,10 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   in der Prüfmaske dazu; mit echten Daten rät er höchstens aus dem Dateinamen.
 - **Edge Function:** reine Logik in `logic.ts` (ohne Importe, von vitest geprüft), Aufruf in `index.ts`. Einrichtung und
   Absicherung: `docs/vertrag-extraktion.md`.
+- **Kleines Antwort-Schema:** Die erste Fassung band die Antwort an ein Schema mit einem Unterobjekt je Feld (21 Felder, enum,
+  alles Pflicht). Der KI-Dienst lehnte das ab ("The compiled grammar is too large"). Jetzt: flaches Array von Einträgen
+  `{feld, wert, quelle, seite, sicherheit}`; Feldnamen und Stufen stehen in der Anweisung, geprüft wird in der Funktion
+  (`toResponse` in `logic.ts`). Lehnt der Dienst auch das ab, geht es einmal ohne Schema-Bindung weiter (`EXTRACTOR_STRICT`).
 - **Datenbanktests ohne lokales Postgres:** `tools/test-db.sh` braucht eine Postgres-Installation. Für diesen Schritt wurden
   Migrationen, Seed und `rls_test.sql` ersatzweise gegen PGlite (Postgres als WASM) ausgeführt, Anweisung für Anweisung wie
   `psql`. Vor dem Einspielen in Supabase trotzdem einmal `bash tools/test-db.sh` auf einem Rechner mit Postgres laufen lassen.
