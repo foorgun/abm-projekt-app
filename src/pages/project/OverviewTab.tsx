@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
-import { Button, Card, CardBody, CardHead, Field, Input, Select } from "../../components/ui";
+import { Button, Card, CardBody, CardHead, Field, IconButton, Input, Select } from "../../components/ui";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
@@ -70,9 +70,9 @@ function EditableCard({
         sub={sub}
         actions={
           canEdit && !editing ? (
-            <Button size="sm" variant="ghost" icon={<Pencil size={14} />} onClick={() => setEditing(true)} aria-label={`${title} bearbeiten`}>
-              Bearbeiten
-            </Button>
+            <IconButton size="sm" label={`${title} bearbeiten`} onClick={() => setEditing(true)}>
+              <Pencil size={14} />
+            </IconButton>
           ) : undefined
         }
       />
@@ -133,59 +133,49 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
           Noch offen: {missing.join(", ")}. Sobald alles eingetragen ist, erledigt sich die Aufgabe „Fehlende Angaben nachfragen“ von selbst.
         </p>
       )}
-      <div className="grid-2">
-        <EditableCard
-          title="Projektbeteiligte"
-          sub="Wie in Liste.docx (01 Projektbeteiligte)"
-          canEdit={staff}
-          form={(close) => <PartiesForm project={project} data={data} contact={contact} onClose={close} />}
-          view={
-            <dl className="dl">
-              <Row label="ABM-Nr.">{project.abmNr}</Row>
-              <Row label="Hausbau-Nr.">{project.hausbauNr}</Row>
-              <Row label="Bauherr">{project.bauherrLabel}</Row>
-              <Row label="Bauadresse">
-                {staff ? (
-                  contact?.buildingAddress
-                ) : (
-                  <span className="muted locked">
-                    <Lock size={12} aria-hidden /> nur für Mitarbeiter
-                  </span>
-                )}
-              </Row>
-              <Row label="Verkäufer">{sales ? `${sales.name}${company ? ` (${company.name})` : ""}` : null}</Row>
-              {ROLES.map((role) => {
-                const p = parties.find((x) => x.role === role);
-                return (
-                  <Row key={role} label={PARTY_LABEL[role]}>
-                    {p && (
-                      <>
-                        {p.name}
-                        {p.contact && <span className="cell-sub">{p.contact}</span>}
-                      </>
-                    )}
-                  </Row>
-                );
-              })}
-            </dl>
-          }
-        />
-
+      <div className="grid-2 grid-top">
         <div className="stack">
           <EditableCard
-            title="Projektdaten"
+            title="Projektbeteiligte"
             canEdit={staff}
-            form={(close) => <ProjectDataForm project={project} data={data} onClose={close} />}
+            form={(close) => <PartiesForm project={project} data={data} contact={contact} onClose={close} />}
             view={
-              <dl className="dl">
-                <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
-                <Row label="Hausbaufirma">{company?.name}</Row>
-                <Row label="Bauort">{project.location}</Row>
-                <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
-                <Row label="Planer">{planer?.name}</Row>
-                <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
-                <Row label="Baubetreuung">{project.baubetreuung}</Row>
-              </dl>
+              <>
+                <dl className="dl">
+                  {/* ABM-Nr., Hausbau-Nr. und Bauherr stehen im Seitenkopf; hier nur, wenn die Hausbau-Nr. noch fehlt */}
+                  {!project.hausbauNr && project.kind === "neubau" && <Row label="Hausbau-Nr.">{null}</Row>}
+                  <Row label="Bauadresse">
+                    {staff ? (
+                      contact?.buildingAddress
+                    ) : (
+                      <span className="muted locked">
+                        <Lock size={12} aria-hidden /> nur für Mitarbeiter
+                      </span>
+                    )}
+                  </Row>
+                  <Row label="Verkäufer">{sales ? `${sales.name}${company ? ` (${company.name})` : ""}` : null}</Row>
+                </dl>
+                <details className="dl-more">
+                  <summary>
+                    Weitere Beteiligte · {parties.length} von {ROLES.length} eingetragen
+                  </summary>
+                  <dl className="dl">
+                    {ROLES.map((role) => {
+                      const p = parties.find((x) => x.role === role);
+                      return (
+                        <Row key={role} label={PARTY_LABEL[role]}>
+                          {p && (
+                            <>
+                              {p.name}
+                              {p.contact && <span className="cell-sub">{p.contact}</span>}
+                            </>
+                          )}
+                        </Row>
+                      );
+                    })}
+                  </dl>
+                </details>
+              </>
             }
           />
           <EditableCard
@@ -206,11 +196,27 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
                   <Row label="E-Mail">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}</Row>
                 </dl>
               ) : (
-                <p className="muted">Noch keine Kontaktdaten eingetragen. Über „Bearbeiten“ lassen sie sich nachtragen.</p>
+                <p className="muted">Noch keine Kontaktdaten eingetragen. Über den Stift oben rechts lassen sie sich nachtragen.</p>
               )
             }
           />
         </div>
+        <EditableCard
+          title="Projektdaten"
+          canEdit={staff}
+          form={(close) => <ProjectDataForm project={project} data={data} onClose={close} />}
+          view={
+            <dl className="dl">
+              <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
+              <Row label="Hausbaufirma">{company?.name}</Row>
+              <Row label="Bauort">{project.location}</Row>
+              <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
+              <Row label="Planer">{planer?.name}</Row>
+              <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
+              <Row label="Baubetreuung">{project.baubetreuung}</Row>
+            </dl>
+          }
+        />
       </div>
     </div>
   );

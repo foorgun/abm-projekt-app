@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Check, ChevronDown, ChevronRight, CircleAlert, FolderX, Info, ListPlus } from "lucide-react";
+import { AlertTriangle, Check, ChevronRight, CircleAlert, FolderX, Info, ListPlus, MoreHorizontal } from "lucide-react";
 import { StatusPill } from "../../components/ProjectBits";
 import { TaskForm, TaskList } from "../../components/TaskList";
 import { useToast } from "../../components/Toast";
-import { Button, buttonClass, Card, CardBody, CardHead, EmptyState, ErrorState, Menu, Skeleton, Stepper, Tabs } from "../../components/ui";
+import { Button, buttonClass, Card, CardBody, CardHead, EmptyState, ErrorState, IconButton, Menu, Skeleton, Stepper, Tabs } from "../../components/ui";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { formatDate } from "../../lib/format";
 import { missingSteps, nextStep, phaseOf, progressOf, projectTitle } from "../../lib/projects";
@@ -114,29 +114,32 @@ export function ProjectDetail() {
         </div>
         {staff && (
           <div className="page-head-actions">
-            <Button
-              icon={<ListPlus size={15} />}
-              onClick={() => {
-                setTab("aufgaben");
-                setTaskForm(true);
-              }}
-            >
-              Aufgabe anlegen
-            </Button>
+            {/* Seltene Aktionen im Menü; die häufige (nächster Schritt erledigt) steht in der Prozesskarte */}
             <Menu
-              items={(["aktiv", "abgeschlossen", "storno"] as Project["status"][])
-                .filter((s) => s !== p.status)
-                .map((s) => ({
-                  label: s === "aktiv" ? "Wieder aktiv setzen" : s === "abgeschlossen" ? "Als abgeschlossen markieren" : "Stornieren",
-                  onSelect: async () => {
-                    const res = await mutate((r) => r.setProjectStatus(p.id, s));
-                    toast(res.ok ? "Status geändert" : res.error, res.ok ? "ok" : "danger");
+              items={[
+                {
+                  label: "Aufgabe anlegen",
+                  icon: <ListPlus size={15} />,
+                  onSelect: () => {
+                    setTab("aufgaben");
+                    setTaskForm(true);
                   },
-                }))}
+                },
+                "sep",
+                ...(["aktiv", "abgeschlossen", "storno"] as Project["status"][])
+                  .filter((st) => st !== p.status)
+                  .map((st) => ({
+                    label: st === "aktiv" ? "Wieder aktiv setzen" : st === "abgeschlossen" ? "Als abgeschlossen markieren" : "Stornieren",
+                    onSelect: async () => {
+                      const res = await mutate((r) => r.setProjectStatus(p.id, st));
+                      toast(res.ok ? "Status geändert" : res.error, res.ok ? "ok" : "danger");
+                    },
+                  })),
+              ]}
               trigger={(t) => (
-                <Button {...t}>
-                  Status <ChevronDown size={14} />
-                </Button>
+                <IconButton label="Weitere Aktionen" variant="outline" {...t}>
+                  <MoreHorizontal size={16} />
+                </IconButton>
               )}
             />
           </div>

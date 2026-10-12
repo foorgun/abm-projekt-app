@@ -870,18 +870,9 @@ kbd {
   margin-top: 1px;
 }
 
-.banner[data-tone="danger"] {
-  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
-  background: color-mix(in srgb, var(--danger-soft) 55%, var(--surface));
-}
-
+/* neutrale Fläche: die Dringlichkeit zeigt nur das Icon (weniger farbige Flächen) */
 .banner[data-tone="danger"] > svg {
   color: var(--danger);
-}
-
-.banner[data-tone="warn"] {
-  border-color: color-mix(in srgb, var(--warn) 30%, var(--border));
-  background: color-mix(in srgb, var(--warn-soft) 50%, var(--surface));
 }
 
 .banner[data-tone="warn"] > svg {
@@ -2193,6 +2184,23 @@ a.todo-main:hover .todo-title {
   min-width: 120px;
 }
 
+/* Selten gebrauchte Filter: erst nach Klick auf "Filter" */
+.filters-more {
+  padding-top: 0;
+}
+
+.filters-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  flex-basis: 100%;
+  padding-top: var(--sp-1);
+}
+
+.invisible {
+  visibility: hidden;
+}
+
 .filters-row2 {
   display: flex;
   flex-wrap: wrap;
@@ -2998,6 +3006,35 @@ a.todo-main:hover .todo-title {
 .dl-row dd {
   margin: 0;
   color: var(--text);
+}
+
+/* Spalten oben bündig statt gleich hoch gestreckt */
+.grid-top {
+  align-items: start;
+}
+
+/* Selten gebrauchte Zeilen einer Definitionsliste, eingeklappt */
+.dl-more {
+  border-top: 1px solid var(--border);
+}
+
+.dl-more > summary {
+  padding: var(--sp-2) 0;
+  font-size: var(--fs-13);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.dl-more > summary:hover {
+  color: var(--text);
+}
+
+.dl-more[open] > summary {
+  color: var(--text-2);
+}
+
+.dl-more .dl-row:first-child {
+  border-top: 1px solid var(--border);
 }
 
 .locked {

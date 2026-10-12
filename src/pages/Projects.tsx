@@ -1,10 +1,10 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { FolderSearch, Search, X } from "lucide-react";
-import { PhasePill, StatusPill, WarnIcon } from "../components/ProjectBits";
+import { Check, ChevronDown, Columns3, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { StatusPill, WarnIcon } from "../components/ProjectBits";
 import { PageHead } from "../components/layout/PageHead";
 import { useNewProject } from "../components/NewProjectDialog";
-import { Button, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
+import { Button, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Menu, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
 import { formatDate, formatDue, formatMonth } from "../lib/format";
 import {
@@ -28,6 +28,24 @@ import type { Project } from "../lib/types";
 const TAB_PATH: Record<ProjectTab, string> = { alle: "/projekte", aktiv: "/projekte/aktiv", abgeschlossen: "/projekte/abgeschlossen" };
 const TAB_TITLE: Record<ProjectTab, string> = { alle: "Alle Projekte", aktiv: "Aktive Projekte", abgeschlossen: "Abgeschlossene Projekte" };
 
+// Spalten, die selten gebraucht werden: über das Menü "Spalten" einblendbar, Auswahl bleibt im Browser gespeichert
+type OptionalColumn = "firma" | "architekt" | "fortschritt";
+const OPTIONAL_COLUMNS: { key: OptionalColumn; label: string }[] = [
+  { key: "firma", label: "Firma" },
+  { key: "architekt", label: "Architekt" },
+  { key: "fortschritt", label: "Fortschrittsbalken" },
+];
+const COLUMNS_KEY = "abm.projekte.spalten";
+
+function readColumns(): OptionalColumn[] {
+  try {
+    const saved = (localStorage.getItem(COLUMNS_KEY) ?? "").split(",");
+    return OPTIONAL_COLUMNS.map((c) => c.key).filter((k) => saved.includes(k));
+  } catch {
+    return [];
+  }
+}
+
 export function Projects({ tab }: { tab: ProjectTab }) {
   const { data, loading, error, reload, alerts, today } = useData();
   const { user } = useSession();
@@ -37,6 +55,20 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const filters = filtersFromParams(params);
   const openNewProject = useNewProject();
   const staff = user.role !== "freiberufler";
+  const [extraColumns, setExtraColumns] = useState(readColumns);
+  // Wer mit gesetztem Filter ankommt (z. B. vom Dashboard), sieht die Filterleiste gleich offen
+  const moreFilters = [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.group, filters.storno].filter(Boolean).length;
+  const [filtersOpen, setFiltersOpen] = useState(moreFilters > 0);
+
+  function toggleColumn(key: OptionalColumn) {
+    const next = extraColumns.includes(key) ? extraColumns.filter((k) => k !== key) : [...extraColumns, key];
+    setExtraColumns(next);
+    try {
+      localStorage.setItem(COLUMNS_KEY, next.join(","));
+    } catch {
+      // ohne Speicher gilt die Auswahl nur für diesen Besuch
+    }
+  }
 
   const setFilters = useCallback(
     (patch: Partial<ProjectFilters>) => setParams(filtersToParams({ ...filters, ...patch }), { replace: true }),
@@ -79,7 +111,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     : null;
   const filtered = Boolean(filters.q || filters.company || filters.architect || filters.phase);
 
-  const columns: Column<Project>[] = [
+  const allColumns: Column<Project>[] = [
     {
       key: "abm",
       header: "ABM-Nr.",
@@ -104,7 +136,18 @@ export function Projects({ tab }: { tab: ProjectTab }) {
       key: "phase",
       header: "Phase",
       // Abgeschlossene und stornierte Projekte zeigen ihren Status statt der letzten Phase
-      render: (p) => (p.status === "aktiv" ? <PhasePill phase={phaseOf(p, steps)} /> : <StatusPill status={p.status} />),
+      render: (p) => {
+        if (p.status !== "aktiv") return <StatusPill status={p.status} />;
+        const pr = progressOf(p, steps);
+        return (
+          <>
+            <span className="cell-main">{phaseOf(p, steps).label}</span>
+            <span className="cell-sub">
+              {pr.done} von {pr.total} Schritten
+            </span>
+          </>
+        );
+      },
       sortValue: (p) => (p.status === "aktiv" ? phaseOf(p, steps).index : p.status === "abgeschlossen" ? 100 : 101),
     },
     {
@@ -145,8 +188,9 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         );
       },
     },
-    { key: "warn", header: "Warnung", className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
+    { key: "warn", header: <span className="sr-only">Warnung</span>, className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
   ];
+  const columns = allColumns.filter((c) => !OPTIONAL_COLUMNS.some((o) => o.key === c.key) || extraColumns.includes(c.key as OptionalColumn));
 
   const phaseOptions = [{ value: "", label: "Alle Phasen" }, ...allPhases(steps).map((ph) => ({ value: ph.key, label: ph.label }))];
 
@@ -174,36 +218,57 @@ export function Projects({ tab }: { tab: ProjectTab }) {
               value={filters.q}
               onChange={(e) => setFilters({ q: e.target.value })}
             />
-            {staff && (
-              <Select
-                aria-label="Firma"
-                value={filters.company}
-                onChange={(e) => setFilters({ company: e.target.value })}
-                options={[{ value: "", label: "Alle Firmen" }, ...companies.map((c) => ({ value: c.id, label: c.name })), { value: "-", label: "Ohne Firma" }]}
-              />
-            )}
-            <Select
-              aria-label="Architekt"
-              value={filters.architect}
-              onChange={(e) => setFilters({ architect: e.target.value })}
-              options={[{ value: "", label: "Alle Architekten" }, ...team.filter((t) => t.role === "architekt").map((t) => ({ value: t.id, label: t.code ?? t.name }))]}
-            />
-            <Select aria-label="Phase" value={filters.phase} onChange={(e) => setFilters({ phase: e.target.value })} options={phaseOptions} />
-            <Select
-              aria-label="Sortierung"
-              value={filters.sort}
-              onChange={(e) => setFilters({ sort: e.target.value as ProjectSort })}
-              options={[
-                { value: "eingang", label: "Neueste zuerst" },
-                { value: "abm", label: "ABM-Nr." },
-                { value: "bauherr", label: "Bauherr A–Z" },
-                { value: "fortschritt", label: "Fortschritt" },
-              ]}
+            <Button icon={<SlidersHorizontal size={15} />} aria-expanded={filtersOpen} aria-controls="projekt-filter" onClick={() => setFiltersOpen((o) => !o)}>
+              Filter{moreFilters > 0 && ` · ${moreFilters}`}
+            </Button>
+            <Menu
+              items={OPTIONAL_COLUMNS.map((c) => ({
+                label: c.label,
+                icon: <Check size={14} className={extraColumns.includes(c.key) ? undefined : "invisible"} aria-hidden />,
+                onSelect: () => toggleColumn(c.key),
+              }))}
+              trigger={(t) => (
+                <Button icon={<Columns3 size={15} />} aria-label="Spalten ein- und ausblenden" {...t}>
+                  Spalten <ChevronDown size={14} />
+                </Button>
+              )}
             />
           </div>
+          {filtersOpen && (
+            <div className="filters filters-more" id="projekt-filter">
+              {staff && (
+                <Select
+                  aria-label="Firma"
+                  value={filters.company}
+                  onChange={(e) => setFilters({ company: e.target.value })}
+                  options={[{ value: "", label: "Alle Firmen" }, ...companies.map((c) => ({ value: c.id, label: c.name })), { value: "-", label: "Ohne Firma" }]}
+                />
+              )}
+              <Select
+                aria-label="Architekt"
+                value={filters.architect}
+                onChange={(e) => setFilters({ architect: e.target.value })}
+                options={[{ value: "", label: "Alle Architekten" }, ...team.filter((t) => t.role === "architekt").map((t) => ({ value: t.id, label: t.code ?? t.name }))]}
+              />
+              <Select aria-label="Phase" value={filters.phase} onChange={(e) => setFilters({ phase: e.target.value })} options={phaseOptions} />
+              <Select
+                aria-label="Sortierung"
+                value={filters.sort}
+                onChange={(e) => setFilters({ sort: e.target.value as ProjectSort })}
+                options={[
+                  { value: "eingang", label: "Neueste zuerst" },
+                  { value: "abm", label: "ABM-Nr." },
+                  { value: "bauherr", label: "Bauherr A–Z" },
+                  { value: "fortschritt", label: "Fortschritt" },
+                ]}
+              />
+              <div className="filters-checks">
+                <Checkbox label="Nach Eingangsmonat gruppieren" checked={filters.group} onChange={(e) => setFilters({ group: e.target.checked })} />
+                {tab === "alle" && <Checkbox label="Stornierte einblenden" checked={filters.storno} onChange={(e) => setFilters({ storno: e.target.checked })} />}
+              </div>
+            </div>
+          )}
           <div className="filters-row2">
-            <Checkbox label="Nach Eingangsmonat gruppieren" checked={filters.group} onChange={(e) => setFilters({ group: e.target.checked })} />
-            {tab === "alle" && <Checkbox label="Stornierte einblenden" checked={filters.storno} onChange={(e) => setFilters({ storno: e.target.checked })} />}
             {filtered && (
               <Button variant="ghost" size="sm" icon={<X size={14} />} onClick={() => setParams(filtersToParams({ ...DEFAULT_FILTERS, sort: filters.sort, group: filters.group, storno: filters.storno }), { replace: true })}>
                 Filter zurücksetzen
