@@ -15,6 +15,7 @@ import { Login, NoRole, SessionError, SessionLoading } from "./pages/Login";
 import { Pipeline } from "./pages/Pipeline";
 import { Placeholder } from "./pages/Placeholder";
 import { Projects } from "./pages/Projects";
+import { Reports } from "./pages/Reports";
 import { ProjectDetail } from "./pages/project/ProjectDetail";
 import { Tasks } from "./pages/Tasks";
 
@@ -58,6 +59,7 @@ export function App() {
                 <Route path="aufgaben" element={<Tasks />} />
                 <Route path="dokumente" element={<Documents />} />
                 <Route path="rechnungen" element={<Invoices />} />
+                <Route path="auswertungen" element={<Reports />} />
                 <Route path="agent" element={<AgentDashboard />} />
                 <Route path="agent/pruefung" element={<ReviewList />} />
                 <Route path="agent/postfaecher" element={<Mailboxes />} />

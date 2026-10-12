@@ -1,11 +1,11 @@
 // Kennzahlen und Diagrammdaten fürs Dashboard. Reine Funktionen, getestet in dashboard.test.ts.
 
 import type { Alert } from "./alerts";
-import { formatMonth, formatMonthShort } from "./format";
+import { daysBetween, formatMonth, formatMonthShort } from "./format";
 import { allPhases, phaseOf } from "./projects";
 import type { StepDefinition } from "./steps";
 import { alertTaskKey } from "./taskSync";
-import type { InboxAttachment, Project, Task } from "./types";
+import type { Project, Task } from "./types";
 
 export interface MonthCount {
   month: string; // YYYY-MM-01
@@ -45,15 +45,12 @@ export function projectsByPhase(projects: Project[], steps: StepDefinition[]): {
 }
 
 // ---------------------------------------------------------------------------
-// "Heute zu tun": Aufgaben, Warnungen und Prüfungen des Agenten in einer Liste
+// "Heute zu tun": Aufgaben und Warnungen in einer Liste, nach Dringlichkeit
 // ---------------------------------------------------------------------------
 
-export type TodoGroupKey = "ueberfaellig" | "heute" | "rechnungen" | "fristen" | "pruefung";
+export type TodoGroupKey = "ueberfaellig" | "heute" | "hinweise";
 
-export type TodoItem =
-  | { type: "task"; id: string; task: Task }
-  | { type: "alert"; id: string; alert: Alert }
-  | { type: "review"; id: string; attachment: InboxAttachment };
+export type TodoItem = { type: "task"; id: string; task: Task } | { type: "alert"; id: string; alert: Alert };
 
 export interface TodoGroup {
   key: TodoGroupKey;
@@ -61,37 +58,46 @@ export interface TodoGroup {
   items: TodoItem[];
 }
 
-/** Zeilen je Gruppe, bevor "Alle anzeigen" nötig wird. */
-export const TODO_GROUP_LIMIT = 3;
+/** Zeilen insgesamt, bevor "Alle anzeigen" nötig wird. */
+export const TODO_LIMIT = 5;
 
-const TODO_LABEL: Record<TodoGroupKey, string> = {
-  ueberfaellig: "Überfällig",
-  heute: "Heute fällig",
-  rechnungen: "Rechnungen versenden",
-  fristen: "Verträge und Genehmigungen",
-  pruefung: "Zur Prüfung",
-};
+const TODO_LABEL: Record<TodoGroupKey, string> = { ueberfaellig: "Überfällig", heute: "Heute fällig", hinweise: "Hinweise" };
 
 /**
- * Gruppen für "Heute zu tun" in fester Reihenfolge, leere Gruppen entfallen (höchstens fünf).
+ * Gruppen für "Heute zu tun", dringendste zuerst; leere Gruppen entfallen.
+ *  * Überfällig: überfällige Aufgaben und dringende Warnungen, am längsten überfällig zuerst
+ *  * Heute fällig: Aufgaben mit Fälligkeit heute
+ *  * Hinweise: übrige Warnungen (Hinweis, Info)
  * `alerts` sind die sichtbaren Warnungen. Eine Aufgabe, die aus einer sichtbaren Warnung entstanden ist,
  * erscheint nicht noch einmal: die Warnung steht für beide und trägt die Direktaktion.
  */
-export function todayGroups(input: { tasks: Task[]; alerts: Alert[]; attachments: InboxAttachment[]; today: string }): TodoGroup[] {
-  const { tasks, alerts, attachments, today } = input;
+export function todayGroups(input: { tasks: Task[]; alerts: Alert[]; today: string }): TodoGroup[] {
+  const { tasks, alerts, today } = input;
   const covered = new Set(alerts.map(alertTaskKey));
-  const open = tasks
-    .filter((t) => t.status === "offen" && t.dueOn && t.dueOn <= today && !(t.sourceKey && covered.has(t.sourceKey)))
-    .sort((a, b) => a.dueOn!.localeCompare(b.dueOn!) || a.title.localeCompare(b.title, "de"));
+  const open = tasks.filter((t) => t.status === "offen" && t.dueOn && t.dueOn <= today && !(t.sourceKey && covered.has(t.sourceKey)));
   const task = (t: Task): TodoItem => ({ type: "task", id: `task:${t.id}`, task: t });
   const alert = (a: Alert): TodoItem => ({ type: "alert", id: a.id, alert: a });
+  const age = (it: TodoItem) => (it.type === "alert" ? it.alert.days : daysBetween(it.task.dueOn!, today));
+  const title = (it: TodoItem) => (it.type === "alert" ? it.alert.title : it.task.title);
 
   const groups: Record<TodoGroupKey, TodoItem[]> = {
-    ueberfaellig: open.filter((t) => t.dueOn! < today).map(task),
-    heute: open.filter((t) => t.dueOn === today).map(task),
-    rechnungen: alerts.filter((a) => a.kind === "invoice_unsent").map(alert),
-    fristen: alerts.filter((a) => a.kind !== "invoice_unsent").map(alert),
-    pruefung: attachments.filter((a) => a.status === "pruefen").map((a) => ({ type: "review", id: `review:${a.id}`, attachment: a })),
+    ueberfaellig: [...open.filter((t) => t.dueOn! < today).map(task), ...alerts.filter((a) => a.severity === "dringend").map(alert)].sort(
+      (a, b) => age(b) - age(a) || title(a).localeCompare(title(b), "de"),
+    ),
+    heute: open.filter((t) => t.dueOn === today).sort((a, b) => a.title.localeCompare(b.title, "de")).map(task),
+    hinweise: alerts.filter((a) => a.severity !== "dringend").map(alert),
   };
   return (Object.keys(TODO_LABEL) as TodoGroupKey[]).map((key) => ({ key, label: TODO_LABEL[key], items: groups[key] })).filter((g) => g.items.length > 0);
+}
+
+/** Kürzt die Gruppen auf insgesamt `limit` Zeilen (von oben); Gruppen ohne Zeile entfallen. */
+export function limitGroups(groups: TodoGroup[], limit: number): TodoGroup[] {
+  let left = limit;
+  return groups
+    .map((g) => {
+      const items = g.items.slice(0, Math.max(0, left));
+      left -= items.length;
+      return { ...g, items };
+    })
+    .filter((g) => g.items.length > 0);
 }

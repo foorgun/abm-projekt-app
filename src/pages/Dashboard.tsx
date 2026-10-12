@@ -1,53 +1,34 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Check, ChevronDown, ChevronRight, Clock } from "lucide-react";
-import { BarChart } from "../components/charts/BarChart";
-import { InvoiceVolumeCard } from "../components/InvoiceVolumeCard";
+import { AlertTriangle, ArrowRight, Bot, CheckCircle2, ChevronRight, CircleAlert, FolderOpen, Info, ListTodo, Receipt, ShieldAlert } from "lucide-react";
+import { HBarChart } from "../components/charts/HBarChart";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
-import { Button, Card, CardBody, CardHead, DataTable, EmptyState, ErrorState, Pill, Select, Skeleton, type Column, type Tone } from "../components/ui";
+import { Button, buttonClass, Card, CardBody, CardHead, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Skeleton, TableSkeleton, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
-import { SEVERITY_LABEL } from "../lib/alertUi";
-import { newProjectsPerMonth, projectsByPhase, todayGroups, TODO_GROUP_LIMIT, type TodoGroup, type TodoItem } from "../lib/dashboard";
-import { formatDue, formatLongDate, formatMoney, formatRelative } from "../lib/format";
+import { unsentInvoiceTotal } from "../lib/alerts";
+import { SEVERITY_LABEL, SEVERITY_TONE } from "../lib/alertUi";
+import { limitGroups, newProjectsPerMonth, projectsByPhase, todayGroups, TODO_LIMIT, type TodoItem } from "../lib/dashboard";
+import { formatDate, formatLongDate, formatMoney, formatRelative } from "../lib/format";
 import { greeting } from "../lib/greeting";
-import { invoiceKpis } from "../lib/invoiceStats";
 import { projectTitle } from "../lib/projects";
 import { firstName, useSession } from "../lib/session";
 import { useData } from "../lib/store";
-import type { Activity, ActivityKind, Dataset, Project, Task } from "../lib/types";
+import type { Activity, Project, Task, TeamMember } from "../lib/types";
 
-const KIND: Record<ActivityKind, { label: string; tone: Tone }> = {
-  schritt: { label: "Schritt", tone: "ok" },
-  datei: { label: "Datei", tone: "accent" },
-  agent: { label: "Agent", tone: "info" },
-  rechnung: { label: "Rechnung", tone: "warn" },
-  aufgabe: { label: "Aufgabe", tone: "neutral" },
-  projekt: { label: "Projekt", tone: "outline" },
-};
-
-type ActivityFilter = "alle" | ActivityKind;
-
-const MORE_KEY = "abm.dashboard.mehr";
-
-function readMoreOpen(): boolean {
-  try {
-    return localStorage.getItem(MORE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
+const ACTIVITY_LIMIT = 5;
+const ALERT_ICON = { dringend: AlertTriangle, hinweis: CircleAlert, info: Info };
 
 /**
- * Dashboard, reduziert: "Heute zu tun", Projekte nach Phase und Rechnungen.
- * Diagramme und Aktivitäten liegen eingeklappt unter "Mehr".
+ * Dashboard: vier Kennzahlen, "Heute zu tun" (höchstens fünf Zeilen), Projekte nach Phase und die letzten Aktivitäten.
+ * Die übrigen Diagramme und die volle Aktivitätenliste stehen unter "Mehr Auswertungen" (/auswertungen).
  */
 export function Dashboard() {
   const { user } = useSession();
-  const { data, loading, error, reload, alerts, allAlerts, today, mutate } = useData();
+  const { data, loading, error, reload, alerts, allAlerts, today, dueTaskCount, reviewCount, mutate } = useData();
+  const navigate = useNavigate();
   const toast = useToast();
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
-  const [moreOpen, setMoreOpen] = useState(readMoreOpen);
+  const [showAll, setShowAll] = useState(false);
   const staff = user.role !== "freiberufler";
 
   const projects = useMemo(() => new Map((data?.projects ?? []).map((p) => [p.id, p])), [data]);
@@ -67,12 +48,22 @@ export function Dashboard() {
 
   if (loading || !data) return <DashboardSkeleton head={head} />;
 
-  const activeCount = data.projects.filter((p) => p.status === "aktiv").length;
+  // ---------------------------------------------------------------- Kennzahlen
+  const active = data.projects.filter((p) => p.status === "aktiv");
+  const months = newProjectsPerMonth(data.projects, today);
+  const thisMonth = months[months.length - 1].count;
+  const lastMonth = months[months.length - 2].count;
+  const openTasks = data.tasks.filter((t) => t.status === "offen");
+  const overdue = openTasks.filter((t) => t.dueOn && t.dueOn < today).length;
+  // Geldsumme aus allen Warnungen: eine erledigte Aufgabe soll offenes Geld nicht unsichtbar machen
+  const unsentAlerts = allAlerts.filter((a) => a.kind === "invoice_unsent");
+  const unsentSum = unsentInvoiceTotal(allAlerts, data);
   const phases = projectsByPhase(data.projects, data.stepDefinitions);
-  // Geldsummen aus allen Warnungen: eine erledigte Aufgabe soll offenes Geld nicht unsichtbar machen
-  const money = invoiceKpis(data.invoices, allAlerts, today);
-  const groups = todayGroups({ tasks: data.tasks, alerts, attachments: staff ? data.inboxAttachments : [], today });
+
+  // ---------------------------------------------------------------- Heute zu tun
+  const groups = todayGroups({ tasks: data.tasks, alerts, today });
   const todoCount = groups.reduce((n, g) => n + g.items.length, 0);
+  const shownGroups = showAll ? groups : limitGroups(groups, TODO_LIMIT);
 
   async function markSent(a: Alert) {
     const res = await mutate((r) => r.markInvoiceSent(a.invoiceId!, today));
@@ -84,201 +75,7 @@ export function Dashboard() {
     toast(res.ok ? "Aufgabe erledigt" : res.error, res.ok ? "ok" : "danger");
   }
 
-  function toggleMore() {
-    const next = !moreOpen;
-    setMoreOpen(next);
-    try {
-      localStorage.setItem(MORE_KEY, next ? "1" : "0");
-    } catch {
-      // ohne Speicher bleibt der Bereich beim nächsten Besuch eingeklappt
-    }
-  }
-
-  return (
-    <>
-      {head}
-      <div className="dash">
-        <section className="dash-section" aria-labelledby="dash-phasen">
-          <h2 className="dash-label" id="dash-phasen">
-            Projekte nach Phase
-          </h2>
-          <div className="phase-strip">
-            <Link to="/projekte/aktiv" className="phase-stat phase-stat-total">
-              <span className="phase-stat-value">{activeCount}</span>
-              <span className="phase-stat-label">aktiv</span>
-            </Link>
-            {phases.map((ph) => (
-              <Link key={ph.key} to={`/projekte/aktiv?phase=${encodeURIComponent(ph.key)}`} className="phase-stat" title={`${ph.value} ${ph.value === 1 ? "Projekt" : "Projekte"} in Phase ${ph.label}`}>
-                <span className="phase-stat-value">{ph.value}</span>
-                <span className="phase-stat-label">{ph.label}</span>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        {staff && (
-          <section className="dash-section" aria-labelledby="dash-rechnungen">
-            <h2 className="dash-label" id="dash-rechnungen">
-              Rechnungen
-            </h2>
-            <div className="money-row">
-              <Link to="/rechnungen?reiter=nicht-versendet" className="money-stat" data-alert={money.unsentCount > 0}>
-                <span className="money-stat-label">Nicht versendet</span>
-                <span className="money-stat-value">{formatMoney(money.unsentCents)}</span>
-                <span className="money-stat-sub">{money.unsentCount === 1 ? "1 fällige Rechnung" : `${money.unsentCount} fällige Rechnungen`}</span>
-              </Link>
-              <Link to="/rechnungen?reiter=versendet" className="money-stat">
-                <span className="money-stat-label">Offen</span>
-                <span className="money-stat-value">{formatMoney(money.sentOpenCents)}</span>
-                <span className="money-stat-sub">{money.sentOpenCount} versendet, noch nicht bezahlt</span>
-              </Link>
-            </div>
-          </section>
-        )}
-
-        <section className="dash-section" aria-labelledby="dash-todo">
-          <h2 className="dash-label" id="dash-todo">
-            Heute zu tun{todoCount > 0 && <span className="dash-label-count">{todoCount}</span>}
-          </h2>
-          {groups.length ? (
-            groups.map((g) => (
-              <TodoGroupView
-                key={g.key}
-                group={g}
-                data={data}
-                projects={projects}
-                today={today}
-                showAll={expanded.has(g.key)}
-                onToggleAll={() => setExpanded((s) => new Set(s.has(g.key) ? [...s].filter((k) => k !== g.key) : [...s, g.key]))}
-                onMarkSent={staff ? markSent : undefined}
-                onComplete={staff ? completeTask : undefined}
-              />
-            ))
-          ) : (
-            <p className="dash-calm">
-              <Check size={16} aria-hidden /> Alles erledigt. Für heute steht nichts an.
-            </p>
-          )}
-        </section>
-
-        <section className="dash-section dash-more">
-          <button type="button" className="dash-more-toggle" aria-expanded={moreOpen} aria-controls="dash-mehr" onClick={toggleMore}>
-            {moreOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />}
-            Mehr
-            <span className="dash-more-hint">{staff ? "Neue Projekte, Rechnungsvolumen, letzte Aktivitäten" : "Neue Projekte pro Monat"}</span>
-          </button>
-          <div id="dash-mehr" hidden={!moreOpen}>
-            {moreOpen && <DashboardMore data={data} projects={projects} today={today} staff={staff} />}
-          </div>
-        </section>
-      </div>
-    </>
-  );
-}
-
-const SEVERITY_DOT = { dringend: "danger", hinweis: "warn", info: "info" } as const;
-
-function TodoGroupView({
-  group,
-  data,
-  projects,
-  today,
-  showAll,
-  onToggleAll,
-  onMarkSent,
-  onComplete,
-}: {
-  group: TodoGroup;
-  data: Dataset;
-  projects: Map<string, Project>;
-  today: string;
-  showAll: boolean;
-  onToggleAll: () => void;
-  onMarkSent?: (a: Alert) => void;
-  onComplete?: (t: Task) => void;
-}) {
-  const shown = showAll ? group.items : group.items.slice(0, TODO_GROUP_LIMIT);
-  const row = (it: TodoItem) => {
-    if (it.type === "task") {
-      const t = it.task;
-      const p = t.projectId ? projects.get(t.projectId) : null;
-      const who = data.team.find((m) => m.id === t.assigneeId);
-      return (
-        <li key={it.id} className="todo-row">
-          <button type="button" className="task-check" role="checkbox" aria-checked={false} aria-label={`${t.title}: erledigt`} disabled={!onComplete} onClick={() => onComplete?.(t)} />
-          <span className="todo-main">
-            <span className="todo-title">{t.title}</span>
-            <span className="todo-sub">
-              {p ? <Link to={`/projekte/${p.id}`}>{projectTitle(p)}</Link> : "Ohne Projekt"}
-              {who && ` · ${who.code ?? who.name}`}
-            </span>
-          </span>
-          <span className="todo-when" data-overdue={t.dueOn! < today}>
-            {formatDue(t.dueOn!, today)}
-          </span>
-        </li>
-      );
-    }
-    if (it.type === "alert") {
-      const a = it.alert;
-      const p = projects.get(a.projectId);
-      return (
-        <li key={it.id} className="todo-row">
-          <span className="todo-dot" data-tone={SEVERITY_DOT[a.severity]} aria-hidden />
-          <Link to={`/projekte/${a.projectId}`} className="todo-main">
-            <span className="todo-title">
-              <span className="sr-only">{SEVERITY_LABEL[a.severity]}: </span>
-              {/* die Gruppe heißt schon "Rechnungen versenden" */}
-              {a.title.replace("Rechnung nicht versendet: ", "")}
-            </span>
-            <span className="todo-sub">
-              {p ? projectTitle(p) : "Projekt"} · {a.detail}
-            </span>
-          </Link>
-          {onMarkSent && a.kind === "invoice_unsent" && (
-            <Button size="sm" onClick={() => onMarkSent(a)}>
-              Als versendet markieren
-            </Button>
-          )}
-        </li>
-      );
-    }
-    const att = it.attachment;
-    const mail = data.inboxItems.find((m) => m.id === att.itemId);
-    return (
-      <li key={it.id} className="todo-row">
-        <span className="todo-dot" data-tone="info" aria-hidden />
-        <Link to="/agent/pruefung" className="todo-main">
-          <span className="todo-title">{att.fileName}</span>
-          <span className="todo-sub">{mail ? `${mail.fromName} · ${mail.subject}` : "Vom Agenten nicht sicher zugeordnet"}</span>
-        </Link>
-      </li>
-    );
-  };
-  return (
-    <section className="todo-group" aria-label={group.label}>
-      <h3 className="todo-group-head" data-group={group.key}>
-        {group.label} <span className="muted">· {group.items.length}</span>
-      </h3>
-      <ul className="todo-list">{shown.map(row)}</ul>
-      {group.items.length > TODO_GROUP_LIMIT && (
-        <button type="button" className="todo-all" aria-expanded={showAll} onClick={onToggleAll}>
-          {showAll ? "Weniger anzeigen" : `Alle ${group.items.length} anzeigen`}
-        </button>
-      )}
-    </section>
-  );
-}
-
-/** Eingeklappter Bereich "Mehr": Diagramme und Aktivitäten, unverändert in der Funktion. */
-function DashboardMore({ data, projects, today, staff }: { data: Dataset; projects: Map<string, Project>; today: string; staff: boolean }) {
-  const navigate = useNavigate();
-  const [filter, setFilter] = useState<ActivityFilter>("alle");
-  const [activityLimit, setActivityLimit] = useState(8);
-  const months = newProjectsPerMonth(data.projects, today);
-
-  // ---------------------------------------------------------------- Aktivitäten
-  const activities = data.activities.filter((a) => filter === "alle" || a.kind === filter);
+  // ---------------------------------------------------------------- Aktivitäten (kurz)
   const columns: Column<Activity>[] = [
     {
       key: "project",
@@ -288,24 +85,16 @@ function DashboardMore({ data, projects, today, staff }: { data: Dataset; projec
         const p = a.projectId ? projects.get(a.projectId) : null;
         return p ? projectTitle(p) : "–";
       },
-      sortValue: (a) => (a.projectId ? projects.get(a.projectId)?.bauherrLabel ?? "" : ""),
     },
     {
       key: "event",
       header: "Ereignis",
       render: (a) => (
-        <span className="event-text" title={a.text}>
+        <span className="event-text" title={`${a.text} (${a.actor})`}>
           {a.text}
         </span>
       ),
     },
-    {
-      key: "kind",
-      header: "Art",
-      render: (a) => <Pill tone={KIND[a.kind].tone}>{KIND[a.kind].label}</Pill>,
-      sortValue: (a) => KIND[a.kind].label,
-    },
-    { key: "who", header: "Wer", render: (a) => a.actor, sortValue: (a) => a.actor },
     {
       key: "at",
       header: "Zeit",
@@ -315,73 +104,208 @@ function DashboardMore({ data, projects, today, staff }: { data: Dataset; projec
           {formatRelative(a.at)}
         </time>
       ),
-      sortValue: (a) => a.at,
     },
   ];
 
-  return (
-    <div className="dash-grid">
+  const phaseCard = (
       <Card>
-        <CardHead title="Neue Projekte pro Monat" sub="Eingang der letzten 12 Monate" />
+        <CardHead title="Projekte nach Phase" sub="Aktive Projekte, letzter erledigter Schritt" />
         <CardBody>
-          <BarChart
-            caption="Neue Projekte pro Monat"
-            series={[{ name: "Neue Projekte" }]}
-            height={280}
-            highlight={months.length - 1}
-            showValues
-            data={months.map((m) => ({ label: m.label, title: m.title, values: [m.count] }))}
-          />
+          {phases.length ? (
+            <HBarChart caption="Projekte nach Phase" data={phases} rowHeight={22} />
+          ) : (
+            <EmptyState title="Keine aktiven Projekte" />
+          )}
         </CardBody>
       </Card>
-      {/* Rechnungsvolumen und Aktivitäten nur für Mitarbeiter (Freiberufler sehen keine Rechnungen) */}
-      {staff && <InvoiceVolumeCard invoices={data.invoices} today={today} height={220} />}
+  );
 
-      {staff && (
-        <Card>
-          <CardHead
-            title="Letzte Aktivitäten"
-            actions={
-              <Select
-                aria-label="Aktivitäten filtern"
-                value={filter}
-                onChange={(e) => setFilter(e.target.value as ActivityFilter)}
-                options={[
-                  { value: "alle", label: "Alle Aktivitäten" },
-                  { value: "schritt", label: "Schritt erledigt" },
-                  { value: "datei", label: "Datei abgelegt" },
-                  { value: "agent", label: "Vom Agenten abgelegt" },
-                  { value: "rechnung", label: "Rechnung versendet" },
-                  { value: "aufgabe", label: "Aufgaben" },
-                ]}
-              />
-            }
+  return (
+    <>
+      {head}
+      <div className="dash-grid">
+        <div className="grid-kpi">
+          <KpiCard
+            icon={<FolderOpen size={16} />}
+            label="Aktive Projekte"
+            value={active.length}
+            foot={`${thisMonth} neu im ${months[months.length - 1].title.split(" ")[0]}, ${lastMonth} im Vormonat`}
+            info="Projekte mit Status aktiv."
+            to="/projekte/aktiv"
           />
+          {staff ? (
+            <>
+              <KpiCard
+                icon={<ListTodo size={16} />}
+                tone="warn"
+                label="Offene Aufgaben"
+                value={openTasks.length}
+                foot={overdue ? `davon ${overdue} überfällig` : `${dueTaskCount} heute fällig`}
+                to="/aufgaben"
+              />
+              <KpiCard
+                icon={<Receipt size={16} />}
+                tone="danger"
+                label="Nicht versendet"
+                value={formatMoney(unsentSum)}
+                valueTone={unsentSum > 0 ? "danger" : undefined}
+                foot={`${unsentAlerts.length} ${unsentAlerts.length === 1 ? "fällige Rechnung" : "fällige Rechnungen"}`}
+                info="Fällige Rechnungen, die noch nicht versendet wurden. „Offen“ heißt in der App: versendet, aber noch nicht bezahlt."
+                to="/rechnungen?reiter=nicht-versendet"
+              />
+              <KpiCard
+                icon={<Bot size={16} />}
+                tone="info"
+                label="Zur Prüfung"
+                value={reviewCount}
+                foot="Posteingangs-Agent"
+                info="Anhänge, die der Agent nicht sicher zuordnen konnte."
+                to="/agent/pruefung"
+              />
+            </>
+          ) : (
+            <KpiCard icon={<ShieldAlert size={16} />} tone="warn" label="Warnungen" value={alerts.length} foot="in deinen Projekten" />
+          )}
+        </div>
+
+        <Card>
+          <CardHead title="Heute zu tun" sub={todoCount ? `${todoCount} ${todoCount === 1 ? "Eintrag" : "Einträge"}, nach Dringlichkeit sortiert` : undefined} />
           <div className="card-body flush">
-            {activities.length ? (
+            {todoCount ? (
               <>
-                <DataTable
-                  label="Letzte Aktivitäten"
-                  rows={activities.slice(0, activityLimit)}
-                  columns={columns}
-                  rowKey={(a) => a.id}
-                  onRowClick={(a) => a.projectId && navigate(`/projekte/${a.projectId}`)}
-                />
-                {activities.length > activityLimit && (
+                {shownGroups.map((g) => (
+                  <section key={g.key} aria-label={g.label}>
+                    <h3 className="todo-group" data-group={g.key}>
+                      {g.label} <span className="muted">· {groups.find((x) => x.key === g.key)!.items.length}</span>
+                    </h3>
+                    <ul className="list alert-list">
+                      {g.items.map((it) => (
+                        <TodoRow key={it.id} item={it} projects={projects} team={data.team} today={today} onMarkSent={staff ? markSent : undefined} onComplete={staff ? completeTask : undefined} />
+                      ))}
+                    </ul>
+                  </section>
+                ))}
+                {todoCount > TODO_LIMIT && (
                   <div className="card-foot">
-                    <Button variant="ghost" size="sm" icon={<Clock size={14} />} onClick={() => setActivityLimit((n) => n + 12)}>
-                      Ältere anzeigen
+                    <Button variant="ghost" size="sm" aria-expanded={showAll} onClick={() => setShowAll((v) => !v)}>
+                      {showAll ? "Weniger anzeigen" : `Alle ${todoCount} anzeigen`}
                     </Button>
                   </div>
                 )}
               </>
             ) : (
-              <EmptyState title="Keine Aktivitäten" text="Für diesen Filter gibt es noch keine Einträge." action={<Button size="sm" onClick={() => setFilter("alle")}>Filter zurücksetzen</Button>} />
+              <EmptyState icon={<CheckCircle2 size={18} />} title="Alles erledigt" text="Für heute steht nichts an." />
             )}
           </div>
         </Card>
+
+        {staff ? (
+          <div className="grid-2">
+            {phaseCard}
+            <Card>
+              <CardHead title="Letzte Aktivitäten" />
+              <div className="card-body flush">
+                {data.activities.length ? (
+                  <DataTable
+                    label="Letzte Aktivitäten"
+                    rows={data.activities.slice(0, ACTIVITY_LIMIT)}
+                    columns={columns}
+                    rowKey={(a) => a.id}
+                    onRowClick={(a) => a.projectId && navigate(`/projekte/${a.projectId}`)}
+                  />
+                ) : (
+                  <EmptyState title="Keine Aktivitäten" />
+                )}
+              </div>
+            </Card>
+          </div>
+        ) : (
+          phaseCard
+        )}
+
+        <div className="dash-more-link">
+          <Link to="/auswertungen" className={buttonClass("ghost")}>
+            Mehr Auswertungen <ArrowRight size={15} aria-hidden />
+          </Link>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Eine Zeile in "Heute zu tun": Aufgabe zum Abhaken oder Warnung mit Direktaktion, im Aufbau der Warnungsliste. */
+function TodoRow({
+  item,
+  projects,
+  team,
+  today,
+  onMarkSent,
+  onComplete,
+}: {
+  item: TodoItem;
+  projects: Map<string, Project>;
+  team: TeamMember[];
+  today: string;
+  onMarkSent?: (a: Alert) => void;
+  onComplete?: (t: Task) => void;
+}) {
+  if (item.type === "alert") {
+    const a = item.alert;
+    const Icon = ALERT_ICON[a.severity];
+    const p = projects.get(a.projectId);
+    return (
+      <li className="alert-row" data-severity={a.severity}>
+        <Link to={`/projekte/${a.projectId}`} className="list-item alert-link">
+          <span className="alert-icon" data-tone={SEVERITY_TONE[a.severity]} aria-hidden>
+            <Icon size={16} />
+          </span>
+          <span className="list-item-main">
+            <span className="list-item-title">{a.title}</span>
+            <span className="list-item-sub">
+              {p ? projectTitle(p) : "Projekt"} · {a.detail}
+            </span>
+          </span>
+          <Pill tone={SEVERITY_TONE[a.severity]}>{SEVERITY_LABEL[a.severity]}</Pill>
+          <ChevronRight size={16} className="alert-chevron" aria-hidden />
+        </Link>
+        <span className="alert-action-slot">
+          {onMarkSent && a.kind === "invoice_unsent" && (
+            <Button size="sm" onClick={() => onMarkSent(a)}>
+              Als versendet markieren
+            </Button>
+          )}
+        </span>
+      </li>
+    );
+  }
+  const t = item.task;
+  const p = t.projectId ? projects.get(t.projectId) : null;
+  const who = team.find((m) => m.id === t.assigneeId);
+  const late = t.dueOn! < today;
+  const main = (
+    <>
+      <span className="list-item-main">
+        <span className="list-item-title">{t.title}</span>
+        <span className="list-item-sub">
+          {[p ? projectTitle(p) : "Ohne Projekt", who ? (who.code ?? who.name) : null, late ? `fällig seit ${formatDate(t.dueOn!)}` : null].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+      <Pill tone={late ? "danger" : "warn"}>{late ? "Überfällig" : "Heute"}</Pill>
+      {p && <ChevronRight size={16} className="alert-chevron" aria-hidden />}
+    </>
+  );
+  return (
+    <li className="alert-row todo-task" data-severity={late ? "dringend" : "hinweis"}>
+      <button type="button" className="task-check" role="checkbox" aria-checked={false} aria-label={`${t.title}: erledigt`} disabled={!onComplete} onClick={() => onComplete?.(t)} />
+      {p ? (
+        <Link to={`/projekte/${p.id}`} className="list-item alert-link">
+          {main}
+        </Link>
+      ) : (
+        <span className="list-item alert-link">{main}</span>
       )}
-    </div>
+      <span className="alert-action-slot" />
+    </li>
   );
 }
 
@@ -389,21 +313,40 @@ function DashboardSkeleton({ head }: { head: React.ReactNode }) {
   return (
     <>
       {head}
-      <div className="dash" aria-busy="true">
-        <div className="stack">
-          <Skeleton w="20%" h={12} />
-          <Skeleton h={52} />
+      <div className="dash-grid" aria-busy="true">
+        <div className="grid-kpi">
+          <KpiSkeleton />
+          <KpiSkeleton />
+          <KpiSkeleton />
+          <KpiSkeleton />
         </div>
-        <div className="stack">
-          <Skeleton w="20%" h={12} />
-          <Skeleton h={52} />
+        <Card>
+          <CardBody>
+            <div className="stack">
+              <Skeleton w="25%" h={14} />
+              <Skeleton h={44} />
+              <Skeleton h={44} />
+            </div>
+          </CardBody>
+        </Card>
+        <div className="grid-2">
+          {[0, 1].map((i) => (
+            <Card key={i}>
+              <CardBody>
+                <div className="stack">
+                  <Skeleton w="40%" h={14} />
+                  <Skeleton h={240} />
+                </div>
+              </CardBody>
+            </Card>
+          ))}
         </div>
-        <div className="stack">
-          <Skeleton w="20%" h={12} />
-          <Skeleton h={44} />
-          <Skeleton h={44} />
-          <Skeleton h={44} />
-        </div>
+        <Card>
+          <CardBody>
+            <Skeleton w="30%" h={14} />
+          </CardBody>
+          <TableSkeleton rows={5} cols={4} />
+        </Card>
       </div>
     </>
   );

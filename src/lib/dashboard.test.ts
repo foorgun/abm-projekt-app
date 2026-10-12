@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDataset } from "../data/demoData";
 import { computeAlerts } from "./alerts";
-import { newProjectsPerMonth, projectsByPhase, todayGroups } from "./dashboard";
+import { limitGroups, newProjectsPerMonth, projectsByPhase, todayGroups, TODO_LIMIT } from "./dashboard";
 import { alertTaskKey } from "./taskSync";
-import type { InboxAttachment, Task } from "./types";
+import type { Task } from "./types";
 
 const TODAY = "2026-10-09";
 const db = buildDemoDataset(TODAY);
@@ -44,7 +44,7 @@ describe("Heute zu tun", () => {
     ...patch,
   });
   const alerts = computeAlerts(db, TODAY);
-  const none = { tasks: [], alerts: [], attachments: [], today: TODAY };
+  const none = { tasks: [], alerts: [], today: TODAY };
 
   it("ist leer, wenn nichts ansteht", () => {
     expect(todayGroups(none)).toEqual([]);
@@ -68,12 +68,25 @@ describe("Heute zu tun", () => {
     expect(todayGroups({ ...none, tasks: [fromAlert] })[0].items.map((i) => i.id)).toEqual(["task:w"]);
   });
 
-  it("verteilt Warnungen auf Rechnungen und Fristen, höchstens fünf Gruppen in fester Reihenfolge", () => {
-    const attachments = [{ id: "x", status: "pruefen" }, { id: "y", status: "abgelegt" }] as InboxAttachment[];
-    const g = todayGroups({ alerts, attachments, today: TODAY, tasks: [task({ id: "a" }), task({ id: "b", dueOn: "2026-10-01" })] });
-    expect(g.map((x) => x.key)).toEqual(["ueberfaellig", "heute", "rechnungen", "fristen", "pruefung"]);
-    expect(g[2].items.length + g[3].items.length).toBe(alerts.length);
-    expect(g[2].items.every((i) => i.type === "alert" && i.alert.kind === "invoice_unsent")).toBe(true);
-    expect(g[4].items.map((i) => i.id)).toEqual(["review:x"]);
+  it("ordnet nach Dringlichkeit: dringende Warnungen zu Überfällig, der Rest zu Hinweise", () => {
+    const urgent = alerts.filter((a) => a.severity === "dringend");
+    expect(urgent.length).toBeGreaterThan(0);
+    expect(alerts.length).toBeGreaterThan(urgent.length);
+    const g = todayGroups({ alerts, today: TODAY, tasks: [task({ id: "a" }), task({ id: "b", dueOn: "2026-10-01" })] });
+    expect(g.map((x) => x.key)).toEqual(["ueberfaellig", "heute", "hinweise"]);
+    expect(g[0].items).toHaveLength(urgent.length + 1);
+    expect(g[2].items).toHaveLength(alerts.length - urgent.length);
+    // am längsten überfällig zuerst, Aufgaben und Warnungen gemischt
+    const ages = g[0].items.map((i) => (i.type === "alert" ? i.alert.days : 8));
+    expect(ages).toEqual([...ages].sort((x, y) => y - x));
+  });
+
+  it("kürzt auf fünf Zeilen über alle Gruppen", () => {
+    const tasks = [1, 2, 3, 4].map((n) => task({ id: `o${n}`, dueOn: `2026-10-0${n}` })).concat([1, 2, 3].map((n) => task({ id: `h${n}`, title: `Heute ${n}` })));
+    const all = todayGroups({ ...none, tasks });
+    const cut = limitGroups(all, TODO_LIMIT);
+    expect(cut.map((g) => [g.key, g.items.length])).toEqual([["ueberfaellig", 4], ["heute", 1]]);
+    expect(limitGroups(all, 3).map((g) => g.key)).toEqual(["ueberfaellig"]);
+    expect(limitGroups(all, 99)).toEqual(all);
   });
 });

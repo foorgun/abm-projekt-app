@@ -4,7 +4,7 @@
  * Dark ist Standard. Light-Werte sind vorbereitet ([data-theme="light"]), werden aber nicht ausgeliefert.
  *
  * Grundregel: neutrale Flächen, keine farbig getönten Flächen.
- * Teal (--accent) nur für den Primär-Button, Diagramme, aktive Zustände und den Fokusring.
+ * Teal (--accent) nur für Diagramme, aktive Zustände und den Fokusring.
  */
 :root {
   color-scheme: dark;
@@ -36,7 +36,7 @@
   --accent-text: var(--text);
   --on-accent: #06211e;
 
-  /* Helle Fläche mit dunkler Schrift: Schalter, Checkbox, Auswahl (der Primär-Button ist Teal, siehe .btn-primary) */
+  /* Primär-Button: hell mit dunkler Schrift */
   --primary-bg: #f4f4f5;
   --primary-bg-hover: #ffffff;
   --on-primary: #0a0a0b;
