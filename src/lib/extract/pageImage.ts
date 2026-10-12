@@ -48,47 +48,79 @@ function canvasFor(width: number, height: number): { canvas: HTMLCanvasElement; 
   return { canvas, ctx };
 }
 
-async function imagePages(file: Blob): Promise<DocumentPages> {
-  const bitmap = await createImageBitmap(file);
-  const size = fitInside(bitmap.width, bitmap.height, MAX_IMAGE_EDGE);
-  const { canvas, ctx } = canvasFor(size.width, size.height);
-  ctx.drawImage(bitmap, 0, 0, size.width, size.height);
-  bitmap.close();
-  return { pageCount: 1, pages: [{ page: 1, dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), ...size }] };
+/**
+ * Geöffnetes Dokument, das Seiten einzeln und erst auf Anfrage als Bild liefert (Vorschau zum Blättern).
+ * Nichts wird im Voraus gerendert und nichts gesendet: `render` erzeugt nur das Bild für die Anzeige im Browser.
+ */
+export interface PageSource {
+  pageCount: number;
+  /** Seite ab 1 als JPEG, längste Kante höchstens `maxEdge` Pixel. */
+  render(page: number, maxEdge: number): Promise<PageImage>;
+  close(): void;
 }
 
-async function pdfPageImages(file: Blob, wanted: number[]): Promise<DocumentPages> {
+async function openImage(file: Blob): Promise<PageSource> {
+  const bitmap = await createImageBitmap(file);
+  return {
+    pageCount: 1,
+    async render(_page, maxEdge) {
+      const size = fitInside(bitmap.width, bitmap.height, maxEdge);
+      const { canvas, ctx } = canvasFor(size.width, size.height);
+      ctx.drawImage(bitmap, 0, 0, size.width, size.height);
+      return { page: 1, dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), ...size };
+    },
+    close: () => bitmap.close(),
+  };
+}
+
+async function openPdf(file: Blob): Promise<PageSource> {
   const [pdfjs, worker] = await Promise.all([import("pdfjs-dist"), import("pdfjs-dist/build/pdf.worker.min.mjs?url")]);
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
   // isEvalSupported aus: die Seite erlaubt kein eval (Content-Security-Policy)
   const doc = await pdfjs.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
-  try {
-    const pages: PageImage[] = [];
-    for (const n of [...new Set(wanted)].filter((p) => p >= 1 && p <= doc.numPages)) {
+  return {
+    pageCount: doc.numPages,
+    async render(n, maxEdge) {
+      if (n < 1 || n > doc.numPages) throw new Error(`Seite ${n} gibt es nicht.`);
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
-      const size = fitInside(base.width * 2, base.height * 2, MAX_IMAGE_EDGE);
+      // nie über das Vierfache der Seitengröße hinaus (ein Scan gewinnt dadurch nichts, kostet aber Speicher)
+      const size = fitInside(base.width * 4, base.height * 4, maxEdge);
       const viewport = page.getViewport({ scale: size.width / base.width });
       const { canvas, ctx } = canvasFor(size.width, size.height);
       await page.render({ canvasContext: ctx, viewport }).promise;
-      pages.push({ page: n, dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), ...size });
-    }
-    return { pageCount: doc.numPages, pages };
-  } finally {
-    void doc.destroy();
+      page.cleanup();
+      return { page: n, dataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), ...size };
+    },
+    close: () => void doc.destroy(),
+  };
+}
+
+/** Öffnet ein PDF oder Bild zum Blättern. null, wenn es keine Vorschau gibt (DOCX) oder die Datei nicht lesbar ist. */
+export async function openPages(file: Blob, kind: "pdf" | "docx" | "bild"): Promise<PageSource | null> {
+  try {
+    if (kind === "bild") return await openImage(file);
+    if (kind === "pdf") return await openPdf(file);
+    return null;
+  } catch {
+    return null;
   }
 }
 
 /**
- * Rendert die gewünschten Seiten (ab 1). Bilder haben genau eine Seite. DOCX hat keine Vorschau.
- * Liefert null, wenn sich nichts darstellen lässt; die Prüfmaske arbeitet dann ohne Vorschau.
+ * Rendert die gewünschten Seiten (ab 1) in der Größe für die Auslesung (höchstens MAX_IMAGE_EDGE). Bilder haben genau
+ * eine Seite. DOCX hat keine Seitenbilder. Liefert null, wenn sich nichts darstellen lässt.
  */
 export async function renderPages(file: Blob & { name?: string; type: string }, kind: "pdf" | "docx" | "bild", wanted: number[] = [1]): Promise<DocumentPages | null> {
+  const source = await openPages(file, kind);
+  if (!source) return null;
   try {
-    if (kind === "bild") return await imagePages(file);
-    if (kind === "pdf") return await pdfPageImages(file, wanted);
-    return null;
+    const pages: PageImage[] = [];
+    for (const n of [...new Set(wanted)].filter((p) => p >= 1 && p <= source.pageCount)) pages.push(await source.render(n, MAX_IMAGE_EDGE));
+    return { pageCount: source.pageCount, pages };
   } catch {
     return null;
+  } finally {
+    source.close();
   }
 }

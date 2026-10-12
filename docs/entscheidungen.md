@@ -477,6 +477,11 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   in der Prüfmaske dazu; mit echten Daten rät er höchstens aus dem Dateinamen.
 - **Edge Function:** reine Logik in `logic.ts` (ohne Importe, von vitest geprüft), Aufruf in `index.ts`. Einrichtung und
   Absicherung: `docs/vertrag-extraktion.md`.
+- **Vorschau zum Blättern und Zoomen** (`src/components/DocumentPreview.tsx`, Logik in `src/lib/extract/previewState.ts`):
+  Das Dokument wird einmal geöffnet, jede Seite erst beim Anzeigen gerendert (höchstens vier bleiben im Speicher), die
+  Seiten-Übersicht erst beim Aufklappen. Zoom 100 bis 400 % per Schaltfläche, Strg/Cmd+Mausrad und Zwei-Finger-Geste,
+  Verschieben durch Ziehen, Blättern auch mit den Pfeiltasten. Die Vorschau zeigt nur an: gesendet wird weiterhin nur, was
+  die Auslesung selbst rendert (Seite 1, auf Wunsch die angezeigte Plan-Seite über "Diese Seite lesen", höchstens 1568 px).
 - **Kleines Antwort-Schema:** Die erste Fassung band die Antwort an ein Schema mit einem Unterobjekt je Feld (21 Felder, enum,
   alles Pflicht). Der KI-Dienst lehnte das ab ("The compiled grammar is too large"). Jetzt: flaches Array von Einträgen
   `{feld, wert, quelle, seite, sicherheit}`; Feldnamen und Stufen stehen in der Anweisung, geprüft wird in der Funktion

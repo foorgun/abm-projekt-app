@@ -19,7 +19,7 @@ import {
   type Vertragsart,
 } from "../lib/extract";
 import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
-import { renderPages, type DocumentPages } from "../lib/extract/pageImage";
+import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
 import { compareAbm } from "../lib/projectFilters";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
@@ -28,6 +28,7 @@ import type { NewProject } from "../lib/repo";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { ContractMeta, Project } from "../lib/types";
+import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
 import { Button, Checkbox, Dialog, Field, Input, Pill, Select, Skeleton, type Tone } from "./ui";
@@ -121,14 +122,15 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const [savedId, setSavedId] = useState<string | null>(resumed?.id ?? null);
   /** Inhalt des Dokuments: für die Vorschau und die Ablage im Projekt */
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [preview, setPreview] = useState<DocumentPages | null>(null);
+  /** Vorschau: angezeigte Seite und Seitenzahl des Dokuments (die Vorschau rendert Seiten erst beim Anzeigen) */
+  const [viewPage, setViewPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
   const [unmatched, setUnmatched] = useState<AppliedDraft["unmatched"]>({});
   const [docType, setDocType] = useState<Vertragsart>(resumed?.docType ?? "sonstiges");
   const [meta, setMeta] = useState<ContractMeta>(resumed?.form.meta ?? {});
   /** Felder, die der Mensch nach dem Vorbefüllen selbst geändert hat (gelten als geprüft) */
   const [edited, setEdited] = useState<ReadonlySet<string>>(new Set(resumed?.form.edited ?? []));
   const [showSecond, setShowSecond] = useState(false);
-  const [planPage, setPlanPage] = useState("");
   const [dropActive, setDropActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -141,8 +143,6 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
       const file = await repo.draftFile(resumed.id).catch(() => null);
       if (!alive || !file) return;
       setBlob(file);
-      const kind = KIND_OF(resumed.file.name, resumed.file.type);
-      if (kind) setPreview(await renderPages(new File([file], resumed.file.name, { type: resumed.file.type }), kind));
     })();
     return () => {
       alive = false;
@@ -184,7 +184,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     : [];
   const formState = () => ({ project: v, meta, edited: [...edited] });
   const extractorEnv = { demo: repo.mode === "demo", call: repo.extractProject ? (r: Parameters<NonNullable<typeof repo.extractProject>>[0]) => repo.extractProject!(r) : undefined };
-  const canReadPlan = Boolean(draft && draft.extractor === "edge" && draft.textquelle === "bild" && (preview?.pageCount ?? 1) > 1 && !meta.haustyp);
+  const canReadPlan = Boolean(draft && draft.extractor === "edge" && draft.textquelle === "bild" && pageCount > 1 && !meta.haustyp);
 
   async function createVia<T extends { id: string }>(fn: Parameters<typeof mutate<T>>[0]): Promise<string> {
     const res = await mutate(fn);
@@ -200,7 +200,6 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     setFileError(null);
     setStep("loading");
     const datei = { name: file.name, size: file.size, type: file.type };
-    const pages = renderPages(file, check.kind);
     let d: ProjectDraft;
     try {
       d = await extractProjectFromDocument(file, extractorEnv);
@@ -216,7 +215,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     const type = (d.felder.vertragsart.wert as Vertragsart | null) ?? "sonstiges";
     setDraft(d);
     setBlob(file);
-    setPreview(await pages);
+    setViewPage(1);
+    setPageCount(1);
     setUnmatched(applied.unmatched);
     setV(applied.form);
     setMeta(applied.meta);
@@ -235,8 +235,9 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
 
   /** Haustyp von der Plan-Seite nachlesen (zweites Bild); alle anderen Felder bleiben, wie sie sind. */
   async function readPlanPage() {
-    const page = Number(planPage);
-    if (!draft || !blob || !Number.isInteger(page) || page < 2 || page > (preview?.pageCount ?? 1)) return;
+    // die gerade angezeigte Seite; Seite 1 ist schon ausgelesen
+    const page = viewPage;
+    if (!draft || !blob || page < 2 || page > pageCount) return;
     setBusy(true);
     try {
       const again = await extractProjectFromDocument(new File([blob], draft.datei.name, { type: draft.datei.type }), extractorEnv, { planPage: page });
@@ -354,13 +355,21 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     const mustCheck = draft.gescannt && ALWAYS_CHECK.includes(k);
     const level: Sicherheit = notFound ? "niedrig" : f.sicherheit;
     const flag = level === "niedrig" || mustCheck;
+    // Klick auf die Textstelle springt in der Vorschau auf ihre Seite
+    const jump = sourcePage(f.quelle?.seite, pageCount);
+    const text = `${notFound ? `Im Vertrag: „${notFound}“, nicht in den Stammdaten. ` : ""}${f.quelle ? `${f.quelle.seite ? `S. ${f.quelle.seite}: ` : ""}„${f.quelle.text}“` : "ohne Textstelle"}`;
     return (
       <span className="field-src" data-check={flag && !changed ? true : undefined}>
         <Pill tone={changed ? "neutral" : flag ? "warn" : SICHERHEIT_TONE[level]}>{changed ? "geändert" : mustCheck ? `bitte kontrollieren · ${SICHERHEIT_LABEL[level]}` : `Sicherheit ${SICHERHEIT_LABEL[level]}`}</Pill>
-        <span className="field-src-text" title={f.quelle?.text}>
-          {notFound && `Im Vertrag: „${notFound}“, nicht in den Stammdaten. `}
-          {f.quelle ? `${f.quelle.seite ? `S. ${f.quelle.seite}: ` : ""}„${f.quelle.text}“` : "ohne Textstelle"}
-        </span>
+        {jump ? (
+          <button type="button" className="field-src-text field-src-jump" title={`Seite ${jump} in der Vorschau zeigen: ${f.quelle?.text ?? ""}`} onClick={() => setViewPage(jump)}>
+            {text}
+          </button>
+        ) : (
+          <span className="field-src-text" title={f.quelle?.text}>
+            {text}
+          </span>
+        )}
       </span>
     );
   };
@@ -476,7 +485,6 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     );
   }
 
-  const page1 = preview?.pages[0];
 
   return (
     <Dialog
@@ -510,19 +518,25 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
               </span>
               <span className="muted">{formatBytes(draft.datei.size)}</span>
             </div>
-            {page1 ? (
-              <img className="review-page" src={page1.dataUrl} width={page1.width} height={page1.height} alt={`Seite 1 von ${preview!.pageCount} des Dokuments`} />
-            ) : (
-              <p className="review-nopage muted">{KIND_OF(draft.datei.name, draft.datei.type) === "docx" ? "Für DOCX gibt es keine Vorschau." : "Vorschau wird geladen oder ist für diese Datei nicht möglich."}</p>
-            )}
-            {page1 && <span className="muted review-pages">Seite 1 von {preview!.pageCount}</span>}
+            <DocumentPreview file={blob} kind={KIND_OF(draft.datei.name, draft.datei.type)} page={viewPage} onPage={setViewPage} onPageCount={setPageCount} />
             {canReadPlan && (
               <div className="review-plan">
-                <Field label="Haustyp fehlt? Plan-Seite lesen" htmlFor="np-plan" hint="Sendet zusätzlich diese eine Seite als Bild an den KI-Dienst.">
+                <Field label="Haustyp fehlt? Zur Plan-Seite blättern und lesen" htmlFor="np-plan" hint="Sendet zusätzlich genau diese eine Seite als Bild an den KI-Dienst. Seite 1 ist schon ausgelesen.">
                   <span className="review-plan-row">
-                    <Input id="np-plan" type="number" min={2} max={preview!.pageCount} value={planPage} onChange={(e) => setPlanPage(e.target.value)} placeholder="Seite" />
-                    <Button size="sm" onClick={() => void readPlanPage()} disabled={busy || !planPage}>
-                      Lesen
+                    <Input
+                      id="np-plan"
+                      type="number"
+                      min={1}
+                      max={pageCount}
+                      value={viewPage}
+                      onChange={(e) => {
+                        const n = Number(e.target.value);
+                        if (Number.isInteger(n) && n >= 1 && n <= pageCount) setViewPage(n);
+                      }}
+                      aria-label="Angezeigte Seite"
+                    />
+                    <Button size="sm" onClick={() => void readPlanPage()} disabled={busy || viewPage < 2}>
+                      Diese Seite lesen
                     </Button>
                   </span>
                 </Field>

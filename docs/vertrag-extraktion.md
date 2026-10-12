@@ -131,6 +131,9 @@ dort lässt sich zusätzlich ein hartes Ausgabenlimit setzen (empfohlen).
 - Scans und Handschrift: Sicherheit höchstens "mittel"; Telefon und E-Mail sind in der Prüfmaske immer markiert.
 - Vertragsdatum, Vertragspreis, Angebotsnummer und Haustyp werden als Metadaten am Dokument gespeichert
   (`documents.meta`), nicht am Projekt. Der Vertragspreis belegt keine Rechnungen vor.
+- Blättern, Zoomen und die Seiten-Übersicht in der Vorschau senden nichts: die Seiten werden nur im Browser gerendert.
+  Eine weitere Seite geht nur über den Knopf "Diese Seite lesen" an den KI-Dienst (für den Haustyp), und dann genau
+  diese eine.
 - DOCX hat kein Seitenbild: dort liest die App den Text weiterhin lokal, ohne Aufruf.
 
 ## Nicht eingeschaltet: Ausweichmodell bei Ablehnung
