@@ -4660,6 +4660,129 @@ li:first-child > .doc-card {
   color: var(--muted);
 }
 
+/* ---------------------------------------------------------------- Neues Projekt aus einem Vertrag */
+
+.contract-start,
+.contract-loading {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.contract-drop {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-10) var(--sp-5);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-card);
+  background: var(--surface-2);
+  text-align: center;
+  color: var(--muted);
+}
+
+.contract-drop[data-drop="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.contract-drop-title {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.contract-drop .muted {
+  max-width: 420px;
+  font-size: var(--fs-13);
+}
+
+.contract-manual {
+  justify-self: center;
+}
+
+.contract-summary {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+  font-size: var(--fs-13);
+}
+
+.contract-file {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.contract-file-name {
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contract-file .btn {
+  margin-left: auto;
+}
+
+.contract-extra {
+  display: flex;
+  gap: var(--sp-6);
+  margin: 0;
+  min-height: var(--ctl-h);
+  align-items: center;
+}
+
+.contract-extra dt {
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.contract-extra dd {
+  margin: 0;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.contract-similar ul {
+  margin: var(--sp-1) 0 0;
+  padding-left: var(--sp-5);
+}
+
+.contract-similar a {
+  text-decoration: underline;
+}
+
+/* Herkunft und Sicherheit unter einem vorbefüllten Feld */
+.field-src {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.field-src .pill {
+  flex-shrink: 0;
+}
+
+.field-src-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Unsicher und noch nicht angefasst: Feld hervorheben */
+.field:has(.field-src[data-level="niedrig"]:not([data-edited])) .input,
+.field:has(.field-src[data-level="niedrig"]:not([data-edited])) .select {
+  border-color: var(--warn);
+}
+
 /* ---------------------------------------------------------------- Einführung im Pilot */
 
 .intro {
