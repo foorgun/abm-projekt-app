@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Check, ChevronRight, CircleAlert, FolderX, Info, ListPlus, MoreHorizontal } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { AlertTriangle, Check, ChevronRight, CircleAlert, FolderX, Info, ListPlus, MoreHorizontal, Trash2 } from "lucide-react";
 import { StatusPill } from "../../components/ProjectBits";
 import { TaskForm, TaskList } from "../../components/TaskList";
 import { useToast } from "../../components/Toast";
-import { Button, buttonClass, Card, CardBody, CardHead, EmptyState, ErrorState, IconButton, Menu, Skeleton, Stepper, Tabs } from "../../components/ui";
+import { Button, buttonClass, Card, CardBody, CardHead, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, Skeleton, Stepper, Tabs, type MenuEntry } from "../../components/ui";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { formatDate } from "../../lib/format";
 import { missingSteps, nextStep, phaseOf, progressOf, projectTitle } from "../../lib/projects";
@@ -29,6 +29,9 @@ export function ProjectDetail() {
   const [taskForm, setTaskForm] = useState(false);
   const [showDone, setShowDone] = useState(false);
   const staff = user.role !== "freiberufler";
+  const admin = user.role === "admin";
+  const navigate = useNavigate();
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const project = data?.projects.find((p) => p.id === id) ?? null;
   const projectAlerts = useMemo(() => alerts.filter((a) => a.projectId === id), [alerts, id]);
@@ -135,6 +138,8 @@ export function ProjectDetail() {
                       toast(res.ok ? "Status geändert" : res.error, res.ok ? "ok" : "danger");
                     },
                   })),
+                // Endgültig löschen: nur Admin (die Datenbank prüft das ebenfalls)
+                ...(admin ? (["sep", { label: "Projekt löschen …", icon: <Trash2 size={15} />, onSelect: () => setDeleteOpen(true) }] as (MenuEntry | "sep")[]) : []),
               ]}
               trigger={(t) => (
                 <IconButton label="Weitere Aktionen" variant="outline" {...t}>
@@ -145,6 +150,15 @@ export function ProjectDetail() {
           </div>
         )}
       </div>
+
+      {deleteOpen && admin && (
+        <DeleteProjectDialog
+          project={p}
+          counts={{ documents: documents.length, tasks: tasks.length, invoices: invoices.length }}
+          onClose={() => setDeleteOpen(false)}
+          onDeleted={() => navigate(p.status === "aktiv" ? "/projekte/aktiv" : "/projekte")}
+        />
+      )}
 
       <div className="stack">
         <Card className="process-card">
@@ -264,6 +278,82 @@ export function ProjectDetail() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Bestätigung zum endgültigen Löschen. Der Knopf wird erst frei, wenn der Name des Bauherrn eingetippt ist.
+ * Nur für Admins erreichbar; die Datenbankfunktion delete_project weist alle anderen ab.
+ */
+function DeleteProjectDialog({ project, counts, onClose, onDeleted }: { project: Project; counts: { documents: number; tasks: number; invoices: number }; onClose: () => void; onDeleted: () => void }) {
+  const { mutate } = useData();
+  const toast = useToast();
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const name = project.bauherrLabel.trim();
+  const matches = typed.trim().toLocaleLowerCase("de") === name.toLocaleLowerCase("de");
+
+  async function run() {
+    if (!matches || busy) return;
+    setBusy(true);
+    setError(null);
+    // erst wegnavigieren, dann neu laden: die Seite des gelöschten Projekts soll nicht kurz "nicht gefunden" zeigen
+    const res = await mutate(async (r) => {
+      const out = await r.deleteProject(project.id);
+      onDeleted();
+      return out;
+    });
+    setBusy(false);
+    if (!res.ok) return setError(res.error);
+    toast(`Projekt ${projectTitle(project)} gelöscht`, res.value.filesLeft ? "danger" : "ok", res.value.filesLeft ? `${res.value.filesLeft} Datei(en) ließen sich nicht aus dem Speicher entfernen.` : undefined);
+  }
+
+  return (
+    <Dialog
+      title="Projekt löschen"
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose} disabled={busy}>
+            Abbrechen
+          </Button>
+          <Button variant="destructive" type="submit" form="delete-project" disabled={!matches || busy}>
+            {busy ? "Wird gelöscht …" : "Endgültig löschen"}
+          </Button>
+        </>
+      }
+    >
+      <form
+        id="delete-project"
+        className="dialog-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void run();
+        }}
+      >
+        <p>
+          <strong>{projectTitle(project)}</strong>
+          {project.location ? `, ${project.location}` : ""}
+        </p>
+        <p className="form-error" role="alert">
+          Das Projekt, seine Schritte, Aufgaben, Rechnungen und Dokumente werden endgültig gelöscht.
+        </p>
+        <p className="muted">
+          Betroffen: {counts.documents} {counts.documents === 1 ? "Dokument" : "Dokumente"} (auch die Dateien im Speicher), {counts.tasks} {counts.tasks === 1 ? "Aufgabe" : "Aufgaben"}, {counts.invoices}{" "}
+          {counts.invoices === 1 ? "Rechnung" : "Rechnungen"}, dazu Aktivitäten, Projektbeteiligte, Zuweisungen und Entwürfe. Der Kontakt des Bauherrn wird mitgelöscht, wenn er an keinem anderen Projekt hängt. Das lässt sich nicht
+          rückgängig machen. Soll das Projekt nur aus den aktiven Listen verschwinden, reicht „Stornieren“.
+        </p>
+        <Field label={`Zum Bestätigen den Namen des Bauherrn eintippen: ${name}`} htmlFor="delete-project-name">
+          <Input id="delete-project-name" value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" autoCapitalize="off" spellCheck={false} />
+        </Field>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+      </form>
+    </Dialog>
   );
 }
 

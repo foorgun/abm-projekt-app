@@ -126,6 +126,7 @@ for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.r
 // ---- nicht angemeldet
 const anon = publicClient();
 for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("delete_project", { p_id: NIL })));
 
 // ---- Bezugswerte: was ein Admin sieht
 const adminKonto = mitPasswort.find((k) => k.rolle === "admin");
@@ -162,6 +163,14 @@ for (const k of mitPasswort) {
   else expectText(who, "Auslesung (Edge Function): Rolle zugelassen", "nicht abgewiesen", fn === 401 || fn === 403 ? `Status ${fn}` : "nicht abgewiesen");
   // Das Protokoll der Auslesungen schreibt nur die Funktion (service_role): für JEDE Rolle gesperrt
   expectDenied(who, "extraction_log beschreiben", await attempt(sb.from("extraction_log").insert({ user_id: id, model: "rollenpruefung" }).select("id")));
+
+  // ---- Projekt löschen (Migration 0011): nur Admin. Geprüft wird mit einer ID, die es nicht gibt: die Funktion prüft
+  // zuerst die Berechtigung und meldet erst danach "Projekt nicht gefunden". Es wird in keinem Fall etwas gelöscht.
+  const del = await attempt(sb.rpc("delete_project", { p_id: NIL }));
+  if (k.rolle === "admin") record(who, "Projekt löschen: nur Admin (Berechtigung vorhanden)", "abgelehnt nur wegen unbekanntem Projekt", show(del), del.kind === "fehler" && /nicht gefunden/.test(del.detail));
+  else expectDenied(who, "Projekt löschen: nur Admin", del);
+  // direkt in der Tabelle darf niemand löschen, auch kein Admin (nur über die Funktion)
+  expectDenied(who, "Projekt direkt in der Tabelle löschen", await attempt(sb.from("projects").delete().eq("id", NIL).select("id")));
 
   if (k.rolle === "admin" || k.rolle === "mitarbeiter") {
     const drafts = await count(sb, "project_drafts");

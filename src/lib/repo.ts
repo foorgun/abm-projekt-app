@@ -155,6 +155,12 @@ export interface Repo {
   createSalesperson(companyId: string, name: string): Promise<Salesperson>;
   createTeamMember(name: string, role: TeamMember["role"]): Promise<TeamMember>;
   setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;
+  /**
+   * Projekt endgültig löschen, mit Schritten, Aufgaben, Rechnungen, Aktivitäten, Dokumenten (auch den Dateien im Speicher),
+   * Beteiligten, Zuweisungen und Entwürfen. Der Bauherr-Kontakt geht mit, wenn er an keinem anderen Projekt hängt.
+   * Nur Admin. `filesLeft`: Dateien, die sich nicht aus dem Speicher entfernen ließen (die Zeilen sind trotzdem gelöscht).
+   */
+  deleteProject(projectId: string): Promise<{ filesLeft: number }>;
   markInvoiceSent(invoiceId: string, sentOn: string): Promise<void>;
   uploadDocument(input: UploadInput): Promise<ProjectDocument>;
   /**

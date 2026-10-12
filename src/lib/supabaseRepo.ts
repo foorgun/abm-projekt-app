@@ -341,6 +341,25 @@ export function createSupabaseRepo(): Repo {
       await log(projectId, "projekt", text);
     },
 
+    async deleteProject(projectId) {
+      if (user.role !== "admin") throw new PermissionError();
+      // Die Datenbank prüft die Rolle selbst, löscht alles in einer Transaktion und nennt die Speicherpfade (Migration 0011)
+      const { data, error } = await sb.rpc("delete_project", { p_id: projectId });
+      if (error) fail(error, "Projekt konnte nicht gelöscht werden");
+      const paths = ((data ?? []) as string[]).filter(Boolean);
+      let filesLeft = 0;
+      // Dateien danach entfernen, in Paketen; ein Fehler hier macht das Löschen der Zeilen nicht rückgängig
+      for (let i = 0; i < paths.length; i += 100) {
+        const chunk = paths.slice(i, i + 100);
+        const res = await sb.storage.from(BUCKET).remove(chunk);
+        if (res.error) {
+          filesLeft += chunk.length;
+          console.warn("Dateien nicht entfernt:", res.error.message);
+        }
+      }
+      return { filesLeft };
+    },
+
     async markInvoiceSent(invoiceId, sentOn) {
       requireStaff();
       // Nur wenn noch nicht versendet: zwei gleichzeitige Klicks ergeben einen Eintrag, nicht zwei

@@ -263,3 +263,53 @@ describe("Projektdaten bearbeiten", () => {
     await expect(repo.updateProject(d.projects[0].id, { bauherr: { phone: "1", email: null, address: null, buildingAddress: null } })).rejects.toThrow(PermissionError);
   });
 });
+
+describe("Projekt löschen (nur Admin)", () => {
+  const staff = { name: "Mitarbeiterin", role: "mitarbeiter" as const };
+
+  it("entfernt das Projekt mit Schritten, Aufgaben, Rechnungen, Aktivitäten, Dokumenten, Beteiligten, Kontakt und Entwürfen", async () => {
+    const r = repo();
+    const before = await r.load(admin);
+    const p = before.projects.find((x) => before.documents.some((d) => d.projectId === x.id) && before.invoices.some((i) => i.projectId === x.id) && before.tasks.some((t) => t.projectId === x.id))!;
+    // ein Entwurf, der in dieses Projekt übernommen wurde, und einer zu einem anderen Projekt
+    const file = { name: "scan.pdf", size: 10, type: "application/pdf" };
+    const draft = { datei: file, textquelle: "ohne" as const, extractor: "mock" as const, gescannt: false, felder: {} as never, hinweise: [] };
+    const form = { project: { bauherrLabel: "x" } as never, meta: {}, edited: [] };
+    const mine = await r.saveProjectDraft({ draft, form, docType: "werkvertrag", file, blob: new Blob(["x"]) });
+    await r.fileContract({ projectId: p.id, docType: "werkvertrag", meta: {}, file, draftId: mine.id });
+    const other = await r.saveProjectDraft({ draft, form, docType: "werkvertrag", file, blob: new Blob(["y"]) });
+
+    expect(await r.deleteProject(p.id)).toEqual({ filesLeft: 0 });
+    const d = await r.load(admin);
+    expect(d.projects.some((x) => x.id === p.id)).toBe(false);
+    expect(d.projects).toHaveLength(before.projects.length - 1);
+    for (const rows of [d.invoices, d.documents, d.tasks, d.activities, d.parties, d.bauherren, d.agentRules, d.projectDrafts]) {
+      expect((rows as { projectId: string | null }[]).some((x) => x.projectId === p.id)).toBe(false);
+    }
+    // alles andere bleibt: fremde Rechnungen, Kontakte, der Entwurf ohne Projekt
+    expect(d.invoices.length).toBe(before.invoices.filter((i) => i.projectId !== p.id).length);
+    expect(d.bauherren.length).toBe(before.bauherren.filter((b) => b.projectId !== p.id).length);
+    expect(d.projectDrafts.map((x) => x.id)).toEqual([other.id]);
+    // Posteingang bleibt, ohne Verweis auf das gelöschte Projekt
+    expect(d.inboxAttachments.length).toBe(before.inboxAttachments.length);
+    expect(d.inboxAttachments.some((a) => a.projectId === p.id)).toBe(false);
+    // Warnungen und Dashboard rechnen ohne Fehler weiter
+    expect(() => computeAlerts(d, TODAY)).not.toThrow();
+  });
+
+  it("weist Mitarbeiter und Freiberufler ab und löscht dann nichts", async () => {
+    const r = repo();
+    const all = await r.load(admin);
+    for (const u of [staff, freelancer]) {
+      const d = await r.load(u);
+      await expect(r.deleteProject(d.projects[0].id)).rejects.toBeInstanceOf(PermissionError);
+    }
+    expect((await r.load(admin)).projects).toHaveLength(all.projects.length);
+  });
+
+  it("meldet ein unbekanntes Projekt", async () => {
+    const r = repo();
+    await r.load(admin);
+    await expect(r.deleteProject("gibt-es-nicht")).rejects.toThrow(/nicht gefunden/);
+  });
+});

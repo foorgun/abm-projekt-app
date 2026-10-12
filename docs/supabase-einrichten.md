@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0010). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0011). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 

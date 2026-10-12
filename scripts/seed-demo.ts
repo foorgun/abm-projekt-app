@@ -30,7 +30,7 @@ async function countDemo(): Promise<[string, number][]> {
   const out: [string, number][] = [];
   for (const t of DELETE_ORDER) {
     const { count, error } = await sb.from(t).select("*", { count: "exact", head: true }).eq("is_demo", true);
-    if (error) die(`${t}: ${error.message}\nSind die Migrationen bis 0010 angewendet?`);
+    if (error) die(`${t}: ${error.message}\nSind die Migrationen bis 0011 angewendet?`);
     out.push([t, count ?? 0]);
   }
   return out;

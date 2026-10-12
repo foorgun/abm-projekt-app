@@ -339,6 +339,28 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(undefined);
     },
 
+    async deleteProject(projectId) {
+      // wie die Funktion in der Datenbank: nur Admin, Berechtigung vor allem anderen
+      if (user.role !== "admin") throw new PermissionError();
+      const p = project(projectId);
+      const keep = <T extends { projectId: string | null }>(rows: T[]) => rows.filter((r) => r.projectId !== p.id);
+      db.projects = db.projects.filter((x) => x.id !== p.id);
+      db.invoices = keep(db.invoices);
+      db.documents = keep(db.documents);
+      db.tasks = keep(db.tasks);
+      db.activities = keep(db.activities);
+      db.parties = keep(db.parties);
+      db.agentRules = keep(db.agentRules);
+      // im Demo-Modus hängt der Kontakt am Projekt: er geht mit
+      db.bauherren = keep(db.bauherren);
+      for (const d of db.projectDrafts.filter((x) => x.projectId === p.id)) draftBlobs.delete(d.id);
+      db.projectDrafts = keep(db.projectDrafts);
+      // Posteingang und Lernbeispiele bleiben, nur der Verweis auf das Projekt entfällt
+      for (const row of [...db.inboxItems, ...db.inboxAttachments, ...db.agentFeedback]) if (row.projectId === p.id) row.projectId = null;
+      for (const a of db.inboxAttachments) if (a.documentId && !db.documents.some((d) => d.id === a.documentId)) a.documentId = null;
+      return done({ filesLeft: 0 });
+    },
+
     async markInvoiceSent(invoiceId, sentOn) {
       requireStaff();
       const inv = db.invoices.find((i) => i.id === invoiceId);

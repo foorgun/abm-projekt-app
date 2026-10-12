@@ -11,7 +11,7 @@ Stand der Prüfung: Den Build, die Sicherheits-Kopfzeilen und die Anmeldung von 
 
 | | Erledigt, wenn |
 |---|---|
-| Migrationen 0001 bis 0010 angewendet | `npm run check:setup` endet mit "In Ordnung" |
+| Migrationen 0001 bis 0011 angewendet | `npm run check:setup` endet mit "In Ordnung" |
 | Rollen stimmen | `npm run check:roles` endet mit "Alle … Prüfungen bestanden" |
 | Build ist sauber | `npm run check:build` endet mit "Build in Ordnung" |
 | Sicherung gezogen | `npm run export:backup` (Ordner `backups/…` liegt lokal) |

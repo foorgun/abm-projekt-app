@@ -489,3 +489,22 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Datenbanktests ohne lokales Postgres:** `tools/test-db.sh` braucht eine Postgres-Installation. Für diesen Schritt wurden
   Migrationen, Seed und `rls_test.sql` ersatzweise gegen PGlite (Postgres als WASM) ausgeführt, Anweisung für Anweisung wie
   `psql`. Vor dem Einspielen in Supabase trotzdem einmal `bash tools/test-db.sh` auf einem Rechner mit Postgres laufen lassen.
+
+## Projekt löschen (Migration 0011)
+
+- **Ausnahme von "nie löschen":** Bisher galt für Projekte Storno statt Löschen (Migration 0004). Das bleibt der Normalfall.
+  Für Fehlanlagen und Testprojekte gibt es jetzt "Projekt löschen …" im Menü "…" der Projektseite, nur für Admins, mit
+  Bestätigung durch Eintippen des Bauherrn-Namens.
+- **Eine Funktion statt neuer Löschrechte:** `delete_project(p_id)` läuft mit den Rechten des Eigentümers und prüft selbst,
+  dass ein Admin aufruft. Es gibt weiterhin kein DELETE-Recht auf `projects`, `activities`, `invoices` oder `bauherren`;
+  auch ein Admin kann nicht direkt in den Tabellen löschen.
+- **Was mitgeht:** Schritte, Rechnungen, Dokumente, Aufgaben, Aktivitäten, Projektbeteiligte, Zuweisungen und Regeln des
+  Agenten (über die Fremdschlüssel), Entwürfe zu diesem Projekt (ausdrücklich), der Bauherr-Kontakt, wenn er an keinem
+  anderen Projekt hängt. Mails und Anhänge des Posteingangs bleiben, ihr Verweis auf das Projekt wird geleert.
+- **Dateien:** Die Funktion gibt die Speicherpfade zurück, die App entfernt die Dateien danach über die Storage-API.
+  Schlägt das fehl, sind die Zeilen trotzdem gelöscht; die App meldet, wie viele Dateien liegen geblieben sind (sie sind
+  dann ohne Projekt für niemanden außer Admin und Mitarbeiter erreichbar und lassen sich im Dashboard entfernen).
+- **Kein Protokolleintrag:** Die Aktivitäten des Projekts werden mitgelöscht, ein eigener Eintrag entsteht nicht. Wer wann
+  gelöscht hat, steht damit nirgends in der App. Vor dem Löschen echter Projekte: `npm run export:backup`.
+- **Der Posteingangs-Agent löscht weiterhin nie etwas** (CLAUDE.md). Die Funktion ist nur aus der Oberfläche erreichbar.
+

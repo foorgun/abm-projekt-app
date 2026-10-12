@@ -660,6 +660,98 @@ select test.expect('Ohne Rolle: kein Entwurf sichtbar', (select count(*) from pu
 select test.throws('Ohne Rolle: kein Entwurf anlegbar', $$insert into public.project_drafts (file_name, file_size) values ('x.pdf', 1)$$);
 rollback;
 
+-- Projekt löschen (Migration 0011): nur Admin, alles Abhängige geht mit ----------------
+begin;
+set local role anon;
+select test.throws('anon darf kein Projekt löschen', $$select public.delete_project('a0000000-0000-4000-8000-000000000001')$$);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.throws('Mitarbeiter darf kein Projekt löschen', $$select public.delete_project('a0000000-0000-4000-8000-000000000001')$$);
+select test.throws('Mitarbeiter: auch nicht direkt in der Tabelle', $$delete from public.projects where id = 'a0000000-0000-4000-8000-000000000001'$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.throws('Freiberufler darf kein Projekt löschen, auch nicht sein zugewiesenes', $$select public.delete_project('a0000000-0000-4000-8000-000000000001')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.throws('Ohne Rolle: kein Projekt löschen', $$select public.delete_project('a0000000-0000-4000-8000-000000000001')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Nach den abgewiesenen Versuchen ist das Projekt noch da', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001'), 1);
+select test.throws('Admin: auch nicht direkt in der Tabelle (nur über die Funktion)', $$delete from public.projects where id = 'a0000000-0000-4000-8000-000000000001'$$);
+select test.throws('Admin: unbekanntes Projekt wird gemeldet', $$select public.delete_project('00000000-0000-4000-8000-00000000dead')$$);
+rollback;
+
+-- Admin löscht ein Projekt mit allem, was daran hängt
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+-- Abhängiges anlegen, damit jede Tabelle wirklich etwas zu löschen hat
+insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+values ('a0000000-0000-4000-8000-000000000001', 'vertrag.pdf', 'a0000000-0000-4000-8000-000000000001/x/vertrag.pdf', '00 Verträge', auth.uid());
+insert into public.tasks (project_id, title) values ('a0000000-0000-4000-8000-000000000001', 'Löschtest');
+insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'Löschtest', 'Admin', auth.uid());
+insert into public.project_drafts (file_name, file_size, storage_path, status) values ('entwurf.pdf', 5, 'drafts/d1/entwurf.pdf', 'offen');
+update public.project_drafts set project_id = 'a0000000-0000-4000-8000-000000000001' where file_name = 'entwurf.pdf';
+insert into public.project_drafts (file_name, file_size, storage_path) values ('anderer.pdf', 5, 'drafts/d2/anderer.pdf');
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"vermesser": {"name": "Löschtest Vermessung"}}');
+
+create temp table before_delete on commit drop as
+select (select count(*) from public.projects) as projects,
+       (select count(*) from public.bauherren) as bauherren,
+       (select bauherr_id from public.projects where id = 'a0000000-0000-4000-8000-000000000001') as bauherr,
+       (select count(*) from public.invoices where project_id <> 'a0000000-0000-4000-8000-000000000001') as other_invoices,
+       (select count(*) from public.inbox_attachments) as attachments;
+select test.expect('Vorher: das Projekt hat Schritte, Rechnungen, Dokumente, Aufgaben, Aktivitäten, Beteiligte, Zuweisung',
+  (select (count(*) filter (where n > 0)) from (values
+    ((select count(*) from public.project_steps   where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.invoices        where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.documents       where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.tasks           where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.activities      where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001')),
+    ((select count(*) from public.project_members where project_id = 'a0000000-0000-4000-8000-000000000001'))) v(n)), 7);
+
+create temp table deleted_paths on commit drop as select unnest(public.delete_project('a0000000-0000-4000-8000-000000000001')) as path;
+select test.expect('Die Funktion nennt die Speicherpfade von Dokument und Entwurf',
+  (select count(*) from deleted_paths where path in ('a0000000-0000-4000-8000-000000000001/x/vertrag.pdf', 'drafts/d1/entwurf.pdf')), 2);
+select test.expect('… und keinen fremden Pfad', (select count(*) from deleted_paths where path = 'drafts/d2/anderer.pdf'), 0);
+select test.expect('Projekt gelöscht', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001'), 0);
+select test.expect('Genau ein Projekt weniger', (select count(*) from public.projects), (select projects - 1 from before_delete));
+select test.expect('Abhängige Zeilen sind weg (Schritte, Rechnungen, Dokumente, Aufgaben, Aktivitäten, Beteiligte, Zuweisungen, Regeln)',
+  (select count(*) from public.project_steps   where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.invoices        where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.documents       where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.tasks           where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.activities      where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.project_members where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.agent_rules     where project_id = 'a0000000-0000-4000-8000-000000000001'), 0);
+select test.expect('Entwurf zu diesem Projekt aufgeräumt, der andere bleibt',
+  (select count(*) from public.project_drafts where file_name = 'entwurf.pdf') * 10 + (select count(*) from public.project_drafts where file_name = 'anderer.pdf'), 1);
+select test.expect('Bauherr-Kontakt mitgelöscht (hing an keinem anderen Projekt)',
+  (select count(*) from public.bauherren where id = (select bauherr from before_delete)), 0);
+select test.expect('Genau ein Bauherr weniger', (select count(*) from public.bauherren), (select bauherren - 1 from before_delete));
+select test.expect('Rechnungen anderer Projekte unberührt', (select count(*) from public.invoices), (select other_invoices from before_delete));
+select test.expect('Posteingang bleibt erhalten', (select count(*) from public.inbox_attachments), (select attachments from before_delete));
+select test.expect('… ohne Verweis auf das gelöschte Projekt',
+  (select count(*) from public.inbox_attachments where project_id = 'a0000000-0000-4000-8000-000000000001')
+  + (select count(*) from public.inbox_items where project_id = 'a0000000-0000-4000-8000-000000000001'), 0);
+rollback;
+
+-- Ein Bauherr mit zwei Projekten bleibt, bis das letzte Projekt gelöscht ist
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+update public.projects set bauherr_id = (select bauherr_id from public.projects where id = 'a0000000-0000-4000-8000-000000000001')
+  where id = 'a0000000-0000-4000-8000-000000000002';
+select public.delete_project('a0000000-0000-4000-8000-000000000001');
+select test.expect('Bauherr bleibt, solange ein anderes Projekt an ihm hängt',
+  (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id where p.id = 'a0000000-0000-4000-8000-000000000002'), 1);
+create temp table shared_bauherr on commit drop as select bauherr_id as id from public.projects where id = 'a0000000-0000-4000-8000-000000000002';
+select public.delete_project('a0000000-0000-4000-8000-000000000002');
+select test.expect('… und geht mit dem letzten Projekt', (select count(*) from public.bauherren where id = (select id from shared_bauherr)), 0);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',
