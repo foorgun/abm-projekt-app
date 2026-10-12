@@ -23,10 +23,10 @@ Neutral, fast schwarz, ruhig. Keine farbig getönten Flächen. Flächen untersch
 | Text 2 | `#c4c4ca` | Fließtext in Tabellen |
 | Gedämpft | `#8e8e96` | Beschreibungen, Achsen, Nebenzeilen |
 | Leise | `#7e7e86` | Platzhalter, leere Ordner (≥ 4,5:1 auf Hintergrund und Karten) |
-| Teal | `#2bb3a3` | **nur** Diagramme, aktive Zustände (Balken am aktiven Menüpunkt, Tab-Unterstrich, erledigte Prozessschritte, Fortschritt) und Fokusring |
+| Teal | `#2bb3a3` | **nur** Primär-Button, Diagramme, aktive Zustände (Balken am aktiven Menüpunkt, Tab-Unterstrich, erledigte Prozessschritte, Fortschritt) und Fokusring |
 | Status | ok `#4cc38a`, warn `#f0b24a`, danger `#ef6b63`, info `#6ea8ff` | Pills, Warnbanner, Badges, Icons; immer mit Text |
 
-Teal erscheint nie als getönte Fläche (kein Teal-Hintergrund hinter Text). Links sind hell (Textfarbe) und werden beim Hover unterstrichen.
+Teal erscheint nie als getönte Fläche (kein Teal-Hintergrund hinter Text); einzige Teal-Fläche ist der Primär-Button. Links sind hell (Textfarbe) und werden beim Hover unterstrichen.
 
 ## Form
 
@@ -40,7 +40,7 @@ Alle Buttons gehören zu einer Familie (`Button`, `IconButton`):
 
 | Variante | Aussehen | Wofür |
 |---|---|---|
-| primary | helle Fläche (`#f4f4f5`), dunkle Schrift, optional Pfeil- oder Plus-Icon | die eine Hauptaktion je Bereich (Neues Projekt, Bestätigen, Speichern) |
+| primary | Teal-Fläche (`#2bb3a3`), dunkle Schrift (`#06211e`), optional Pfeil- oder Plus-Icon | die eine Hauptaktion je Bereich (Neues Projekt, Bestätigen, Speichern) |
 | secondary | dunkelgrau gefüllt (Fläche 3), helle Schrift, feiner Rand | häufige Nebenaktionen |
 | outline | transparent, Rand stark, helle Schrift | neutrale Aktionen (Abbrechen, Ändern, Filter) |
 | ghost | ohne Fläche und Rand, gedämpfte Schrift, beim Hover Fläche 2 | leise Aktionen in Listen und Kopfzeilen |
@@ -83,7 +83,7 @@ gedämpfte Fußzeile.
 ## Kopfzeile
 
 Suche links (Strg+K, auch Befehle wie "Neue Aufgabe"), rechts die Glocke als Ghost-Icon-Button mit kleinem roten Zähler und
-ein einzelner primärer Button "+ Neues Projekt". Kein geteilter Button, keine Teal-Fläche.
+ein einzelner primärer Button "+ Neues Projekt" (Teal). Kein geteilter Button.
 
 ## Seitenpanel und Filter-Chips
 

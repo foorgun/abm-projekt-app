@@ -23,6 +23,9 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Rechnungen: Ab wann gilt eine Rechnung als fällig zum Versand (im Prototyp 7 Tage nach dem auslösenden Schritt)? Welche Rechnungen
   gibt es je Projekt (im Prototyp: Abschlag Vorplanung, Genehmigungsplanung, Ausführungsplanung/Baubegleitung, Schlussrechnung)?
 - Rechnungen: Soll auch "bezahlt" in der App gepflegt werden, oder kommt das später aus der Buchhaltung?
+- Rechnungen: Es gibt kein Zahlungsziel. Deshalb zeigt das Dashboard nur "Nicht versendet" (fällig, noch nicht raus) und "Offen"
+  (versendet, nicht bezahlt), aber kein "überfällig" im Sinn von "Kunde zahlt nicht". Späterer Schritt: Feld Zahlungsziel je Rechnung
+  (Datum oder Tage ab Versand, eigene Migration), daraus "überfällig" als dritte Zahl und als Warnung. Welche Frist gilt bei ABM (14 Tage?)?
 
 ## Zu Schritt 8 (Supabase)
 

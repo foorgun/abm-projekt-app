@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDataset } from "../data/demoData";
-import { newProjectsPerMonth, projectsByPhase } from "./dashboard";
+import { computeAlerts } from "./alerts";
+import { newProjectsPerMonth, projectsByPhase, todayGroups } from "./dashboard";
+import { alertTaskKey } from "./taskSync";
+import type { InboxAttachment, Task } from "./types";
 
 const TODAY = "2026-10-09";
 const db = buildDemoDataset(TODAY);
@@ -23,5 +26,54 @@ describe("Dashboard-Daten", () => {
     const total = phases.reduce((a, b) => a + b.value, 0);
     expect(total).toBe(db.projects.filter((p) => p.status === "aktiv").length);
     expect(phases.every((p) => p.value > 0)).toBe(true);
+  });
+});
+
+describe("Heute zu tun", () => {
+  const task = (patch: Partial<Task>): Task => ({
+    id: "t",
+    projectId: null,
+    title: "Aufgabe",
+    dueOn: TODAY,
+    assigneeId: null,
+    status: "offen",
+    source: "manuell",
+    sourceKey: null,
+    createdAt: `${TODAY}T08:00:00`,
+    doneAt: null,
+    ...patch,
+  });
+  const alerts = computeAlerts(db, TODAY);
+  const none = { tasks: [], alerts: [], attachments: [], today: TODAY };
+
+  it("ist leer, wenn nichts ansteht", () => {
+    expect(todayGroups(none)).toEqual([]);
+    expect(todayGroups({ ...none, tasks: [task({ dueOn: "2026-10-10" }), task({ dueOn: null }), task({ status: "erledigt" })] })).toEqual([]);
+  });
+
+  it("trennt überfällige und heute fällige Aufgaben, älteste zuerst", () => {
+    const g = todayGroups({ ...none, tasks: [task({ id: "a" }), task({ id: "b", dueOn: "2026-10-08" }), task({ id: "c", dueOn: "2026-10-01" })] });
+    expect(g.map((x) => x.key)).toEqual(["ueberfaellig", "heute"]);
+    expect(g[0].items.map((i) => i.id)).toEqual(["task:c", "task:b"]);
+    expect(g[1].items.map((i) => i.id)).toEqual(["task:a"]);
+  });
+
+  it("zeigt eine Aufgabe aus einer sichtbaren Warnung nur einmal, als Warnung", () => {
+    expect(alerts.length).toBeGreaterThan(0);
+    const a = alerts[0];
+    const fromAlert = task({ id: "w", source: "warnung", sourceKey: alertTaskKey(a), dueOn: "2026-10-01" });
+    const g = todayGroups({ ...none, alerts: [a], tasks: [fromAlert] });
+    expect(g.flatMap((x) => x.items).map((i) => i.id)).toEqual([a.id]);
+    // ohne die Warnung (z. B. für diese Rolle nicht sichtbar) bleibt die Aufgabe stehen
+    expect(todayGroups({ ...none, tasks: [fromAlert] })[0].items.map((i) => i.id)).toEqual(["task:w"]);
+  });
+
+  it("verteilt Warnungen auf Rechnungen und Fristen, höchstens fünf Gruppen in fester Reihenfolge", () => {
+    const attachments = [{ id: "x", status: "pruefen" }, { id: "y", status: "abgelegt" }] as InboxAttachment[];
+    const g = todayGroups({ alerts, attachments, today: TODAY, tasks: [task({ id: "a" }), task({ id: "b", dueOn: "2026-10-01" })] });
+    expect(g.map((x) => x.key)).toEqual(["ueberfaellig", "heute", "rechnungen", "fristen", "pruefung"]);
+    expect(g[2].items.length + g[3].items.length).toBe(alerts.length);
+    expect(g[2].items.every((i) => i.type === "alert" && i.alert.kind === "invoice_unsent")).toBe(true);
+    expect(g[4].items.map((i) => i.id)).toEqual(["review:x"]);
   });
 });
