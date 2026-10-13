@@ -1692,7 +1692,94 @@ a.list-item:hover {
   gap: var(--sp-6);
 }
 
-/* Termine diese Woche: fünf Spalten Mo–Fr, schmal untereinander */
+/* Termine diese Woche: fünf gleich breite Spalten Mo–Fr mit Termin-Kacheln, schmal als Liste.
+   Kein Stundenraster. Farben je Terminart über die Tokens --termin-* (tokens.css). */
+.termin-kopf {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-4) var(--sp-5) 0;
+}
+
+.termin-kopf .card-title {
+  flex-wrap: wrap;
+}
+
+.termin-kopf-rechts {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.termin-bereich {
+  font-size: var(--fs-13);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Bedienleiste [‹] [Heute] [›] als zusammenhängende Knöpfe */
+.termin-nav {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.termin-nav button {
+  display: grid;
+  place-items: center;
+  min-width: var(--ctl-h-sm);
+  height: var(--ctl-h-sm);
+  padding: 0 var(--sp-2);
+  border: 0;
+  border-left: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  font-size: var(--fs-12);
+  font-weight: 550;
+}
+
+.termin-nav button:first-child {
+  border-left: 0;
+}
+
+.termin-nav button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.termin-nav button[aria-pressed="true"] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.termin-nav button:focus-visible {
+  outline-offset: -2px;
+}
+
+.termin-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.termin-kopf .termin-legende {
+  grid-column: 1 / -1;
+}
+
+.termin-legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .termin-woche {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -1707,35 +1794,51 @@ a.list-item:hover {
   align-content: start;
   gap: var(--sp-2);
   min-width: 0;
-  padding: var(--sp-3);
-  border: 1px solid var(--border);
+  padding: var(--sp-2);
+  border: 1px solid transparent;
   border-radius: var(--r-ctl);
 }
 
-/* heute: Teal als aktiver Zustand (Rand und Wort "heute"), keine getönte Fläche */
+/* heute: dezenter Teal-Rand und ein Hauch Teal in der Fläche */
 .termin-tag[data-heute] {
-  border-color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
 }
 
 .termin-tag-kopf {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--sp-2);
-  font-size: var(--fs-13);
+  min-height: 26px;
+  padding: 0 2px;
   font-weight: 600;
-  color: var(--text-2);
+}
+
+.termin-wt {
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.termin-zahl {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-14);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 
-.termin-tag[data-heute] .termin-tag-kopf {
-  color: var(--text);
+.termin-tag[data-heute] .termin-zahl {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
-.termin-heute {
-  font-size: var(--fs-12);
-  font-weight: 600;
-  color: var(--accent);
+.termin-tag[data-heute] .termin-wt {
+  color: var(--text-2);
 }
 
 .termin-liste {
@@ -1744,24 +1847,52 @@ a.list-item:hover {
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-.termin {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 6px;
-  font-size: var(--fs-12);
-}
-
-.termin-zeit {
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.termin-text {
-  display: grid;
   min-width: 0;
+}
+
+/* Kachel: Fläche und Rand in der Farbe der Terminart, Titel im hellen Ton derselben Farbe */
+.termin {
+  --termin-c: var(--termin-intern);
+  --termin-t: var(--termin-intern-text);
+  position: relative;
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-2) 10px;
+  border: 1px solid color-mix(in srgb, var(--termin-c) 40%, transparent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--termin-c) 18%, transparent);
+  font-size: var(--fs-12);
+  cursor: default;
+  transition: background 0.12s ease;
+}
+
+.termin[data-typ="baustelle"],
+.termin-probe[data-typ="baustelle"] {
+  --termin-c: var(--termin-baustelle);
+  --termin-t: var(--termin-baustelle-text);
+}
+
+.termin[data-typ="besprechung"],
+.termin-probe[data-typ="besprechung"] {
+  --termin-c: var(--termin-besprechung);
+  --termin-t: var(--termin-besprechung-text);
+}
+
+.termin[data-typ="behoerde"],
+.termin-probe[data-typ="behoerde"] {
+  --termin-c: var(--termin-behoerde);
+  --termin-t: var(--termin-behoerde-text);
+}
+
+.termin:hover,
+.termin:focus-visible {
+  background: color-mix(in srgb, var(--termin-c) 28%, transparent);
+}
+
+.termin:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* Titel höchstens zwei Zeilen, vollständig im Tooltip */
@@ -1771,74 +1902,91 @@ a.list-item:hover {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  color: var(--text);
-  line-height: 1.35;
+  color: var(--termin-t);
+  font-size: var(--fs-13);
+  font-weight: 550;
+  line-height: 1.3;
+  /* lange Wörter (Baustellenbesichtigung) trennen statt abschneiden */
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.termin-zeit {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .termin-ort {
-  color: var(--muted);
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.termin-leer,
+/* heute schon vorbei: zurücknehmen */
+.termin[data-vergangen] {
+  opacity: 0.6;
+}
+
+/* als Nächstes heute: kurze Teal-Linie am Anfang der Kachel ("jetzt") */
+.termin[data-naechster]::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.termin-leer {
+  padding: var(--sp-2) 2px;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
 .termin-weitere {
+  justify-self: start;
+  padding: 2px;
+  border: 0;
+  background: none;
   font-size: var(--fs-12);
   color: var(--muted);
 }
 
-/* Punkt je Art; die Art steht zusätzlich in der Legende, im Tooltip und für Screenreader im Text */
-.termin-punkt {
+.termin-weitere:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+
+/* Farbprobe in der Legende: kleine Kachel wie im Kalender */
+.termin-probe {
+  --termin-c: var(--termin-intern);
   display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--muted);
-  flex-shrink: 0;
-  align-self: center;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--termin-c) 55%, transparent);
+  background: color-mix(in srgb, var(--termin-c) 30%, transparent);
 }
 
-.termin-punkt[data-typ="baustelle"] {
-  background: var(--warn);
-}
+@media (max-width: 900px) {
+  .termin-kopf {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--sp-4) var(--sp-4) 0;
+  }
 
-.termin-punkt[data-typ="besprechung"] {
-  background: var(--info);
-}
+  .termin-kopf-rechts {
+    justify-content: space-between;
+  }
 
-.termin-punkt[data-typ="behoerde"] {
-  background: var(--chart-2);
-}
-
-.termin-punkt[data-typ="intern"] {
-  background: var(--muted);
-}
-
-.termin-legende {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-1) var(--sp-3);
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  font-size: var(--fs-12);
-  color: var(--muted);
-}
-
-.termin-legende li {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-@media (max-width: 860px) {
+  /* Liste: jeder Tag mit Kopf und Kacheln untereinander */
   .termin-woche {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--sp-2);
   }
 
-  .termin-titel,
   .termin-ort {
     white-space: normal;
   }

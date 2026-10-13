@@ -169,6 +169,9 @@ export function Dashboard() {
           )}
         </div>
 
+        {/* Termine der Woche direkt unter den Kennzahlen: vorerst erfundene Demo-Termine, nur für Admin und Mitarbeiter */}
+        {staff && <TermineKarte heute={today} />}
+
         <Card>
           <CardHead title="Heute zu tun" sub={todoCount ? `${todoCount} ${todoCount === 1 ? "Eintrag" : "Einträge"}, nach Dringlichkeit sortiert` : undefined} />
           <div className="card-body flush">
@@ -199,9 +202,6 @@ export function Dashboard() {
             )}
           </div>
         </Card>
-
-        {/* Termine der Woche: vorerst erfundene Demo-Termine, nur für Mitarbeiter */}
-        {staff && <TermineKarte heute={today} />}
 
         {staff ? (
           <div className="grid-2">

@@ -27,13 +27,17 @@ const VORLAGEN: Vorlage[] = [
   [4, "10:00", "11:30", "Bauabnahme", "Neubau Sonnenhalde, Neu-Ulm", "baustelle"],
 ];
 
-/** Demo-Termine für die Arbeitswoche, in der `heute` liegt. */
-export function demoTermine(heute: string): Termin[] {
-  const woche = arbeitswoche(heute);
-  return VORLAGEN.map(([tag, von, bis, titel, ort, typ], i) => ({ id: `demo-termin-${i + 1}`, datum: woche[tag], von, bis, titel, ort, typ }));
+/**
+ * Demo-Termine für eine Arbeitswoche (`offset` 0 = die Woche, in der `heute` liegt). Andere Wochen nutzen dieselben
+ * Vorlagen, um einen Tag je Woche verschoben, damit Vor- und Folgewoche nicht gleich aussehen.
+ */
+export function demoTermine(heute: string, offset = 0): Termin[] {
+  const woche = arbeitswoche(heute, offset);
+  const schieben = (((offset % 5) + 5) % 5);
+  return VORLAGEN.map(([tag, von, bis, titel, ort, typ], i) => ({ id: `demo-termin-${woche[0]}-${i + 1}`, datum: woche[(tag + schieben) % 5], von, bis, titel, ort, typ }));
 }
 
 export const demoTermineQuelle: TermineQuelle = {
   hinweis: "Demo – Outlook-Anbindung folgt",
-  getTermineDieseWoche: async (heute) => demoTermine(heute),
+  getTermineDieseWoche: async (heute, offset = 0) => demoTermine(heute, offset),
 };

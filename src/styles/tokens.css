@@ -57,6 +57,17 @@
   --info-soft: rgba(110, 168, 255, 0.14);
   --neutral-soft: rgba(255, 255, 255, 0.06);
 
+  /* Terminarten (Karte "Termine diese Woche"): Grundfarbe für Fläche und Rand der Kachel, heller Ton für den Titel.
+     Der Titel erreicht auf der getönten Kachel (18 % der Grundfarbe über --surface) mindestens 7,8:1. */
+  --termin-baustelle: var(--warn);
+  --termin-baustelle-text: #f6c877;
+  --termin-besprechung: var(--info);
+  --termin-besprechung-text: #a6c8ff;
+  --termin-behoerde: var(--chart-2);
+  --termin-behoerde-text: #bdb3fb;
+  --termin-intern: #8fa3b8;
+  --termin-intern-text: #c9d4df;
+
   /* Diagramme */
   --chart-1: #25a294; /* Teal, eine Stufe dunkler: besteht die Farbprüfung für Diagrammflächen */
   --chart-1-line: var(--accent);
@@ -136,6 +147,11 @@
   --info: #2f6fd6;
   --chart-grid: #f0f0f2;
   --chart-neutral: #52525b;
+  --termin-baustelle-text: #7a4d09;
+  --termin-besprechung-text: #1d4fa3;
+  --termin-behoerde-text: #4a3aa8;
+  --termin-intern: #64748b;
+  --termin-intern-text: #3d4a5c;
   --focus: #1d8f82;
   --focus-ring: rgba(29, 143, 130, 0.3);
 }
