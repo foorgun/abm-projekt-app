@@ -304,6 +304,61 @@ export interface Dataset extends Snapshot {
   agentFeedback: AgentFeedback[];
   /** Entwürfe "Neues Projekt aus Dokument". Leer für Freiberufler (RLS). */
   projectDrafts: ProjectDraftRecord[];
+  /** Eigene Benutzer-ID (für "meine" Zeilen). null im Demo-Modus als Freiberufler. */
+  meId: string | null;
+  /** Konten mit Rolle Admin oder Mitarbeiter. Admins sehen alle, Mitarbeiter nur sich selbst, Freiberufler niemanden. */
+  mitarbeiter: StaffMember[];
+  /** Urlaub und Krankheit: eigene Zeilen, für Admins alle. Leer für Freiberufler (RLS). */
+  abwesenheiten: Abwesenheit[];
+  urlaubsAnspruch: UrlaubsAnspruch[];
+}
+
+// ---------------------------------------------------------------------------
+// Urlaub und Krankheit
+// ---------------------------------------------------------------------------
+
+export interface StaffMember {
+  id: string;
+  name: string;
+  role: "admin" | "mitarbeiter";
+}
+
+export type AbwesenheitArt = "urlaub" | "krank";
+export type AbwesenheitStatus = "offen" | "genehmigt" | "abgelehnt" | "zurueckgezogen";
+
+export interface Abwesenheit {
+  id: string;
+  userId: string;
+  art: AbwesenheitArt;
+  von: string;
+  /** Letzter Tag. null nur bei einer Krankmeldung ohne Ende ("noch krank"). */
+  bis: string | null;
+  /** Werktage (nur Urlaub), von der Datenbank berechnet. */
+  werktage: number | null;
+  /** Krankmeldungen sind sofort "genehmigt" (keine Genehmigung nötig). */
+  status: AbwesenheitStatus;
+  /** Nur bei Urlaub. Krankmeldungen haben nie eine Notiz (keine Diagnose). */
+  notiz: string | null;
+  entscheidungVon: string | null;
+  entscheidungAm: string | null;
+  ablehnGrund: string | null;
+  createdAt: string;
+}
+
+export interface UrlaubsAnspruch {
+  userId: string;
+  jahr: number;
+  tage: number;
+  uebertrag: number;
+}
+
+/** Eintrag im Abwesenheitskalender. `art` ist nur für Admins gesetzt; alle anderen sehen nur "abwesend". */
+export interface KalenderEintrag {
+  userId: string;
+  name: string;
+  von: string;
+  bis: string;
+  art: AbwesenheitArt | null;
 }
 
 // ---------------------------------------------------------------------------

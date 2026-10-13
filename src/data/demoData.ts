@@ -3,6 +3,7 @@
 // Deterministisch über einen festen Seed: gleicher Tag → gleiche Daten.
 
 import { concretePath } from "../lib/folders";
+import { buildDemoAbsences, DEMO_ME, DEMO_STAFF } from "./demoAbwesenheit";
 import { addDays, monthStart } from "../lib/format";
 import { rng, type Rng } from "../lib/random";
 import type {
@@ -501,6 +502,9 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     agentSettings: { autoFileThreshold: 0.9, suggestThreshold: 0.6 },
     agentFeedback: [],
     projectDrafts: [],
+    meId: DEMO_ME.admin,
+    mitarbeiter: DEMO_STAFF.map((s) => ({ ...s })),
+    ...buildDemoAbsences(today),
   };
 }
 

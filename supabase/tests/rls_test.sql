@@ -752,6 +752,137 @@ select public.delete_project('a0000000-0000-4000-8000-000000000002');
 select test.expect('… und geht mit dem letzten Projekt', (select count(*) from public.bauherren where id = (select id from shared_bauherr)), 0);
 rollback;
 
+-- Urlaub und Krankheit (Migration 0012) ------------------------------------------
+-- a1 = Admin, a2 = Mitarbeiter, a3 = Freiberufler, a4 = ohne Rolle, a5 = zweiter Admin
+insert into auth.users (id, email) values ('00000000-0000-4000-8000-0000000000a5', 'admin2@example.com');
+insert into public.user_roles (user_id, role, full_name) values ('00000000-0000-4000-8000-0000000000a5', 'admin', 'Zweiter Admin');
+update public.user_roles set full_name = 'Erste Adminin' where user_id = '00000000-0000-4000-8000-0000000000a1';
+update public.user_roles set full_name = 'Mia Mitarbeiterin' where user_id = '00000000-0000-4000-8000-0000000000a2';
+
+select test.expect('Werktage: eine Woche', public.werktage('2026-10-12', '2026-10-16')::bigint, 5);
+select test.expect('Werktage: Karwoche bis Ostermontag 2026', public.werktage('2026-03-30', '2026-04-06')::bigint, 4);
+select test.expect('Werktage: Heiligabend zählt, 25.12. nicht', public.werktage('2026-12-21', '2026-12-25')::bigint, 4);
+select test.expect('Werktage: über den Jahreswechsel', public.werktage('2026-12-28', '2027-01-08')::bigint, 8);
+select test.expect('Werktage: Wochenende', public.werktage('2026-10-17', '2026-10-18')::bigint, 0);
+
+begin;
+set local role anon;
+select test.throws('anon darf Abwesenheiten nicht ansprechen', $$select count(*) from public.abwesenheiten$$);
+select test.throws('anon darf den Urlaubsanspruch nicht ansprechen', $$select count(*) from public.urlaubs_anspruch$$);
+select test.throws('anon darf den Kalender nicht aufrufen', $$select * from public.kalender_abwesenheiten('2026-01-01', '2026-12-31')$$);
+rollback;
+
+begin;
+-- Ausgangslage als Skript (service_role): Ansprüche und eine Krankmeldung der Mitarbeiterin
+set local role service_role;
+insert into public.urlaubs_anspruch (user_id, jahr) values
+  ('00000000-0000-4000-8000-0000000000a1', 2026), ('00000000-0000-4000-8000-0000000000a2', 2026), ('00000000-0000-4000-8000-0000000000a5', 2026);
+
+-- Mitarbeiterin: eigener Antrag, Werktage rechnet die Datenbank
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Anspruch: Standard 30 Tage, kein Übertrag', (select count(*) from public.urlaubs_anspruch where tage = 30 and uebertrag = 0), 3);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+insert into public.abwesenheiten (user_id, art, von, bis, notiz) values ('00000000-0000-4000-8000-0000000000a2', 'urlaub', '2026-12-28', '2027-01-08', ' Skiurlaub ');
+select test.expect('Antrag angelegt: Status offen, 8 Werktage von der Datenbank, Notiz bereinigt',
+  (select count(*) from public.abwesenheiten where user_id = auth.uid() and status = 'offen' and werktage = 8 and notiz = 'Skiurlaub' and entscheidung_von is null), 1);
+select test.throws('Status lässt sich beim Anlegen nicht mitgeben (kein Spaltenrecht)',
+  $$insert into public.abwesenheiten (user_id, art, von, bis, status) values (auth.uid(), 'urlaub', '2026-06-01', '2026-06-05', 'genehmigt')$$);
+select test.throws('Werktage lassen sich nicht mitgeben (kein Spaltenrecht)',
+  $$insert into public.abwesenheiten (user_id, art, von, bis, werktage) values (auth.uid(), 'urlaub', '2026-06-01', '2026-06-05', 1)$$);
+select test.throws('Antrag für eine andere Person wird abgelehnt',
+  $$insert into public.abwesenheiten (user_id, art, von, bis) values ('00000000-0000-4000-8000-0000000000a1', 'urlaub', '2026-06-01', '2026-06-05')$$);
+select test.throws('Ende vor Beginn wird abgelehnt', $$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-06-05', '2026-06-01')$$);
+select test.throws('Urlaub ohne Ende wird abgelehnt', $$insert into public.abwesenheiten (user_id, art, von) values (auth.uid(), 'urlaub', '2026-06-01')$$);
+select test.throws('Zeitraum ohne Werktag wird abgelehnt', $$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-10-17', '2026-10-18')$$);
+select test.throws('Überschneidung mit eigenem Antrag wird abgelehnt', $$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2027-01-08', '2027-01-12')$$);
+select test.throws('Mitarbeiterin kann sich nicht selbst genehmigen', $$update public.abwesenheiten set status = 'genehmigt' where user_id = auth.uid()$$);
+select test.throws('Mitarbeiterin kann den eigenen Antrag nicht ablehnen', $$update public.abwesenheiten set status = 'abgelehnt' where user_id = auth.uid()$$);
+select test.throws('Zeitraum eines Antrags lässt sich nicht ändern', $$update public.abwesenheiten set bis = '2027-01-15' where user_id = auth.uid() and art = 'urlaub'$$);
+select test.throws('Antrag löschen geht nicht', $$delete from public.abwesenheiten$$);
+select test.throws('Mitarbeiterin darf keinen Anspruch setzen', $$insert into public.urlaubs_anspruch (user_id, jahr, tage) values (auth.uid(), 2027, 99)$$);
+select test.expect('Mitarbeiterin ändert keinen Anspruch', test.affected($$update public.urlaubs_anspruch set tage = 99$$), 0);
+select test.expect('Mitarbeiterin sieht nur den eigenen Anspruch', (select count(*) from public.urlaubs_anspruch), 1);
+
+-- Krankmeldung: sofort wirksam, ohne Notiz, Ende offen
+insert into public.abwesenheiten (user_id, art, von) values (auth.uid(), 'krank', '2026-09-01');
+select test.expect('Krankmeldung ist sofort wirksam, ohne Werktage und ohne Ende',
+  (select count(*) from public.abwesenheiten where user_id = auth.uid() and art = 'krank' and status = 'genehmigt' and bis is null and werktage is null and notiz is null), 1);
+select test.throws('Krankmeldung mit Notiz wird abgelehnt (keine Diagnose)',
+  $$insert into public.abwesenheiten (user_id, art, von, bis, notiz) values (auth.uid(), 'krank', '2026-03-02', '2026-03-03', 'Grippe')$$);
+select test.expect('Wieder gesund ab: Ende nachtragen', test.affected($$update public.abwesenheiten set bis = '2026-09-04' where user_id = auth.uid() and art = 'krank'$$), 1);
+select test.throws('Krankmeldung: Ende vor Beginn', $$update public.abwesenheiten set bis = '2026-08-30' where user_id = auth.uid() and art = 'krank'$$);
+select test.throws('Krankmeldung braucht keine Entscheidung', $$update public.abwesenheiten set status = 'abgelehnt' where user_id = auth.uid() and art = 'krank'$$);
+select test.expect('Mitarbeiterin sieht genau ihre zwei Einträge', (select count(*) from public.abwesenheiten), 2);
+
+-- Erste Adminin: eigener Antrag; sie darf ihn nicht selbst entscheiden
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-11-02', '2026-11-06');
+select test.expect('Adminin sieht alle Einträge, auch die Krankmeldung', (select count(*) from public.abwesenheiten), 3);
+select test.throws('Adminin kann den EIGENEN Antrag nicht genehmigen', $$update public.abwesenheiten set status = 'genehmigt' where user_id = auth.uid()$$);
+select test.throws('Adminin kann den EIGENEN Antrag nicht ablehnen', $$update public.abwesenheiten set status = 'abgelehnt' where user_id = auth.uid()$$);
+select test.expect('Eigener Antrag ist danach noch offen', (select count(*) from public.abwesenheiten where user_id = auth.uid() and status = 'offen'), 1);
+select test.expect('Adminin genehmigt den fremden Antrag',
+  test.affected($$update public.abwesenheiten set status = 'genehmigt', ablehn_grund = 'egal' where user_id = '00000000-0000-4000-8000-0000000000a2' and art = 'urlaub'$$), 1);
+select test.expect('Entscheidung vermerkt: wer und wann, ohne Ablehngrund',
+  (select count(*) from public.abwesenheiten where user_id = '00000000-0000-4000-8000-0000000000a2' and status = 'genehmigt'
+     and entscheidung_von = '00000000-0000-4000-8000-0000000000a1' and entscheidung_am is not null and ablehn_grund is null and art = 'urlaub'), 1);
+select test.throws('Entschiedener Antrag lässt sich nicht noch einmal entscheiden',
+  $$update public.abwesenheiten set status = 'abgelehnt' where user_id = '00000000-0000-4000-8000-0000000000a2' and art = 'urlaub'$$);
+select test.throws('Adminin kann einen fremden Antrag nicht zurückziehen',
+  $$update public.abwesenheiten set status = 'zurueckgezogen' where user_id = '00000000-0000-4000-8000-0000000000a2' and art = 'urlaub'$$);
+select test.expect('Adminin setzt den Anspruch einer Person', test.affected($$update public.urlaubs_anspruch set tage = 28, uebertrag = 2.5 where user_id = '00000000-0000-4000-8000-0000000000a2'$$), 1);
+select test.throws('Anspruch: negative Tage werden abgelehnt', $$update public.urlaubs_anspruch set tage = -1$$);
+
+-- Zweiter Admin entscheidet den Antrag der ersten Adminin (Ablehnung mit Begründung)
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a5', true);
+select test.expect('Zweiter Admin lehnt den Antrag der ersten Adminin ab',
+  test.affected($$update public.abwesenheiten set status = 'abgelehnt', ablehn_grund = ' Abnahmetermin ' where user_id = '00000000-0000-4000-8000-0000000000a1'$$), 1);
+select test.expect('Ablehngrund bereinigt gespeichert',
+  (select count(*) from public.abwesenheiten where user_id = '00000000-0000-4000-8000-0000000000a1' and status = 'abgelehnt' and ablehn_grund = 'Abnahmetermin'
+     and entscheidung_von = '00000000-0000-4000-8000-0000000000a5'), 1);
+
+-- Kalender: Admin sieht den Grund, Mitarbeiterin nicht
+select test.expect('Kalender (Admin): genehmigter Urlaub und Krankmeldung, mit Art',
+  (select count(*) from public.kalender_abwesenheiten('2026-01-01', '2027-12-31') where art in ('urlaub', 'krank') and name = 'Mia Mitarbeiterin'), 2);
+select test.expect('Kalender: abgelehnte Anträge fehlen', (select count(*) from public.kalender_abwesenheiten('2026-01-01', '2027-12-31') where name = 'Erste Adminin'), 0);
+select test.expect('Kalender: nur der abgefragte Zeitraum', (select count(*) from public.kalender_abwesenheiten('2026-09-01', '2026-09-30')), 1);
+
+-- Mitarbeiterin: zieht einen offenen Antrag zurück, sieht fremde Zeilen nicht, Kalender ohne Art
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-07-06', '2026-07-10');
+select test.expect('Offenen Antrag zurückziehen', test.affected($$update public.abwesenheiten set status = 'zurueckgezogen' where user_id = auth.uid() and von = '2026-07-06'$$), 1);
+select test.throws('Zurückgezogener Antrag lässt sich nicht wieder öffnen', $$update public.abwesenheiten set status = 'offen' where user_id = auth.uid() and von = '2026-07-06'$$);
+select test.throws('Genehmigten Antrag kann man nicht mehr zurückziehen', $$update public.abwesenheiten set status = 'zurueckgezogen' where user_id = auth.uid() and von = '2026-12-28'$$);
+select test.expect('Nach dem Zurückziehen ist der Zeitraum wieder frei',
+  test.affected($$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-07-06', '2026-07-08')$$), 1);
+select test.expect('Mitarbeiterin sieht keine fremden Anträge oder Krankmeldungen', (select count(*) from public.abwesenheiten where user_id <> auth.uid()), 0);
+select test.expect('Mitarbeiterin ändert keine fremden Zeilen', test.affected($$update public.abwesenheiten set status = 'zurueckgezogen' where user_id <> auth.uid()$$), 0);
+select test.expect('Kalender (Mitarbeiterin): Einträge da …', (select count(*) from public.kalender_abwesenheiten('2026-01-01', '2027-12-31')), 2);
+select test.expect('… aber ohne Art', (select count(*) from public.kalender_abwesenheiten('2026-01-01', '2027-12-31') where art is not null), 0);
+
+-- Krankmeldung ohne Ende verrät sich im Kalender nicht durch ein fehlendes Ende
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a5', true);
+insert into public.abwesenheiten (user_id, art, von) values (auth.uid(), 'krank', current_date - 2);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Kalender: offene Krankmeldung erscheint bis heute, ohne Art',
+  (select count(*) from public.kalender_abwesenheiten(current_date - 5, current_date + 5) where name = 'Zweiter Admin' and bis = current_date and art is null), 1);
+select test.expect('Die Krankmeldung des Admins sieht die Mitarbeiterin in der Tabelle nicht', (select count(*) from public.abwesenheiten where art = 'krank' and user_id <> auth.uid()), 0);
+
+-- Freiberufler und ohne Rolle: nichts lesen, nichts schreiben, kein Kalender
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht keine Abwesenheit', (select count(*) from public.abwesenheiten), 0);
+select test.expect('Freiberufler sieht keinen Anspruch', (select count(*) from public.urlaubs_anspruch), 0);
+select test.throws('Freiberufler darf keinen Urlaub beantragen', $$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-06-01', '2026-06-05')$$);
+select test.throws('Freiberufler darf sich nicht krank melden', $$insert into public.abwesenheiten (user_id, art, von) values (auth.uid(), 'krank', '2026-06-01')$$);
+select test.expect('Freiberufler ändert nichts', test.affected($$update public.abwesenheiten set status = 'genehmigt'$$), 0);
+select test.throws('Freiberufler darf den Kalender nicht aufrufen', $$select * from public.kalender_abwesenheiten('2026-01-01', '2026-12-31')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('Ohne Rolle: keine Abwesenheit sichtbar', (select count(*) from public.abwesenheiten), 0);
+select test.throws('Ohne Rolle: kein Urlaubsantrag', $$insert into public.abwesenheiten (user_id, art, von, bis) values (auth.uid(), 'urlaub', '2026-06-01', '2026-06-05')$$);
+select test.throws('Ohne Rolle: kein Kalender', $$select * from public.kalender_abwesenheiten('2026-01-01', '2026-12-31')$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',

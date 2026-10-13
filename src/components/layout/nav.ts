@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BookUser,
   Bot,
+  CalendarOff,
   ClipboardCheck,
   Columns3,
   Files,
@@ -57,6 +58,8 @@ export const NAV: NavGroup[] = [
       // Dokumente sehen auch Freiberufler (nur die ihrer zugewiesenen Projekte)
       { to: "/dokumente", label: "Dokumente", icon: Files },
       { to: "/rechnungen", label: "Rechnungen", icon: Receipt, hiddenFor: ["freiberufler"] },
+      // Urlaub und Krankheit: nur Admin und Mitarbeiter (auch Route und Datenbank weisen Freiberufler ab)
+      { to: "/abwesenheit", label: "Abwesenheit", icon: CalendarOff, hiddenFor: ["freiberufler"] },
     ],
   },
   {

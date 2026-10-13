@@ -4,6 +4,7 @@ import { AppShell } from "./components/layout/AppShell";
 import { createBackend, type Backend } from "./lib/createRepo";
 import { SessionProvider, useSession } from "./lib/session";
 import { DataProvider } from "./lib/store";
+import { Abwesenheit } from "./pages/Abwesenheit";
 import { Dashboard } from "./pages/Dashboard";
 import { Documents } from "./pages/Documents";
 import { AgentDashboard } from "./pages/agent/AgentDashboard";
@@ -60,6 +61,7 @@ export function App() {
                 <Route path="dokumente" element={<Documents />} />
                 <Route path="rechnungen" element={<Invoices />} />
                 <Route path="auswertungen" element={<Reports />} />
+                <Route path="abwesenheit" element={<Abwesenheit />} />
                 <Route path="agent" element={<AgentDashboard />} />
                 <Route path="agent/pruefung" element={<ReviewList />} />
                 <Route path="agent/postfaecher" element={<Mailboxes />} />

@@ -191,8 +191,9 @@ export const LINK_ATTACHMENTS_SQL = `update public.inbox_attachments a set docum
 /**
  * Alle Demo-Daten löschen, echte Daten bleiben. Reihenfolge: erst die Wurzeln, an denen am meisten hängt.
  * Schritte, Rechnungen, Dokumente, Beteiligte, Zuweisungen, Mails, Anhänge und Läufe verschwinden über die Fremdschlüssel mit.
+ * Demo-Abwesenheiten (Urlaub, Krankheit) hängen an echten Konten und werden über ihr eigenes is_demo entfernt.
  */
-export const DELETE_ORDER = ["projects", "mailboxes", "tasks", "activities", "agent_rules", "bauherren", "salespeople", "team_members", "companies"] as const;
+export const DELETE_ORDER = ["abwesenheiten", "projects", "mailboxes", "tasks", "activities", "agent_rules", "bauherren", "salespeople", "team_members", "companies"] as const;
 
 export function deleteDemoSql(): string {
   return ["begin;", ...DELETE_ORDER.map((t) => `delete from public.${t} where is_demo;`), "commit;", ""].join("\n");

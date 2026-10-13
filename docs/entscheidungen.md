@@ -508,3 +508,22 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   gelöscht hat, steht damit nirgends in der App. Vor dem Löschen echter Projekte: `npm run export:backup`.
 - **Der Posteingangs-Agent löscht weiterhin nie etwas** (CLAUDE.md). Die Funktion ist nur aus der Oberfläche erreichbar.
 
+## Urlaub und Krankheit, Termine diese Woche (Migration 0012)
+
+- **Regeln in der Datenbank:** Wer was darf, steht in Zeilenregeln, Spaltenrechten und einem Trigger
+  (`abwesenheiten_regeln`). Der Browser kann weder Status noch Werktage noch die Entscheidung setzen. Die Oberfläche und
+  das Demo-Repo prüfen dieselben Regeln nur, um früh Hinweise zu geben.
+- **Werktage zweimal, einmal maßgeblich:** `src/lib/abwesenheit` (Anzeige) und die SQL-Funktionen `ostersonntag`,
+  `bw_feiertag`, `werktage` (maßgeblich). Beim Bau wurden beide über 2922 Tage und 402 Zeiträume verglichen.
+- **Selbst-Genehmigung** ist per Trigger verboten, auch für Admins. Die Rollenprüfung (`check:roles`) legt dafür
+  Testanträge im Jahr 2099 an und lehnt bzw. zieht sie wieder zurück, statt echte Anträge anzufassen.
+- **Kalender ohne Grund:** Nicht-Admins bekommen über `kalender_abwesenheiten` nie die Art, und offene Krankmeldungen
+  enden dort heute. Die Tabelle selbst gibt Mitarbeitern nur die eigenen Zeilen.
+- **Resttage sind eine Warnung, kein Verbot:** Ein Antrag über die Resttage hinaus lässt sich stellen (der Anspruch des
+  neuen Jahres fehlt oft noch); entscheiden muss ohnehin ein Admin. Gerechnet wird je Jahr getrennt.
+- **Demo-Abwesenheiten in der echten Datenbank** hängen an den vorhandenen Konten und tragen `is_demo`.
+- **Termine diese Woche** sind reine Demo-Daten hinter der Schnittstelle `TermineQuelle`. Die Karte ist nur für Admin und
+  Mitarbeiter sichtbar. Farbpunkte je Art nutzen vorhandene Tokens; die Art steht zusätzlich in Legende und Tooltip.
+- **Demo-Modus:** Je Rolle gibt es eine erfundene Person ("ich" als Admin ist Mehmet Cetin, als Mitarbeiter Jana Albrecht),
+  damit sich die Sichten zeigen lassen.
+

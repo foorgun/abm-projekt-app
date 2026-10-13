@@ -36,6 +36,7 @@ import {
   dbErrorMessage,
   groupSteps,
   storageSafeName,
+  toAbwesenheit,
   toActivity,
   toAgentFeedback,
   toAgentRule,
@@ -55,9 +56,10 @@ import {
   toStepDefinition,
   toTask,
   toTeamMember,
+  toUrlaubsAnspruch,
   type Row,
 } from "./supabase/mappers";
-import type { ActivityKind, AgentSettings, Dataset, MailboxStatus } from "./types";
+import type { ActivityKind, AgentSettings, Dataset, KalenderEintrag, MailboxStatus, StaffMember } from "./types";
 
 export const BUCKET = "project-documents";
 /** Die Daten-API liefert höchstens 1000 Zeilen je Anfrage: größere Tabellen werden seitenweise geholt. */
@@ -201,6 +203,19 @@ export function createSupabaseRepo(): Repo {
           sb.from("agent_settings").select(COLS.agent_settings).maybeSingle(),
           userNames(),
         ]);
+      // Urlaub und Krankheit: nur für Admin und Mitarbeiter (Freiberufler bekämen ohnehin keine Zeile)
+      const [absences, entitlements, staffRows] = isStaff()
+        ? await Promise.all([
+            all(sb, "abwesenheiten", COLS.abwesenheiten, ["von", "id"]),
+            all(sb, "urlaubs_anspruch", COLS.urlaubs_anspruch, ["jahr", "user_id"]),
+            // Rollen anderer sehen nur Admins (RLS auf user_roles); Mitarbeiter bekommen hier nur sich selbst
+            all(sb, "user_roles", "user_id, role, full_name", ["user_id"]),
+          ])
+        : [[], [], []];
+      const mitarbeiter: StaffMember[] = staffRows
+        .filter((r) => r.role === "admin" || r.role === "mitarbeiter")
+        .map((r) => ({ id: r.user_id, name: (r.full_name as string)?.trim() || "Unbekannt", role: r.role }))
+        .sort((a, b) => a.name.localeCompare(b.name, "de"));
       if (settings.error) fail(settings.error, "Einstellungen des Agenten konnten nicht geladen werden");
       if (drafts.error) fail(drafts.error, "Entwürfe konnten nicht geladen werden");
       const s = settings.data as Row | null;
@@ -226,6 +241,10 @@ export function createSupabaseRepo(): Repo {
         agentRules: rules.map((r) => toAgentRule(r, names)),
         agentFeedback: feedback.map((f) => toAgentFeedback(f, names)),
         projectDrafts: ((drafts.data ?? []) as unknown as Row[]).map((d) => toProjectDraft(d, names)),
+        meId: uid,
+        mitarbeiter,
+        abwesenheiten: absences.map((a) => toAbwesenheit(a, names)),
+        urlaubsAnspruch: entitlements.map(toUrlaubsAnspruch),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
       last = data;
@@ -592,6 +611,66 @@ export function createSupabaseRepo(): Repo {
       const { error } = await sb.rpc("report_wrong_filing", { p_attachment: attachmentId });
       if (error) fail(error);
     },
+    // ------------------------------------------------------------- Urlaub und Krankheit
+    // Wer was darf, wie viele Werktage es sind und ob sich etwas überschneidet, entscheidet die Datenbank (Migration 0012).
+
+    async requestUrlaub({ von, bis, notiz }) {
+      requireStaff();
+      const { data, error } = await sb
+        .from("abwesenheiten")
+        .insert({ user_id: await userId(), art: "urlaub", von, bis, notiz: notiz?.trim() || null })
+        .select(COLS.abwesenheiten)
+        .single();
+      if (error) fail(error, "Der Antrag konnte nicht gespeichert werden");
+      return toAbwesenheit(data as unknown as Row);
+    },
+
+    async withdrawUrlaub(id) {
+      requireStaff();
+      const { data, error } = await sb.from("abwesenheiten").update({ status: "zurueckgezogen" }).eq("id", id).select("id");
+      if (error) fail(error, "Der Antrag konnte nicht zurückgezogen werden");
+      if (!data?.length) throw new Error("Eintrag nicht gefunden");
+    },
+
+    async reportKrank({ von, bis }) {
+      requireStaff();
+      // bewusst ohne Notiz: es gibt dafür weder Feld noch Spaltenwert
+      const { data, error } = await sb.from("abwesenheiten").insert({ user_id: await userId(), art: "krank", von, bis }).select(COLS.abwesenheiten).single();
+      if (error) fail(error, "Die Krankmeldung konnte nicht gespeichert werden");
+      return toAbwesenheit(data as unknown as Row);
+    },
+
+    async setKrankBis(id, bis) {
+      requireStaff();
+      const { data, error } = await sb.from("abwesenheiten").update({ bis }).eq("id", id).eq("art", "krank").select("id");
+      if (error) fail(error, "Das Ende konnte nicht gespeichert werden");
+      if (!data?.length) throw new Error("Eintrag nicht gefunden");
+    },
+
+    async decideUrlaub(id, status, grund) {
+      if (user.role !== "admin") throw new PermissionError();
+      const { data, error } = await sb
+        .from("abwesenheiten")
+        .update({ status, ablehn_grund: status === "abgelehnt" ? grund?.trim() || null : null })
+        .eq("id", id)
+        .select("id");
+      if (error) fail(error, "Die Entscheidung konnte nicht gespeichert werden");
+      if (!data?.length) throw new Error("Eintrag nicht gefunden");
+    },
+
+    async setUrlaubsAnspruch(userIdOf, jahr, { tage, uebertrag }) {
+      if (user.role !== "admin") throw new PermissionError();
+      const { error } = await sb.from("urlaubs_anspruch").upsert({ user_id: userIdOf, jahr, tage, uebertrag }, { onConflict: "user_id,jahr" });
+      if (error) fail(error, "Der Anspruch konnte nicht gespeichert werden");
+    },
+
+    async kalenderAbwesenheiten(von, bis): Promise<KalenderEintrag[]> {
+      requireStaff();
+      const { data, error } = await sb.rpc("kalender_abwesenheiten", { p_von: von, p_bis: bis });
+      if (error) fail(error, "Der Kalender konnte nicht geladen werden");
+      return ((data ?? []) as Row[]).map((r) => ({ userId: r.user_id, name: r.name, von: r.von, bis: r.bis, art: r.art ?? null }));
+    },
+
     // ------------------------------------------------------------- Neues Projekt aus einem Vertrag
 
     async saveProjectDraft(input: DraftInput) {

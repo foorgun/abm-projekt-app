@@ -5,7 +5,7 @@
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
-import type { AgentRule, AgentSettings, Company, ContractMeta, Dataset, DocumentType, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Salesperson, Task, TeamMember } from "./types";
+import type { Abwesenheit, AgentRule, AgentSettings, Company, ContractMeta, Dataset, DocumentType, KalenderEintrag, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Salesperson, Task, TeamMember } from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -196,6 +196,22 @@ export interface Repo {
   fileContract(input: ContractFiling): Promise<ProjectDocument>;
   /** Nur Echtbetrieb: KI-Auslesung über die Edge Function extract-project. Fehlt im Demo-Modus. */
   extractProject?(request: ExtractRequest): Promise<ExtractResponse>;
+
+  // --- Urlaub und Krankheit (nur Admin und Mitarbeiter; Regeln erzwingt die Datenbank, Migration 0012) ---
+  /** Eigenen Urlaub beantragen. Status "offen"; die Werktage rechnet die Datenbank. */
+  requestUrlaub(input: { von: string; bis: string; notiz?: string | null }): Promise<Abwesenheit>;
+  /** Eigenen offenen Antrag zurückziehen. */
+  withdrawUrlaub(id: string): Promise<void>;
+  /** Sich krank melden: sofort wirksam, ohne Notiz. `bis` leer = noch krank. */
+  reportKrank(input: { von: string; bis: string | null }): Promise<Abwesenheit>;
+  /** Bei der eigenen Krankmeldung den letzten Krankheitstag nachtragen. */
+  setKrankBis(id: string, bis: string): Promise<void>;
+  /** Offenen Antrag einer ANDEREN Person genehmigen oder ablehnen (nur Admin; nie der eigene). */
+  decideUrlaub(id: string, status: "genehmigt" | "abgelehnt", grund?: string | null): Promise<void>;
+  /** Anspruch und Übertrag einer Person für ein Jahr setzen (nur Admin). */
+  setUrlaubsAnspruch(userId: string, jahr: number, werte: { tage: number; uebertrag: number }): Promise<void>;
+  /** Kalender: wer im Zeitraum abwesend ist. Für Nicht-Admins ohne Grund (art ist null). */
+  kalenderAbwesenheiten(von: string, bis: string): Promise<KalenderEintrag[]>;
 
   /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
   resetDemo?(): Promise<void>;

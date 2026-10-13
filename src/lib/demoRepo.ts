@@ -5,7 +5,10 @@
 import { classify } from "../agent/classify";
 import { buildDemoMailQueue, demoAi, type QueuedMail } from "../agent/demoMailSource";
 import type { ClassifyContext } from "../agent/types";
+import { DEMO_ME } from "../data/demoAbwesenheit";
 import { buildDemoDataset, DEMO_FREELANCER_TEAM_ID } from "../data/demoData";
+import { darfEntscheiden, endeVon, pruefeKrank, pruefeUrlaub } from "./abwesenheit/urlaub";
+import { werktage } from "./abwesenheit/werktage";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
 import { cleanMeta } from "./extract/applyDraft";
 import { checkContractFile } from "./extract/contractFile";
@@ -31,7 +34,7 @@ import {
   type UploadInput,
 } from "./repo";
 import type { SessionUser } from "./session";
-import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -53,7 +56,12 @@ function newId(prefix: string) {
 
 /** Was eine Rolle sehen darf (entspricht den RLS-Policies). */
 export function visibleFor(db: Dataset, user: SessionUser): Dataset {
-  if (user.role !== "freiberufler") return db;
+  if (user.role === "admin") return { ...db, meId: DEMO_ME.admin };
+  if (user.role === "mitarbeiter") {
+    // wie RLS: nur die eigenen Abwesenheiten, der eigene Anspruch, im Team nur man selbst
+    const me = DEMO_ME.mitarbeiter;
+    return { ...db, meId: me, mitarbeiter: db.mitarbeiter.filter((m) => m.id === me), abwesenheiten: db.abwesenheiten.filter((a) => a.userId === me), urlaubsAnspruch: db.urlaubsAnspruch.filter((a) => a.userId === me) };
+  }
   const projects = db.projects.filter((p) => p.planerId === DEMO_FREELANCER_TEAM_ID);
   const ids = new Set(projects.map((p) => p.id));
   return {
@@ -74,6 +82,10 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     agentRules: [],
     agentFeedback: [],
     projectDrafts: [],
+    meId: null,
+    mitarbeiter: [],
+    abwesenheiten: [],
+    urlaubsAnspruch: [],
   };
 }
 
@@ -96,6 +108,18 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     db.activities.unshift({ id: newId("a"), at: now(), actor: user.name, ...a });
   };
   const stepLabel = (key: string) => db.stepDefinitions.find((s) => s.key === key)?.label ?? key;
+  /** Wer "ich" ist (Demo: je Rolle eine erfundene Person). Freiberufler haben keinen Zugang zu Urlaub und Krankheit. */
+  const requireMe = (): string => {
+    const me = DEMO_ME[user.role];
+    if (!me) throw new PermissionError();
+    return me;
+  };
+  const absence = (id: string): Abwesenheit => {
+    const row = db.abwesenheiten.find((a) => a.id === id);
+    // wie RLS: fremde Zeilen gibt es für Mitarbeiter nicht
+    if (!row || (user.role !== "admin" && row.userId !== DEMO_ME[user.role])) throw new Error("Eintrag nicht gefunden");
+    return row;
+  };
   /** Dateien offener Entwürfe (im Demo-Modus nur im Speicher des Browsers) */
   const draftBlobs = new Map<string, Blob>();
 
@@ -379,6 +403,79 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const doc = storeDocument({ projectId, folderPath, file, source: "upload", sourceItemId: null, receivedOn: todayIso(), docType, meta });
       log({ projectId, kind: "datei", text: `${file.name} abgelegt` });
       return done(structuredClone(doc));
+    },
+
+    // ------------------------------------------------------------- Urlaub und Krankheit (Regeln wie Migration 0012)
+
+    async requestUrlaub({ von, bis, notiz }) {
+      const me = requireMe();
+      const check = pruefeUrlaub({ userId: me, von, bis }, db.abwesenheiten, db.urlaubsAnspruch, today);
+      if (check.fehler.length) throw new Error(check.fehler[0]);
+      const row: Abwesenheit = { id: newId("abw"), userId: me, art: "urlaub", von, bis, werktage: werktage(von, bis), status: "offen", notiz: notiz?.trim() || null, entscheidungVon: null, entscheidungAm: null, ablehnGrund: null, createdAt: now() };
+      db.abwesenheiten.push(row);
+      return done(structuredClone(row));
+    },
+
+    async withdrawUrlaub(id) {
+      const me = requireMe();
+      const row = absence(id);
+      if (row.userId !== me) throw new Error("Nur die Person selbst kann ihren Antrag zurückziehen.");
+      if (row.art !== "urlaub" || row.status !== "offen") throw new Error("Der Antrag ist nicht mehr offen.");
+      row.status = "zurueckgezogen";
+      return done(undefined);
+    },
+
+    async reportKrank({ von, bis }) {
+      const me = requireMe();
+      const fehler = pruefeKrank({ userId: me, von, bis }, db.abwesenheiten, today);
+      if (fehler.length) throw new Error(fehler[0]);
+      // sofort wirksam, nie mit Notiz
+      const row: Abwesenheit = { id: newId("abw"), userId: me, art: "krank", von, bis, werktage: null, status: "genehmigt", notiz: null, entscheidungVon: null, entscheidungAm: null, ablehnGrund: null, createdAt: now() };
+      db.abwesenheiten.push(row);
+      return done(structuredClone(row));
+    },
+
+    async setKrankBis(id, bis) {
+      const me = requireMe();
+      const row = absence(id);
+      if (row.art !== "krank") throw new Error("Das ist keine Krankmeldung.");
+      if (row.userId !== me && user.role !== "admin") throw new PermissionError();
+      const fehler = pruefeKrank({ userId: row.userId, von: row.von, bis }, db.abwesenheiten, today, row.id);
+      if (fehler.length) throw new Error(fehler[0]);
+      row.bis = bis;
+      return done(undefined);
+    },
+
+    async decideUrlaub(id, status, grund) {
+      const me = requireMe();
+      const row = absence(id);
+      if (user.role !== "admin") throw new PermissionError();
+      if (row.art !== "urlaub" || row.status !== "offen") throw new Error("Der Antrag ist nicht mehr offen.");
+      // Vier-Augen-Prinzip: nie der eigene Antrag
+      if (!darfEntscheiden({ id: me, role: user.role }, row)) throw new Error("Den eigenen Antrag kann nur ein anderer Admin entscheiden.");
+      Object.assign(row, { status, entscheidungVon: db.mitarbeiter.find((m) => m.id === me)?.name ?? user.name, entscheidungAm: now(), ablehnGrund: status === "abgelehnt" ? grund?.trim() || null : null });
+      return done(undefined);
+    },
+
+    async setUrlaubsAnspruch(userId, jahr, { tage, uebertrag }) {
+      requireMe();
+      if (user.role !== "admin") throw new PermissionError();
+      if (!(tage >= 0 && tage <= 366) || !(uebertrag >= 0 && uebertrag <= 366)) throw new Error("Bitte Tage zwischen 0 und 366 eintragen.");
+      const cur = db.urlaubsAnspruch.find((a) => a.userId === userId && a.jahr === jahr);
+      if (cur) Object.assign(cur, { tage, uebertrag });
+      else db.urlaubsAnspruch.push({ userId, jahr, tage, uebertrag });
+      return done(undefined);
+    },
+
+    async kalenderAbwesenheiten(von, bis) {
+      requireMe();
+      const admin = user.role === "admin";
+      const rows: KalenderEintrag[] = db.abwesenheiten
+        .filter((a) => a.status === "genehmigt" && a.von <= bis && endeVon(a, today) >= von)
+        // andere sehen nur "abwesend": kein Grund, und eine offene Krankmeldung endet in der Anzeige heute
+        .map((a) => ({ userId: a.userId, name: db.mitarbeiter.find((m) => m.id === a.userId)?.name ?? "Unbekannt", von: a.von, bis: endeVon(a, today), art: admin ? a.art : null }))
+        .sort((x, y) => x.von.localeCompare(y.von) || x.name.localeCompare(y.name, "de"));
+      return done(rows);
     },
 
     // ------------------------------------------------------------- Neues Projekt aus einem Vertrag

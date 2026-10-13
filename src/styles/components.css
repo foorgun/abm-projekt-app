@@ -272,7 +272,7 @@ kbd {
   background: var(--surface-2);
   color: var(--muted);
   font-family: var(--font);
-  font-size: 11px;
+  font-size: var(--fs-12);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
@@ -544,7 +544,7 @@ kbd {
   border-radius: var(--r-pill);
   background: var(--surface-3);
   color: var(--text);
-  font-size: 11px;
+  font-size: var(--fs-12);
   font-weight: 650;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -584,7 +584,7 @@ kbd {
 .avatar-sm {
   width: 24px;
   height: 24px;
-  font-size: 10px;
+  font-size: var(--fs-12);
 }
 
 /* ---------------------------------------------------------------- Tabs */
@@ -1692,6 +1692,348 @@ a.list-item:hover {
   gap: var(--sp-6);
 }
 
+/* Termine diese Woche: fünf Spalten Mo–Fr, schmal untereinander */
+.termin-woche {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--sp-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.termin-tag {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+}
+
+/* heute: Teal als aktiver Zustand (Rand und Wort "heute"), keine getönte Fläche */
+.termin-tag[data-heute] {
+  border-color: var(--accent);
+}
+
+.termin-tag-kopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.termin-tag[data-heute] .termin-tag-kopf {
+  color: var(--text);
+}
+
+.termin-heute {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.termin-liste {
+  display: grid;
+  gap: var(--sp-2);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.termin {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-12);
+}
+
+.termin-zeit {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.termin-text {
+  display: grid;
+  min-width: 0;
+}
+
+/* Titel höchstens zwei Zeilen, vollständig im Tooltip */
+.termin-titel {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.termin-ort {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.termin-leer,
+.termin-weitere {
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+/* Punkt je Art; die Art steht zusätzlich in der Legende, im Tooltip und für Screenreader im Text */
+.termin-punkt {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.termin-punkt[data-typ="baustelle"] {
+  background: var(--warn);
+}
+
+.termin-punkt[data-typ="besprechung"] {
+  background: var(--info);
+}
+
+.termin-punkt[data-typ="behoerde"] {
+  background: var(--chart-2);
+}
+
+.termin-punkt[data-typ="intern"] {
+  background: var(--muted);
+}
+
+.termin-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.termin-legende li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 860px) {
+  .termin-woche {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-2);
+  }
+
+  .termin-titel,
+  .termin-ort {
+    white-space: normal;
+  }
+}
+
+/* ---------------------------------------------------------------- Urlaub und Krankheit */
+
+.abw-stand {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-4);
+  margin: 0;
+}
+
+.abw-stand dt {
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+.abw-stand dd {
+  margin: 2px 0 0;
+  font-size: var(--fs-28);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.abw-stand [data-rest] dd {
+  color: var(--accent);
+}
+
+[data-negativ] {
+  color: var(--danger);
+}
+
+.abw-stand [data-rest] dd[data-negativ] {
+  color: var(--danger);
+}
+
+.abw-werktage,
+.abw-info {
+  font-size: var(--fs-13);
+  color: var(--text-2);
+}
+
+.abw-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+}
+
+.abw-zeile {
+  flex-wrap: wrap;
+}
+
+.abw-gesund {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.abw-gesund .input {
+  width: 150px;
+  height: var(--ctl-h-sm);
+  font-size: var(--fs-12);
+}
+
+.abw-ablehnen {
+  display: grid;
+  gap: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.abw-team .input.abw-zahl {
+  width: 76px;
+  height: var(--ctl-h-sm);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Monatskalender: eine Zeile je Person, eine Spalte je Tag; scrollt seitlich im eigenen Kasten */
+.abw-kalender-wrap {
+  /* relative: die versteckten Texte für Screenreader (absolut positioniert) bleiben im scrollenden Kasten */
+  position: relative;
+  overflow-x: auto;
+}
+
+.abw-kalender {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 2px;
+  font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+}
+
+.abw-kalender th {
+  font-weight: 500;
+  color: var(--muted);
+  text-align: center;
+  padding: 2px 0;
+  min-width: 24px;
+}
+
+.abw-kalender thead th:first-child,
+.abw-kalender tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 132px;
+  padding-right: var(--sp-3);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.abw-wt {
+  display: block;
+  font-size: var(--fs-12);
+  line-height: 1.2;
+}
+
+.abw-kalender td {
+  height: 26px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  text-align: center;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.abw-kalender [data-frei] {
+  background: transparent;
+  color: var(--faint);
+}
+
+.abw-kalender th[data-heute] {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.abw-kalender td[data-heute] {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Urlaub in Teal (aktiver Zustand), krank in Orange, "abwesend" neutral; jeweils zusätzlich mit Buchstabe */
+.abw-kalender td[data-art="urlaub"],
+.abw-probe[data-art="urlaub"] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.abw-kalender td[data-art="krank"],
+.abw-probe[data-art="krank"] {
+  background: var(--warn);
+  color: var(--on-accent);
+}
+
+.abw-kalender td[data-art="abwesend"],
+.abw-probe[data-art="abwesend"] {
+  background: var(--border-strong);
+  color: var(--text);
+}
+
+.abw-legende {
+  margin-top: var(--sp-3);
+}
+
+.abw-probe {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+
+.abw-probe[data-frei] {
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+}
+
+@media (max-width: 640px) {
+  .abw-stand {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .abw-stand dd {
+    font-size: var(--fs-20);
+  }
+}
+
 /* Heute zu tun: Aufgaben und Warnungen in einer Liste (Zeilen wie .alert-row) */
 .todo-group {
   padding: var(--sp-3) var(--sp-5) var(--sp-2);
@@ -2226,7 +2568,7 @@ a.list-item:hover {
   border-radius: var(--r-sm);
   background: var(--surface-3);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-12);
   font-weight: 650;
 }
 
@@ -2574,7 +2916,7 @@ a.list-item:hover {
   border-radius: var(--r-pill);
   background: var(--surface-3);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--fs-12);
   font-weight: 650;
   line-height: 18px;
   text-align: center;

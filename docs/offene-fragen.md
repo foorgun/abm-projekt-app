@@ -61,3 +61,21 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) braucht es den Auftragsverarbeitungsvertrag mit dem Anbieter und
   die Zustimmung von ABM. Siehe `docs/vertrag-extraktion.md`.
 - **Limits der Auslesung:** 20 je Person und Tag, 100 je Tag, 20 € im Monat sind Annahmen. Passen sie zum Büro?
+
+## Zu Urlaub und Krankheit
+
+- **Löschfrist:** Vorschlag: Abwesenheitsdaten (Urlaub, Krankmeldungen) drei Jahre nach Ende des Kalenderjahres löschen.
+  Passt das zu den Aufbewahrungspflichten von ABM (Lohnunterlagen, Steuerberater)? Bisher wird nichts automatisch gelöscht.
+- **Anspruch:** Standard sind 30 Tage für alle. Gibt es abweichende Ansprüche (Teilzeit, Eintritt im laufenden Jahr), und
+  verfällt der Übertrag aus dem Vorjahr zu einem Stichtag (z. B. 31.03.)? Der Übertrag ist derzeit nur ein Zahlenfeld.
+- **Halbe Tage:** Die Felder können halbe Tage speichern, die Oberfläche bietet aber nur ganze Tage an. Gebraucht?
+- **Heiligabend und Silvester** zählen als ganze Werktage. Sind sie bei ABM frei oder halbe Tage?
+- **Vier-Augen-Prinzip:** Den eigenen Antrag kann ein Admin nicht entscheiden. Wer entscheidet, wenn nur ein Admin da ist?
+- **Krankmeldung:** Soll ein Admin eine Person krank melden können (z. B. nach einem Anruf)? Derzeit meldet sich jede Person
+  selbst; ein Admin kann nur das Ende nachtragen.
+- **Benachrichtigung:** Es gibt keine Mail an Admins bei neuen Anträgen und keine an die Person nach der Entscheidung
+  (die App sendet nie Mails). Reicht die Zahl am Reiter "Genehmigen"?
+- **Konto Willi:** In `konten.local.json` steht der Platzhalter `willi@abm-partner.de`. Die echte Adresse fehlt noch.
+- **Termine diese Woche:** Die Karte zeigt Demo-Termine. Für Outlook braucht es eine App-Registrierung in Microsoft 365
+  (dieselbe Frage wie beim Posteingangs-Agenten) und die Entscheidung, wessen Kalender gezeigt wird (eigener, Bürokalender).
+

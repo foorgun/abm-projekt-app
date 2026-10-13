@@ -2,6 +2,7 @@
 //   * Gibt es ein Konto schon, bleibt sein Passwort unberührt; nur Rolle und Name werden gesetzt.
 //   * Neue Konten bekommen ein zufälliges Passwort. Es wird NICHT angezeigt, sondern nur in konten.local.json
 //     geschrieben (lokal, nicht eingecheckt), damit check:roles sich anmelden kann.
+//   * Admins und Mitarbeiter bekommen den Urlaubsanspruch für das laufende Jahr (30 Tage), falls noch keiner eingetragen ist.
 //   * Dem Freiberufler werden genau drei Projekte zugewiesen (Demo-Projekte; vorher npm run seed:demo).
 // Aufruf: npm run konten:anlegen
 import { randomBytes } from "node:crypto";
@@ -35,6 +36,16 @@ for (const k of konten) {
   const role = await sb.from("user_roles").upsert({ user_id: id, role: k.rolle, full_name: k.name.trim() }, { onConflict: "user_id" });
   if (role.error) die(`Rolle für ${email} konnte nicht gesetzt werden: ${role.error.message}`);
 
+  // Urlaubsanspruch für das laufende Jahr (Standard 30 Tage aus der Tabelle). Ein vorhandener Eintrag bleibt unverändert.
+  let urlaub = "–";
+  if (k.rolle === "admin" || k.rolle === "mitarbeiter") {
+    const jahr = new Date().getFullYear();
+    const ins = await sb.from("urlaubs_anspruch").upsert({ user_id: id, jahr }, { onConflict: "user_id,jahr", ignoreDuplicates: true });
+    if (ins.error) die(`Urlaubsanspruch für ${email} konnte nicht angelegt werden: ${ins.error.message}\nIst die Migration 0012 angewendet?`);
+    const cur = await sb.from("urlaubs_anspruch").select("tage").eq("user_id", id).eq("jahr", jahr).maybeSingle();
+    urlaub = cur.data ? `${Number(cur.data.tage)} Tage (${jahr})` : `angelegt (${jahr})`;
+  }
+
   let projekte = "alle (über die Rolle)";
   if (k.rolle === "freiberufler") {
     const mine = await sb.from("project_members").select("project_id").eq("user_id", id);
@@ -53,8 +64,8 @@ for (const k of konten) {
       }
     }
   }
-  report.push([email, k.name, k.rolle, konto, projekte]);
+  report.push([email, k.name, k.rolle, konto, urlaub, projekte]);
 }
 writeKonten(konten);
-console.log(table(["E-Mail", "Name", "Rolle", "Konto", "Projekte"], report));
+console.log(table(["E-Mail", "Name", "Rolle", "Konto", "Urlaubsanspruch", "Projekte"], report));
 console.log(`\nPasswörter neuer Konten stehen nur in ${KONTEN_DATEI}. Bitte den Personen auf sicherem Weg geben und danach im Dashboard ändern lassen.`);

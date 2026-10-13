@@ -76,7 +76,7 @@ describe("Demo-Daten für die echte Datenbank", () => {
     expect(sql).toContain("begin;");
     expect(sql.trim().endsWith("commit;")).toBe(true);
     const del = deleteDemoSql();
-    expect(del.match(/delete from/g)).toHaveLength(9);
+    expect(del.match(/delete from/g)).toHaveLength(10);
     expect(del.split("\n").filter((l) => l.startsWith("delete")).every((l) => l.endsWith("where is_demo;"))).toBe(true);
   });
 });

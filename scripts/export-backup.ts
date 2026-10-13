@@ -32,6 +32,8 @@ const TABLES: Record<string, string[]> = {
   agent_feedback: ["id"],
   project_drafts: ["id"],
   extraction_log: ["id"],
+  urlaubs_anspruch: ["user_id", "jahr"],
+  abwesenheiten: ["id"],
   user_roles: ["user_id"],
 };
 

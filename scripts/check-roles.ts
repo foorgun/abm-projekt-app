@@ -83,6 +83,15 @@ async function attempt(run: PromiseLike<{ error: DbError | null; data?: unknown;
   const { error, data, status } = await run;
   return outcome(error, Array.isArray(data) ? data.length : 1, status);
 }
+/**
+ * Wie attempt, aber für Regeln, die ein Trigger mit einer eigenen deutschen Meldung durchsetzt (Urlaub und Krankheit):
+ * auch diese Ablehnung zählt als "gesperrt". Eine geänderte Zeile oder ein technischer Fehler nicht.
+ */
+async function attemptRule(run: PromiseLike<{ error: DbError | null; data?: unknown; status?: number }>): Promise<Outcome> {
+  const { error, data, status } = await run;
+  if (error && (error.code === "P0001" || error.code === "23514")) return { kind: "gesperrt", detail: errorText(error, status) };
+  return outcome(error, Array.isArray(data) ? data.length : 1, status);
+}
 /** Für Schreibversuche: gesperrt ODER keine Zeile betroffen ist in Ordnung; eine geänderte Zeile oder ein anderer Fehler nicht. */
 function expectBlocked(konto: string, what: string, actual: Outcome) {
   const ok = actual.kind === "gesperrt" || (actual.kind === "zeilen" && actual.n === 0);
@@ -117,6 +126,11 @@ async function uploadAttempt(sb: SupabaseClient, path: string): Promise<Outcome>
   if (!up.error) await sb.storage.from("project-documents").remove([path]);
   return outcome(up.error as DbError | null, 1);
 }
+// Testanträge der Rollenprüfung liegen weit in der Zukunft (2. und 3. März 2099, Montag und Dienstag) und werden am Ende
+// zurückgezogen bzw. abgelehnt. Solche Zeilen zählen in keinem laufenden Jahr und blockieren spätere Läufe nicht.
+const TEST_VON = "2099-03-02";
+const TEST_BIS = "2099-03-03";
+const TEST_NOTIZ = "Rollenprüfung (check:roles), kann ignoriert werden";
 const NEVER = { fields: {}, form: {}, file_name: "rollenpruefung.pdf", file_size: -1 }; // file_size -1: die Datenbank lehnt den Wert erst NACH der Berechtigungsprüfung ab
 
 const konten = readKonten();
@@ -127,6 +141,8 @@ for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.r
 const anon = publicClient();
 for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("delete_project", { p_id: NIL })));
+for (const t of ["abwesenheiten", "urlaubs_anspruch"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t, undefined, "user_id"));
+expectDenied("nicht angemeldet", "Abwesenheitskalender aufrufen", await attempt(anon.rpc("kalender_abwesenheiten", { p_von: "2026-01-01", p_bis: "2026-12-31" })));
 
 // ---- Bezugswerte: was ein Admin sieht
 const adminKonto = mitPasswort.find((k) => k.rolle === "admin");
@@ -171,6 +187,37 @@ for (const k of mitPasswort) {
   else expectDenied(who, "Projekt löschen: nur Admin", del);
   // direkt in der Tabelle darf niemand löschen, auch kein Admin (nur über die Funktion)
   expectDenied(who, "Projekt direkt in der Tabelle löschen", await attempt(sb.from("projects").delete().eq("id", NIL).select("id")));
+
+  // ---- Urlaub und Krankheit (Migration 0012)
+  const jahr = new Date().getFullYear();
+  const kal = await sb.rpc("kalender_abwesenheiten", { p_von: `${jahr}-01-01`, p_bis: `${jahr}-12-31` });
+  if (k.rolle === "freiberufler") {
+    expectRows(who, "sieht keine Abwesenheiten", 0, await count(sb, "abwesenheiten"));
+    expectRows(who, "sieht keinen Urlaubsanspruch", 0, await count(sb, "urlaubs_anspruch", undefined, "user_id"));
+    expectDenied(who, "Abwesenheitskalender aufrufen", outcome(kal.error, (kal.data ?? []).length, kal.status));
+    // gültige Daten in ferner Zukunft: die Zeilenregel muss ablehnen (sonst entstünde ein offener Antrag im Jahr 2099)
+    expectDenied(who, "Urlaub beantragen", await attempt(sb.from("abwesenheiten").insert({ user_id: id, art: "urlaub", von: TEST_VON, bis: TEST_BIS }).select("id")));
+    expectDenied(who, "krank melden", await attempt(sb.from("abwesenheiten").insert({ user_id: id, art: "krank", von: TEST_VON, bis: TEST_BIS }).select("id")));
+  } else {
+    const own = await count(sb, "abwesenheiten", (q) => q.eq("user_id", id));
+    record(who, "eigene Abwesenheiten lesen", "lesbar", show(own), own.kind === "zeilen");
+    const foreign = await count(sb, "abwesenheiten", (q) => q.neq("user_id", id));
+    if (k.rolle === "mitarbeiter") {
+      expectRows(who, "sieht fremde Anträge und Krankmeldungen NICHT", 0, foreign);
+      expectRows(who, "sieht nur den eigenen Urlaubsanspruch", 0, await count(sb, "urlaubs_anspruch", (q) => q.neq("user_id", id), "user_id"));
+      // dieselben Werte zurückschreiben würde bei fehlender Regel nichts ändern; die Regel lässt nur Admins schreiben
+      expectBlocked(who, "Urlaubsanspruch ändern (nur Admin)", await attempt(sb.from("urlaubs_anspruch").update({ tage: 30 }).eq("user_id", NIL).select("user_id")));
+      expectDenied(who, "Urlaubsanspruch anlegen (nur Admin)", await attempt(sb.from("urlaubs_anspruch").insert({ user_id: id, jahr: 2099, tage: 30 }).select("user_id")));
+    } else record(who, "Admin liest alle Abwesenheiten", "lesbar", show(foreign), foreign.kind === "zeilen");
+    // Status, Werktage und Entscheidung setzt nie der Client: kein Spaltenrecht, für JEDE Rolle
+    expectDenied(who, "Antrag gleich als genehmigt anlegen", await attempt(sb.from("abwesenheiten").insert({ user_id: id, art: "urlaub", von: TEST_VON, bis: TEST_BIS, status: "genehmigt" }).select("id")));
+    expectDenied(who, "Abwesenheit löschen", await attempt(sb.from("abwesenheiten").delete().eq("id", NIL).select("id")));
+    // Kalender: Mitarbeiter bekommen nie den Grund (art), Admins schon
+    const arten = ((kal.data ?? []) as { art: string | null }[]).filter((r) => r.art !== null).length;
+    if (kal.error) record(who, "Abwesenheitskalender aufrufen", "aufrufbar", show(outcome(kal.error, 0, kal.status)), false);
+    else if (k.rolle === "mitarbeiter") expectRows(who, `Kalender liefert für Mitarbeiter keine "art" (${(kal.data ?? []).length} Einträge)`, 0, { kind: "zeilen", n: arten });
+    else record(who, "Abwesenheitskalender aufrufen (Admin, mit Art)", "aufrufbar", `${(kal.data ?? []).length} Einträge, ${arten} mit Art`, true);
+  }
 
   if (k.rolle === "admin" || k.rolle === "mitarbeiter") {
     const drafts = await count(sb, "project_drafts");
@@ -270,6 +317,49 @@ for (const k of mitPasswort) {
     }
   }
   await sb.auth.signOut();
+}
+// ---- Urlaub: Vier-Augen-Prinzip mit echten Testanträgen (2099). Niemand genehmigt den eigenen Antrag; ein Admin
+// entscheidet den Antrag einer anderen Person. Die Testanträge enden als "zurückgezogen" oder "abgelehnt".
+{
+  const ma = mitPasswort.find((k) => k.rolle === "mitarbeiter");
+  const m = ma ? await signIn(ma) : null;
+  const a = `${adminKonto.email} (admin)`;
+  type Row = { id: string; status: string; werktage: number | null };
+  const create = async (sb: SupabaseClient, uid: string) => sb.from("abwesenheiten").insert({ user_id: uid, art: "urlaub", von: TEST_VON, bis: TEST_BIS, notiz: TEST_NOTIZ }).select("id, status, werktage").single();
+  const status = async (sb: SupabaseClient, rowId: string) => ((await sb.from("abwesenheiten").select("status").eq("id", rowId).maybeSingle()).data as { status: string } | null)?.status ?? "nicht lesbar";
+
+  // Admin: eigener Antrag
+  const own = await create(ref.sb, ref.id);
+  if (own.error || !own.data) record(a, "Testantrag anlegen", "angelegt", show(outcome(own.error, 0, own.status)), false);
+  else {
+    const row = own.data as Row;
+    expectText(a, "Testantrag: Status und Werktage setzt die Datenbank", "offen, 2 Werktage", `${row.status}, ${Number(row.werktage)} Werktage`);
+    expectDenied(a, "Admin genehmigt den EIGENEN Antrag", await attemptRule(ref.sb.from("abwesenheiten").update({ status: "genehmigt" }).eq("id", row.id).select("id")));
+    expectDenied(a, "Admin lehnt den EIGENEN Antrag ab", await attemptRule(ref.sb.from("abwesenheiten").update({ status: "abgelehnt" }).eq("id", row.id).select("id")));
+    expectText(a, "eigener Antrag ist danach noch offen", "offen", await status(ref.sb, row.id));
+    expectDenied(a, "Überschneidung mit dem eigenen Antrag", await attemptRule(ref.sb.from("abwesenheiten").insert({ user_id: ref.id, art: "urlaub", von: TEST_BIS, bis: TEST_BIS }).select("id")));
+    expectDenied(a, "Krankmeldung mit Notiz (keine Diagnose)", await attemptRule(ref.sb.from("abwesenheiten").insert({ user_id: ref.id, art: "krank", von: "2099-04-01", bis: "2099-04-01", notiz: "x" }).select("id")));
+    expectRows(a, "Admin zieht den eigenen Testantrag zurück", 1, await attempt(ref.sb.from("abwesenheiten").update({ status: "zurueckgezogen" }).eq("id", row.id).select("id")));
+  }
+
+  // Mitarbeiter: eigener Antrag, Selbst-Genehmigung verboten; der Admin entscheidet ihn
+  if (!ma || !m) rows.push(["Mitarbeiter", "Urlaub: Selbst-Genehmigung und Entscheidung durch Admin", "–", "übersprungen: kein Mitarbeiter-Konto mit Passwort", "–"]);
+  else {
+    const who = `${ma.email} (mitarbeiter)`;
+    const req = await create(m.sb, m.id);
+    if (req.error || !req.data) record(who, "Testantrag anlegen", "angelegt", show(outcome(req.error, 0, req.status)), false);
+    else {
+      const row = req.data as Row;
+      expectDenied(who, "Mitarbeiter genehmigt sich selbst", await attemptRule(m.sb.from("abwesenheiten").update({ status: "genehmigt" }).eq("id", row.id).select("id")));
+      expectText(who, "eigener Antrag ist danach noch offen", "offen", await status(m.sb, row.id));
+      // Der Admin lehnt den Testantrag ab: dieselbe Regel wie beim Genehmigen (nur Admin, nie der eigene), ohne dass
+      // ein genehmigter Urlaub im Bestand zurückbleibt.
+      expectRows(a, "Admin entscheidet den Antrag einer anderen Person (Testantrag wird abgelehnt)", 1, await attempt(ref.sb.from("abwesenheiten").update({ status: "abgelehnt", ablehn_grund: "Rollenprüfung" }).eq("id", row.id).select("id")));
+      expectText(who, "Mitarbeiter sieht die Entscheidung", "abgelehnt", await status(m.sb, row.id));
+      expectDenied(who, "entschiedenen Antrag wieder öffnen", await attemptRule(m.sb.from("abwesenheiten").update({ status: "offen" }).eq("id", row.id).select("id")));
+    }
+    await m.sb.auth.signOut();
+  }
 }
 await ref.sb.auth.signOut();
 

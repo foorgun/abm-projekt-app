@@ -6,6 +6,7 @@
 //   npm run seed:demo -- --sql        schreibt stattdessen SQL nach supabase/.out/ (kein Schlüssel nötig):
 //                                     demo-seed.sql und demo-loeschen.sql, zum Einfügen in den SQL-Editor
 import { mkdirSync, writeFileSync } from "node:fs";
+import { absenceSeedRows, absenceSeedSql } from "../src/data/demoAbwesenheit";
 import { buildDemoDataset } from "../src/data/demoData";
 import { buildSeedTables, deleteDemoSql, DELETE_ORDER, LINK_ATTACHMENTS_SQL, REAL_COMPANY_ID, seedSql, type SeedRow } from "../src/data/seedRows";
 import { todayIso } from "../src/lib/format";
@@ -17,7 +18,8 @@ const total = tables.reduce((n, t) => n + t.rows.length, 0);
 
 if (args.has("--sql")) {
   mkdirSync("supabase/.out", { recursive: true });
-  writeFileSync("supabase/.out/demo-seed.sql", seedSql(tables));
+  // Abwesenheiten hängen an vorhandenen Konten: das SQL sucht sie selbst heraus (ohne Konten wird nichts eingefügt)
+  writeFileSync("supabase/.out/demo-seed.sql", seedSql(tables) + absenceSeedSql(todayIso()));
   writeFileSync("supabase/.out/demo-loeschen.sql", deleteDemoSql());
   console.log(`${total} Zeilen in ${tables.length} Tabellen → supabase/.out/demo-seed.sql`);
   console.log("Löschen aller Demo-Daten → supabase/.out/demo-loeschen.sql");
@@ -30,7 +32,7 @@ async function countDemo(): Promise<[string, number][]> {
   const out: [string, number][] = [];
   for (const t of DELETE_ORDER) {
     const { count, error } = await sb.from(t).select("*", { count: "exact", head: true }).eq("is_demo", true);
-    if (error) die(`${t}: ${error.message}\nSind die Migrationen bis 0011 angewendet?`);
+    if (error) die(`${t}: ${error.message}\nSind die Migrationen bis 0012 angewendet?`);
     out.push([t, count ?? 0]);
   }
   return out;
@@ -82,6 +84,16 @@ try {
       }),
     );
   }
+  // Urlaub und Krankheit: Anträge in allen Stati und eine Krankmeldung, an den vorhandenen Konten (Admins zuerst)
+  const staff = await sb.from("user_roles").select("user_id, role").in("role", ["admin", "mitarbeiter"]);
+  if (staff.error) throw new Error(`user_roles: ${staff.error.message}`);
+  const ids = (staff.data ?? []).sort((a, b) => Number(b.role === "admin") - Number(a.role === "admin") || a.user_id.localeCompare(b.user_id)).map((r) => r.user_id);
+  const absences = absenceSeedRows(ids, todayIso());
+  if (absences.length) {
+    const { error } = await sb.from("abwesenheiten").insert(absences);
+    if (error) throw new Error(`abwesenheiten: ${error.message}`);
+  }
+  done.push([`abwesenheiten (für ${Math.min(ids.length, 4)} Konten)`, absences.length]);
 } catch (e) {
   // Die API kennt keine Transaktion über mehrere Aufrufe: bei einem Fehler alles Geladene wieder entfernen
   console.error(`\nFehler beim Laden: ${e instanceof Error ? e.message : e}\nEntferne die bereits geladenen Demo-Zeilen wieder …`);

@@ -2,6 +2,7 @@
 
 import type { StepDefinition } from "../steps";
 import type {
+  Abwesenheit,
   Activity,
   AgentFeedback,
   AgentRule,
@@ -21,6 +22,7 @@ import type {
   StepDates,
   Task,
   TeamMember,
+  UrlaubsAnspruch,
 } from "../types";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -41,6 +43,8 @@ export const COLS = {
   bauherren: "id, name, address, phone, email, building_address, name2, phone2, email2",
   project_parties: "project_id, role, name, contact",
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
+  abwesenheiten: "id, user_id, art, von, bis, werktage, status, notiz, entscheidung_von, entscheidung_am, ablehn_grund, created_at",
+  urlaubs_anspruch: "user_id, jahr, tage, uebertrag",
   project_drafts: "id, status, fields, form, doc_type, file_name, file_size, file_mime, storage_path, project_id, created_by, created_at, updated_at",
   tasks: "id, project_id, title, due_on, assignee_id, status, source, source_key, created_at, done_at",
   activities: "id, project_id, kind, text, actor, at",
@@ -171,6 +175,24 @@ export const toDocument = (r: Row, names: Map<string, string> = new Map()): Proj
   docType: r.doc_type ?? null,
   meta: r.meta && typeof r.meta === "object" ? r.meta : {},
 });
+
+/** Urlaubsantrag oder Krankmeldung. `entscheidungVon` wird zum Anzeigenamen. */
+export const toAbwesenheit = (r: Row, names: Map<string, string> = new Map()): Abwesenheit => ({
+  id: r.id,
+  userId: r.user_id,
+  art: r.art,
+  von: r.von,
+  bis: r.bis ?? null,
+  werktage: r.werktage == null ? null : Number(r.werktage),
+  status: r.status,
+  notiz: r.notiz ?? null,
+  entscheidungVon: r.entscheidung_von ? names.get(r.entscheidung_von) ?? "Unbekannt" : null,
+  entscheidungAm: r.entscheidung_am ? stamp(r.entscheidung_am) : null,
+  ablehnGrund: r.ablehn_grund ?? null,
+  createdAt: stamp(r.created_at),
+});
+
+export const toUrlaubsAnspruch = (r: Row): UrlaubsAnspruch => ({ userId: r.user_id, jahr: Number(r.jahr), tage: Number(r.tage), uebertrag: Number(r.uebertrag) });
 
 /** Entwurf aus der Datenbank. `fields` und `form` sind JSON, das die App selbst geschrieben hat. */
 export const toProjectDraft = (r: Row, names: Map<string, string> = new Map()): ProjectDraftRecord => ({

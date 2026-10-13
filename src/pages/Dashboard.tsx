@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AlertTriangle, ArrowRight, Bot, CheckCircle2, ChevronRight, CircleAlert, FolderOpen, Info, ListTodo, Receipt, ShieldAlert } from "lucide-react";
 import { HBarChart } from "../components/charts/HBarChart";
 import { PageHead } from "../components/layout/PageHead";
+import { TermineKarte } from "../components/TermineKarte";
 import { useToast } from "../components/Toast";
 import { Button, buttonClass, Card, CardBody, CardHead, DataTable, EmptyState, ErrorState, KpiCard, KpiSkeleton, Pill, Skeleton, TableSkeleton, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
@@ -198,6 +199,9 @@ export function Dashboard() {
             )}
           </div>
         </Card>
+
+        {/* Termine der Woche: vorerst erfundene Demo-Termine, nur für Mitarbeiter */}
+        {staff && <TermineKarte heute={today} />}
 
         {staff ? (
           <div className="grid-2">
