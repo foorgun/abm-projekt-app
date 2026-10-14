@@ -23,3 +23,6 @@ supabase/.out/
 supabase/.temp/
 konten.local.json
 backups/
+
+# Vorlagen der Hausbaufirmen (Firmendokumente, nicht ins Repo)
+vorlagen/
