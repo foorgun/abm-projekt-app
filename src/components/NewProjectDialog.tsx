@@ -21,6 +21,7 @@ import {
 import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
+import { folgeAnschrift } from "../lib/projectEdit";
 import { compareAbm } from "../lib/projectFilters";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
@@ -172,7 +173,12 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const missing = missingProjectInfo(infoStateOfNew(effective));
   const setContact = (patch: Partial<NonNullable<NewProject["bauherr"]>>) => {
     markEdited(Object.keys(patch).map((k) => (k === "name" ? "bauherrName" : k)));
-    setV((old) => ({ ...old, bauherr: { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr, ...patch } }));
+    setV((old) => {
+      const before = { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr };
+      const after = { ...before, ...patch };
+      // Anschrift bzw. Bauadresse geändert: abgeleitete getrennte Felder (Planungsprotokoll) mitziehen
+      return { ...old, bauherr: { ...after, ...folgeAnschrift(before, after) } };
+    });
   };
   const setMetaField = (k: keyof ContractMeta, value: string) => {
     markEdited([k]);
@@ -754,6 +760,56 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
               <Input id="np-anschrift" value={v.bauherr?.address ?? ""} onChange={(e) => setContact({ address: e.target.value || null })} placeholder="Straße, PLZ Ort" autoComplete="off" />
               <Src k="address" />
             </Field>
+            <details className="form-details" open={Boolean(v.bauherr?.street || v.bauherr?.siteStreet || v.bauherr?.siteDistrict || v.bauherr?.mobile || v.flur) || undefined}>
+              <summary>Anschrift und Bauort getrennt (fürs Planungsprotokoll, optional)</summary>
+              <p className="field-hint">Aus den Zeilen oben aufgeteilt, wenn sie die Form „Straße, PLZ Ort“ haben. Leere Felder ergänzt das Protokoll später selbst aus diesen Zeilen.</p>
+              <div className="dialog-row">
+                <Field label="Straße (Bauherr)" htmlFor="np-street">
+                  <Input id="np-street" value={v.bauherr?.street ?? ""} onChange={(e) => setContact({ street: e.target.value || null })} autoComplete="off" />
+                  <Src k="address" />
+                </Field>
+                <Field label="Mobil (Bauherr)" htmlFor="np-mobil">
+                  <Input id="np-mobil" type="tel" value={v.bauherr?.mobile ?? ""} onChange={(e) => setContact({ mobile: e.target.value || null })} autoComplete="off" />
+                </Field>
+              </div>
+              <div className="dialog-row">
+                <Field label="PLZ (Bauherr)" htmlFor="np-plz">
+                  <Input id="np-plz" value={v.bauherr?.postalCode ?? ""} onChange={(e) => setContact({ postalCode: e.target.value || null })} inputMode="numeric" autoComplete="off" />
+                </Field>
+                <Field label="Ort (Bauherr)" htmlFor="np-city">
+                  <Input id="np-city" value={v.bauherr?.city ?? ""} onChange={(e) => setContact({ city: e.target.value || null })} autoComplete="off" />
+                </Field>
+              </div>
+              <div className="dialog-row">
+                <Field label="Bauort Straße/Baugebiet" htmlFor="np-sstreet">
+                  <Input id="np-sstreet" value={v.bauherr?.siteStreet ?? ""} onChange={(e) => setContact({ siteStreet: e.target.value || null })} autoComplete="off" />
+                  <Src k="buildingAddress" />
+                </Field>
+                <Field label="Bauort PLZ" htmlFor="np-splz">
+                  <Input id="np-splz" value={v.bauherr?.sitePostalCode ?? ""} onChange={(e) => setContact({ sitePostalCode: e.target.value || null })} inputMode="numeric" autoComplete="off" />
+                </Field>
+              </div>
+              <div className="dialog-row">
+                <Field label="Bauort Ort" htmlFor="np-scity">
+                  <Input id="np-scity" value={v.bauherr?.siteCity ?? ""} onChange={(e) => setContact({ siteCity: e.target.value || null })} placeholder={v.location ?? ""} autoComplete="off" />
+                </Field>
+                <Field label="Ortsteil/Gemeindeteil" htmlFor="np-sdistrict">
+                  <Input id="np-sdistrict" value={v.bauherr?.siteDistrict ?? ""} onChange={(e) => setContact({ siteDistrict: e.target.value || null })} autoComplete="off" />
+                </Field>
+              </div>
+              <div className="dialog-row">
+                <Field label="Bundesland" htmlFor="np-sstate">
+                  <Input id="np-sstate" value={v.bauherr?.siteState ?? ""} onChange={(e) => setContact({ siteState: e.target.value || null })} list="np-laender" placeholder="z. B. Baden-Württemberg" autoComplete="off" />
+                  <datalist id="np-laender">
+                    <option value="Baden-Württemberg" />
+                    <option value="Bayern" />
+                  </datalist>
+                </Field>
+                <Field label="Flur" htmlFor="np-flur">
+                  <Input id="np-flur" value={v.flur ?? ""} onChange={(e) => set({ flur: e.target.value || null })} autoComplete="off" />
+                </Field>
+              </div>
+            </details>
             {second ? (
               <>
                 <Field label="Zweiter Bauherr (Name)" htmlFor="np-name2">

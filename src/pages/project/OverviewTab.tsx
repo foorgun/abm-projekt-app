@@ -8,9 +8,10 @@ import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
 import type { ProjectPatch } from "../../lib/repo";
 import { useData } from "../../lib/store";
-import type { BauherrContact, Dataset, PartyRole, Project } from "../../lib/types";
+import { CLASSIC_PARTY_ROLES, type BauherrContact, type Dataset, type PartyRole, type Project } from "../../lib/types";
 
-const ROLES = Object.keys(PARTY_LABEL) as PartyRole[];
+/** Rollen aus Liste.docx. Die weiteren Rollen (Kellerbauer, Ämter, Versorger, Sachbearbeiter) pflegt der Reiter "Planungsprotokoll". */
+const ROLES = CLASSIC_PARTY_ROLES as PartyRole[];
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
@@ -157,17 +158,18 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
                 </dl>
                 <details className="dl-more">
                   <summary>
-                    Weitere Beteiligte · {parties.length} von {ROLES.length} eingetragen
+                    Weitere Beteiligte · {parties.filter((x) => ROLES.includes(x.role)).length} von {ROLES.length} eingetragen
+                    {parties.some((x) => !ROLES.includes(x.role)) ? ` (+${parties.filter((x) => !ROLES.includes(x.role)).length} fürs Planungsprotokoll)` : ""}
                   </summary>
                   <dl className="dl">
-                    {ROLES.map((role) => {
+                    {[...ROLES, ...parties.filter((x) => !ROLES.includes(x.role)).map((x) => x.role)].map((role) => {
                       const p = parties.find((x) => x.role === role);
                       return (
                         <Row key={role} label={PARTY_LABEL[role]}>
                           {p && (
                             <>
                               {p.name}
-                              {p.contact && <span className="cell-sub">{p.contact}</span>}
+                              {(p.contact || p.phone || p.email) && <span className="cell-sub">{[p.contact, p.phone, p.email].filter((x, i, a) => x && a.indexOf(x) === i && !(i > 0 && p.contact?.includes(x))).join(" · ")}</span>}
                             </>
                           )}
                         </Row>

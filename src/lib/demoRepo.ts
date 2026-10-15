@@ -15,6 +15,7 @@ import { checkContractFile } from "./extract/contractFile";
 import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
+import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, followupKey, infoStateOfNew, validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
@@ -25,6 +26,7 @@ import {
   type DraftInput,
   type MailboxInput,
   type ProjectPatch,
+  type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
   type NewTask,
@@ -34,7 +36,8 @@ import {
   type UploadInput,
 } from "./repo";
 import type { SessionUser } from "./session";
-import type { Activity, AgentSettings, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import { CLASSIC_PARTY_ROLES } from "./types";
+import type { Activity, AgentSettings, BueroDaten, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -71,7 +74,8 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     projects,
     invoices: [],
     bauherren: [],
-    parties: db.parties.filter((x) => ids.has(x.projectId)),
+    // wie RLS (0013): nur die Rollen aus Liste.docx; Kellerbauer, Ämter, Sachbearbeiter usw. nicht
+    parties: db.parties.filter((x) => ids.has(x.projectId) && CLASSIC_PARTY_ROLES.includes(x.role)),
     documents: db.documents.filter((d) => ids.has(d.projectId)),
     tasks: [],
     activities: [],
@@ -86,6 +90,8 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     mitarbeiter: [],
     abwesenheiten: [],
     urlaubsAnspruch: [],
+    buero: null,
+    planungsprotokolle: [],
   };
 }
 
@@ -122,6 +128,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
   };
   /** Dateien offener Entwürfe (im Demo-Modus nur im Speicher des Browsers) */
   const draftBlobs = new Map<string, Blob>();
+  /** Erzeugte Planungsprotokolle (PDF) je Fassung: nur in dieser Sitzung, wie alles im Demo-Modus */
+  const protokollBlobs = new Map<string, Blob>();
 
   /** Legt eine Kopie ab (Metadaten). Bei Namenskonflikt Zähler anhängen, nie überschreiben. */
   function storeDocument(input: {
@@ -225,6 +233,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       batch = 0;
       delivered.clear();
       draftBlobs.clear();
+      protokollBlobs.clear();
       return done(undefined);
     },
 
@@ -266,6 +275,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         notes: null,
         flurstueck: input.flurstueck?.trim() || null,
         gemarkung: input.gemarkung?.trim() || null,
+        flur: input.flur?.trim() || null,
         steps: {},
       };
       db.projects.unshift(p);
@@ -273,7 +283,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
       const b = input.bauherr;
       const val = (v: string | null | undefined) => v?.trim() || null;
-      if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2))) {
+      const extra = b ? ([b.street, b.postalCode, b.city, b.mobile, b.siteStreet, b.sitePostalCode, b.siteCity, b.siteDistrict, b.siteState] as (string | null | undefined)[]) : [];
+      if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2) || extra.some(val))) {
         db.bauherren.push({
           projectId: p.id,
           name: val(b.name) ?? p.bauherrLabel,
@@ -284,6 +295,15 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
           name2: val(b.name2),
           phone2: val(b.phone2),
           email2: val(b.email2),
+          street: val(b.street),
+          postalCode: val(b.postalCode),
+          city: val(b.city),
+          mobile: val(b.mobile),
+          siteStreet: val(b.siteStreet),
+          sitePostalCode: val(b.sitePostalCode),
+          siteCity: val(b.siteCity),
+          siteDistrict: val(b.siteDistrict),
+          siteState: val(b.siteState),
         });
       }
       log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
@@ -301,22 +321,12 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (first) throw new Error(first);
       Object.assign(p, plan.project);
       if (plan.bauherr) {
-        const row = {
-          projectId,
-          name: plan.bauherr.name ?? p.bauherrLabel,
-          address: plan.bauherr.address,
-          phone: plan.bauherr.phone,
-          email: plan.bauherr.email,
-          buildingAddress: plan.bauherr.buildingAddress,
-          name2: plan.bauherr.name2,
-          phone2: plan.bauherr.phone2,
-          email2: plan.bauherr.email2,
-        };
+        const row = { projectId, ...plan.bauherr, name: plan.bauherr.name ?? p.bauherrLabel };
         const cur = db.bauherren.find((b) => b.projectId === projectId);
         if (cur) Object.assign(cur, row);
         else db.bauherren.push(row);
       }
-      for (const [role, value] of Object.entries(plan.parties) as [PartyRole, { name: string; contact: string | null } | null][]) {
+      for (const [role, value] of Object.entries(plan.parties) as [keyof typeof plan.parties, (typeof plan.parties)[keyof typeof plan.parties]][]) {
         db.parties = db.parties.filter((x) => !(x.projectId === projectId && x.role === role));
         if (value) db.parties.push({ projectId, role, ...value });
       }
@@ -375,6 +385,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.activities = keep(db.activities);
       db.parties = keep(db.parties);
       db.agentRules = keep(db.agentRules);
+      for (const x of db.planungsprotokolle.filter((x) => x.projectId === p.id)) protokollBlobs.delete(x.id);
+      db.planungsprotokolle = keep(db.planungsprotokolle);
       // im Demo-Modus hängt der Kontakt am Projekt: er geht mit
       db.bauherren = keep(db.bauherren);
       for (const d of db.projectDrafts.filter((x) => x.projectId === p.id)) draftBlobs.delete(d.id);
@@ -781,6 +793,48 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const item = db.inboxItems.find((i) => i.id === att.itemId)!;
       item.status = itemStatus(item.id);
       return done(undefined);
+    },
+
+    // ------------------------------------------------------------- Planungsprotokoll (Regeln wie Migration 0013/0014)
+
+    async saveBueroDaten(daten: BueroDaten) {
+      if (user.role !== "admin") throw new PermissionError();
+      const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
+      const next: BueroDaten = { name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email) };
+      if (next.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next.email)) throw new Error("Bitte eine gültige E-Mail-Adresse eintragen.");
+      db.buero = next;
+      return done(undefined);
+    },
+
+    async vorlageLaden(vorlage) {
+      requireStaff();
+      // Im Demo-Modus aus dem lokalen Ordner (Firmendokumente, nicht im Repo und nicht im Build)
+      const url = `${VORLAGEN_ORDNER}/${encodeURIComponent(VORLAGEN[vorlage].datei)}`;
+      const fehlt = new Error(`Vorlage „${VORLAGEN[vorlage].firma}“ nicht gefunden. Im Demo-Modus muss die Datei „${VORLAGEN[vorlage].datei}“ im Ordner ${VORLAGEN_ORDNER}/ liegen.`);
+      const res = await fetch(url).catch(() => null);
+      if (!res?.ok) throw fehlt;
+      const bytes = await res.arrayBuffer();
+      // Der Entwicklungsserver liefert für fehlende Dateien die Startseite aus: nur echte PDFs annehmen
+      if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw fehlt;
+      return bytes;
+    },
+
+    async savePlanungsprotokoll({ projectId, vorlage, variante, fileName, blob }: ProtokollAblage) {
+      requireStaff();
+      project(projectId);
+      const doc = storeDocument({ projectId, folderPath: PROTOKOLL_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, source: "upload", sourceItemId: null, receivedOn: todayIso() });
+      const row: Planungsprotokoll = { id: newId("pp"), projectId, vorlage, variante, erstelltVon: user.name, erstelltAm: now(), dokumentId: doc.id };
+      db.planungsprotokolle.unshift(row);
+      protokollBlobs.set(row.id, blob);
+      log({ projectId, kind: "datei", text: `${fileName} abgelegt` });
+      return done(structuredClone(row));
+    },
+
+    async planungsprotokollDatei(protokoll) {
+      requireStaff();
+      const blob = protokollBlobs.get(protokoll.id);
+      if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
+      return blob;
     },
 
     async saveAgentSettings(settings: AgentSettings) {

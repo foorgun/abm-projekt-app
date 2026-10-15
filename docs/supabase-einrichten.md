@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0012). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0014). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 
@@ -111,6 +111,10 @@ Projektdaten, Beteiligte und Kontaktdaten des Bauherrn lassen sich auf der Proje
 - **Freiberufler:** nur zugewiesene Projekte mit deren Schritten, Beteiligten und Dokumenten. Keine Rechnungen, keine
   Bauherren-Kontaktdaten, keine Aufgaben, keine Aktivitäten, kein Posteingang.
 - **Stammdaten anlegen** (Hausbaufirma, Verkäufer, Architekt, Vermesser) dürfen Admin und Mitarbeiter, nur mit Namen. Freiberufler nicht.
+- **Planungsprotokoll** (0013/0014): Bürodaten lesen Admin und Mitarbeiter, ändern nur Admins. Protokolle anlegen und lesen
+  Admin und Mitarbeiter, nie ändern oder löschen. Die Vorlagen im Bucket `vorlagen` lesen nur Admin und Mitarbeiter; hochladen
+  geht nur mit dem Secret key (`npm run vorlagen:hochladen`). Beteiligte der neuen Rollen (Kellerbauer, Ämter, Versorger Gas/
+  Fernwärme/Abwasser, Sachbearbeiter …) sehen Freiberufler nicht, die fünf Rollen aus Liste.docx weiterhin.
 - **Rollen vergeben** geht nicht über die App, auch nicht als Admin, sondern nur im Dashboard oder per Skript.
 
 Lokal nachprüfen (temporäres Postgres, kein Zugriff auf das echte Projekt): `bash tools/test-db.sh` (174 Prüfungen).
@@ -152,6 +156,7 @@ und wenn er doch einmal in eine Mail oder einen Chat gerät, im Dashboard widerr
 | 4 | `npm run konten:anlegen` | legt fehlende Konten an, setzt Rolle und Namen, weist dem Freiberufler drei Demo-Projekte zu | **[Secret key]** |
 | 5 | `npm run check:roles` | meldet sich je Konto an und prüft die Sichten, Ergebnis als Tabelle | keiner (Passwörter aus `konten.local.json`) |
 | 6 | `npm run check:repo` | ruft jede Funktion der App einmal gegen die echte Datenbank auf, mit Testdaten, die danach entfernt werden | **[Secret key]** (Vorbereiten und Aufräumen) |
+| 6a | `npm run vorlagen:hochladen` | lädt die drei PDF-Vorlagen des Planungsprotokolls aus `vorlagen/planungsprotokoll/` in den privaten Bucket `vorlagen` (prüft vorher die Felder) | **[Secret key]** |
 | 7 | `npm run export:backup` | alle Tabellen als JSON nach `backups/abm-backup-<Datum>_<Uhrzeit>/` | **[Secret key]** |
 
 **Demo-Daten wieder entfernen:** `npm run seed:demo -- --loeschen` **[Secret key]**. Entfernt alles mit `is_demo` samt der daran

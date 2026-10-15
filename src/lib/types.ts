@@ -50,6 +50,8 @@ export interface Project {
   /** Flurstück und Gemarkung des Baugrundstücks (optional; dienen auch der Duplikatprüfung). */
   flurstueck?: string | null;
   gemarkung?: string | null;
+  /** Flur (getrennt vom Flurstück, Migration 0013) */
+  flur?: string | null;
   steps: StepDates;
 }
 
@@ -78,14 +80,43 @@ export interface Snapshot {
 // Projektdetails (Liste.docx: Projektbeteiligte)
 // ---------------------------------------------------------------------------
 
-export type PartyRole = "vermesser" | "erdbauer" | "strom" | "wasser" | "elektriker_baustrom";
+/**
+ * Rollen von Projektbeteiligten. Die ersten fünf stammen aus Liste.docx (sehen auch Freiberufler zugewiesener Projekte),
+ * die übrigen kamen mit dem Planungsprotokoll dazu (Migration 0013, nur Admin und Mitarbeiter).
+ * "sachbearbeiter" ist der zuständige ABM-Mitarbeiter: seine Tel./Mobil/E-Mail ersetzen im Protokoll die Bürodaten.
+ */
+export type PartyRole =
+  | "vermesser"
+  | "erdbauer"
+  | "strom"
+  | "wasser"
+  | "elektriker_baustrom"
+  | "kellerbauer"
+  | "baugrundgutachter"
+  | "gemeinde"
+  | "bauamt"
+  | "schornsteinfeger"
+  | "gas"
+  | "fernwaerme"
+  | "abwasser"
+  | "sonstige"
+  | "sachbearbeiter";
+
+/** Rollen aus Liste.docx: für Freiberufler zugewiesener Projekte lesbar (wie vor Migration 0013). */
+export const CLASSIC_PARTY_ROLES: readonly PartyRole[] = ["vermesser", "erdbauer", "strom", "wasser", "elektriker_baustrom"];
 
 export interface ProjectParty {
   projectId: string;
   role: PartyRole;
   name: string;
-  /** Telefon oder Mail des Unternehmens (keine Privatperson). */
+  /** Alte Kontaktzeile: Telefon oder Mail des Unternehmens (keine Privatperson). Bleibt neben den getrennten Feldern erhalten. */
   contact: string | null;
+  /** Getrennte Kontaktangaben (Migration 0013), alle optional. */
+  address?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  fax?: string | null;
 }
 
 /** Kontaktdaten des Bauherrn. Nur für Mitarbeiter und Admins sichtbar (RLS). */
@@ -100,6 +131,48 @@ export interface BauherrContact {
   name2?: string | null;
   phone2?: string | null;
   email2?: string | null;
+  /** Wohnanschrift getrennt (Migration 0013). `address` bleibt als eine Zeile erhalten. */
+  street?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  /** Mobil getrennt vom Telefon. */
+  mobile?: string | null;
+  /** Bauort getrennt (Migration 0013). Liegt wie `buildingAddress` beim Bauherrn: nur für Admin und Mitarbeiter. */
+  siteStreet?: string | null;
+  sitePostalCode?: string | null;
+  siteCity?: string | null;
+  /** Ortsteil bzw. Gemeindeteil */
+  siteDistrict?: string | null;
+  siteState?: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Bürodaten und Planungsprotokoll (Migration 0013/0014)
+// ---------------------------------------------------------------------------
+
+/** Daten des Büros (Einstellungen, nur Admin ändert). Stehen im Planungsprotokoll beim Architekten. */
+export interface BueroDaten {
+  name: string | null;
+  anschrift: string | null;
+  tel: string | null;
+  mobil: string | null;
+  email: string | null;
+}
+
+export type ProtokollVorlage = "schwabenhaus" | "living-haus" | "bien-zenker";
+/** "bearbeitbar": Felder bleiben ausfüllbar. "flach": Felder eingebrannt (Fassung zum Versand). */
+export type ProtokollVariante = "bearbeitbar" | "flach";
+
+export interface Planungsprotokoll {
+  id: string;
+  projectId: string;
+  vorlage: ProtokollVorlage;
+  variante: ProtokollVariante;
+  /** Name der Person, die es erzeugt hat */
+  erstelltVon: string | null;
+  erstelltAm: string;
+  /** Abgelegtes Dokument im Projektordner */
+  dokumentId: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -311,6 +384,10 @@ export interface Dataset extends Snapshot {
   /** Urlaub und Krankheit: eigene Zeilen, für Admins alle. Leer für Freiberufler (RLS). */
   abwesenheiten: Abwesenheit[];
   urlaubsAnspruch: UrlaubsAnspruch[];
+  /** Bürodaten für das Planungsprotokoll. null, solange keine eingetragen sind, und für Freiberufler. */
+  buero: BueroDaten | null;
+  /** Erzeugte Planungsprotokolle (neueste zuerst). Leer für Freiberufler (RLS). */
+  planungsprotokolle: Planungsprotokoll[];
 }
 
 // ---------------------------------------------------------------------------

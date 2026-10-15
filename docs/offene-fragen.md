@@ -79,3 +79,19 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - **Termine diese Woche:** Die Karte zeigt Demo-Termine. Für Outlook braucht es eine App-Registrierung in Microsoft 365
   (dieselbe Frage wie beim Posteingangs-Agenten) und die Entscheidung, wessen Kalender gezeigt wird (eigener, Bürokalender).
 
+
+## Zum Planungsprotokoll (Stufe a: Seite 1)
+
+- **Annahme:** „Projekt-Nr.“ (Living Haus, Bien-Zenker) und „Schwabenhaus BV-Nr.“ sind die Hausbau-Nr. (`projects.hausbau_nr`).
+  Stimmt das, oder vergeben die Firmen dafür eine eigene Nummer?
+- **Annahme:** Erzeugte Protokolle liegen im Ordner „08 Bauantrag“. Gehören sie woandershin (z. B. „03 Hausbaufirma“)?
+- Architekt auf dem Protokoll: Standard sind die Bürodaten (Einstellungen). Ein Sachbearbeiter im Projekt ergänzt den Namen
+  („Büro, Sachbearbeiter“) und ersetzt Tel., Mobil und E-Mail. Ist diese Schreibweise so recht?
+- Mobil des Bauherrn: Ohne eigene Mobilnummer setzt das Protokoll die Telefonnummer ein, wenn sie eine Handynummer ist (015…, 016…, 017…).
+  Gewollt, oder lieber leer lassen?
+- Living Haus/Bien-Zenker haben nur eine „Genehmigungsbehörde (Gemeinde bzw. Bauamt)“: die App setzt das Bauamt ein, ohne Bauamt die
+  Gemeinde. Passt das?
+- Schwabenhaus Seite 2 (Versorger Strom, Wasser, Abwasser, Schornstein, Gas, Fernwärme, Sonstige mit Anschrift) wird noch nicht befüllt
+  (Stufe a = Seite 1). Die Daten sind da; soll Seite 2 als Nächstes dazukommen?
+- Nehmen die Hausbaufirmen die bearbeitbare Fassung an, oder nur die flache?
+- Wer liefert neue Revisionen der Vorlagen, und wer lädt sie hoch (`npm run vorlagen:hochladen -- --ersetzen`)?

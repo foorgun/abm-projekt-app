@@ -15,9 +15,10 @@ import { ActivityTab } from "./ActivityTab";
 import { DocumentsTab } from "./DocumentsTab";
 import { InvoicesTab } from "./InvoicesTab";
 import { OverviewTab } from "./OverviewTab";
+import { PlanungsprotokollTab } from "./PlanungsprotokollTab";
 
-type TabKey = "uebersicht" | "dokumente" | "aufgaben" | "rechnungen" | "aktivitaet";
-const TABS: TabKey[] = ["uebersicht", "dokumente", "aufgaben", "rechnungen", "aktivitaet"];
+type TabKey = "uebersicht" | "dokumente" | "aufgaben" | "rechnungen" | "planungsprotokoll" | "aktivitaet";
+const TABS: TabKey[] = ["uebersicht", "dokumente", "aufgaben", "rechnungen", "planungsprotokoll", "aktivitaet"];
 const SEV_ICON = { dringend: AlertTriangle, hinweis: CircleAlert, info: Info };
 
 export function ProjectDetail() {
@@ -77,7 +78,7 @@ export function ProjectDetail() {
   const activities = data.activities.filter((a) => a.projectId === p.id);
   const contact = data.bauherren.find((b) => b.projectId === p.id) ?? null;
 
-  const visibleTabs = TABS.filter((t) => staff || (t !== "rechnungen" && t !== "aktivitaet" && t !== "aufgaben"));
+  const visibleTabs = TABS.filter((t) => staff || (t !== "rechnungen" && t !== "aktivitaet" && t !== "aufgaben" && t !== "planungsprotokoll"));
   const requested = params.get("tab") as TabKey | null;
   const tab: TabKey = requested && visibleTabs.includes(requested) ? requested : "uebersicht";
   const setTab = (t: TabKey) => setParams(t === "uebersicht" ? {} : { tab: t }, { replace: true });
@@ -224,8 +225,17 @@ export function ProjectDetail() {
           onChange={setTab}
           items={visibleTabs.map((t) => ({
             key: t,
-            label: { uebersicht: "Übersicht", dokumente: "Dokumente", aufgaben: "Aufgaben", rechnungen: "Rechnungen", aktivitaet: "Aktivität" }[t],
-            count: t === "dokumente" ? documents.length : t === "aufgaben" ? openTasks.length : t === "rechnungen" ? invoices.length : undefined,
+            label: { uebersicht: "Übersicht", dokumente: "Dokumente", aufgaben: "Aufgaben", rechnungen: "Rechnungen", planungsprotokoll: "Planungsprotokoll", aktivitaet: "Aktivität" }[t],
+            count:
+              t === "dokumente"
+                ? documents.length
+                : t === "aufgaben"
+                  ? openTasks.length
+                  : t === "rechnungen"
+                    ? invoices.length
+                    : t === "planungsprotokoll"
+                      ? data.planungsprotokolle.filter((x) => x.projectId === p.id).length || undefined
+                      : undefined,
           }))}
         />
 
@@ -274,6 +284,7 @@ export function ProjectDetail() {
             </Card>
           )}
           {tab === "rechnungen" && <InvoicesTab invoices={invoices} />}
+          {tab === "planungsprotokoll" && staff && <PlanungsprotokollTab key={p.id} project={p} data={data} contact={contact} />}
           {tab === "aktivitaet" && <ActivityTab activities={activities} />}
         </div>
       </div>

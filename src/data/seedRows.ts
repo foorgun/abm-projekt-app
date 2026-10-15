@@ -56,7 +56,26 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
     },
     {
       table: "bauherren",
-      rows: d.bauherren.map((b) => ({ id: demoUuid("bauherr", b.projectId), name: b.name, address: b.address, phone: b.phone, email: b.email, building_address: b.buildingAddress, notes: "Erfundener Demo-Datensatz", is_demo: true })),
+      rows: d.bauherren.map((b) => ({
+        id: demoUuid("bauherr", b.projectId),
+        name: b.name,
+        address: b.address,
+        phone: b.phone,
+        email: b.email,
+        building_address: b.buildingAddress,
+        // getrennte Felder fürs Planungsprotokoll (Migration 0013)
+        street: b.street ?? null,
+        postal_code: b.postalCode ?? null,
+        city: b.city ?? null,
+        mobile: b.mobile ?? null,
+        site_street: b.siteStreet ?? null,
+        site_postal_code: b.sitePostalCode ?? null,
+        site_city: b.siteCity ?? null,
+        site_district: b.siteDistrict ?? null,
+        site_state: b.siteState ?? null,
+        notes: "Erfundener Demo-Datensatz",
+        is_demo: true,
+      })),
     },
     {
       table: "projects",
@@ -76,6 +95,7 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
         baubetreuung: p.baubetreuung,
         intake_month: p.intakeMonth,
         notes: p.notes,
+        flur: p.flur ?? null,
         is_demo: true,
       })),
     },
@@ -85,7 +105,7 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
     },
     {
       table: "project_parties",
-      rows: d.parties.map((x) => ({ project_id: project(x.projectId), role: x.role, name: x.name, contact: x.contact })),
+      rows: d.parties.map((x) => ({ project_id: project(x.projectId), role: x.role, name: x.name, contact: x.contact, address: x.address ?? null, phone: x.phone ?? null, mobile: x.mobile ?? null, email: x.email ?? null, fax: x.fax ?? null })),
     },
     {
       table: "invoices",

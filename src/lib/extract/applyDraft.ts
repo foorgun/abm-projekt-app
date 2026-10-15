@@ -1,5 +1,6 @@
 // Vom Entwurf zum Formular "Neues Projekt" und Duplikatprüfung. Reine Funktionen.
 
+import { splitAnschrift } from "../planungsprotokoll/daten";
 import { compactText } from "../projectFilters";
 import type { NewProject } from "../repo";
 import type { BauherrContact, Company, ContractMeta, Project } from "../types";
@@ -77,6 +78,9 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
   const company = companyName ? (ctx.companies.find((c) => same(c.name, companyName)) ?? ctx.companies.find((c) => contains(c.name, companyName))) : undefined;
   if (companyName && !company) unmatched.company = companyName;
 
+  // Getrennte Anschrift und Bauort fürs Planungsprotokoll: aus der erkannten Zeile, wenn sie eindeutig aufteilbar ist
+  const wohn = splitAnschrift(v("address"));
+  const bau = splitAnschrift(v("buildingAddress"));
   const form: NewProject = {
     ...base,
     bauherrLabel: v("bauherrLabel") ?? base.bauherrLabel,
@@ -96,6 +100,12 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
       name2: v("bauherr2Name"),
       phone2: v("bauherr2Phone"),
       email2: v("bauherr2Email"),
+      street: wohn.strasse,
+      postalCode: wohn.plz,
+      city: wohn.ort,
+      siteStreet: bau.strasse,
+      sitePostalCode: bau.plz,
+      siteCity: bau.ort,
     },
   };
   const meta: ContractMeta = {};

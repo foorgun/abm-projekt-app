@@ -883,6 +883,119 @@ select test.throws('Ohne Rolle: kein Urlaubsantrag', $$insert into public.abwese
 select test.throws('Ohne Rolle: kein Kalender', $$select * from public.kalender_abwesenheiten('2026-01-01', '2026-12-31')$$);
 rollback;
 
+-- Planungsprotokoll (Migrationen 0013 und 0014) -----------------------------------
+-- Datenübernahme aus den alten Feldern (läuft in der Migration vor dem Seed, hier gegen die Testdaten)
+begin;
+update public.bauherren set basement_builder = ' Keller Alt ', surveyor = 'Vermesser Alt' where id = 'b0000000-0000-4000-8000-000000000001';
+select public.stammdaten_0013_uebernehmen();
+select public.stammdaten_0013_uebernehmen();
+select test.expect('Übernahme: Anschrift "Straße, PLZ Ort" aufgeteilt, alte Zeile bleibt',
+  (select count(*) from public.bauherren where id = 'b0000000-0000-4000-8000-000000000001' and street = 'Lindenweg 12' and postal_code = '89073' and city = 'Ulm' and address = 'Lindenweg 12, 89073 Ulm'), 1);
+select test.expect('Übernahme: E-Mail aus der Kontaktzeile, Kontaktzeile bleibt',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'vermesser' and email = 'vermessung@example.com' and phone is null and contact = 'vermessung@example.com'), 1);
+select test.expect('Übernahme: Kellerbauer aus der Altspalte, genau einmal (zweimal aufgerufen)',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'kellerbauer' and name = 'Keller Alt'), 1);
+select test.expect('Übernahme: vorhandener Vermesser wird nicht ersetzt',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'vermesser' and name = 'Vermessungsbüro Albrecht & Partner'), 1);
+update public.bauherren set street = 'Eigene Straße 1' where id = 'b0000000-0000-4000-8000-000000000001';
+select public.stammdaten_0013_uebernehmen();
+select test.expect('Übernahme überschreibt nichts, was schon eingetragen ist',
+  (select count(*) from public.bauherren where id = 'b0000000-0000-4000-8000-000000000001' and street = 'Eigene Straße 1'), 1);
+rollback;
+
+begin;
+set local role anon;
+select test.throws('anon darf die Bürodaten nicht ansprechen', $$select count(*) from public.buero_daten$$);
+select test.throws('anon darf Planungsprotokolle nicht ansprechen', $$select count(*) from public.planungsprotokolle$$);
+select test.throws('anon darf die Datenübernahme nicht aufrufen', $$select public.stammdaten_0013_uebernehmen()$$);
+rollback;
+
+begin;
+insert into storage.objects (bucket_id, name) values ('vorlagen', 'planungsprotokoll/schwabenhaus.pdf');
+set local role authenticated;
+
+-- Mitarbeiterin: Beteiligte mit neuen Rollen und getrennten Feldern, Bauherr und Bauort getrennt, Protokoll anlegen
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiterin liest die Bürodaten (eine Zeile)', (select count(*) from public.buero_daten), 1);
+select test.expect('Mitarbeiterin ändert die Bürodaten nicht', test.affected($$update public.buero_daten set name = 'X'$$), 0);
+select test.throws('Bürodaten: keine zweite Zeile', $$insert into public.buero_daten (id, name) values (true, 'X')$$);
+select test.throws('Mitarbeiterin darf die Datenübernahme nicht aufrufen', $$select public.stammdaten_0013_uebernehmen()$$);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"kellerbauer": {"name": "Keller Löffler", "phone": "0731 1", "mobile": "0170 2", "email": "k@example.de", "address": "Weg 1, 89000 Ort"}, "sachbearbeiter": {"name": "Dörte Fuß", "mobile": "0170 3"}, "gemeinde": {"name": "Gemeinde Blaustein", "fax": "0731 8"}}');
+select test.expect('Neue Rollen mit getrennten Kontaktfeldern gespeichert',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'kellerbauer' and phone = '0731 1' and mobile = '0170 2' and email = 'k@example.de' and address = 'Weg 1, 89000 Ort'), 1);
+select test.expect('… auch Sachbearbeiter und Gemeinde (mit Fax)',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and ((role = 'sachbearbeiter' and mobile = '0170 3') or (role = 'gemeinde' and fax = '0731 8'))), 2);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"kellerbauer": {"name": "Keller Löffler GmbH", "contact": null}}');
+select test.expect('Speichern nur mit Name und Kontaktzeile (Übersicht) lässt die getrennten Felder stehen',
+  (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'kellerbauer' and name = 'Keller Löffler GmbH' and phone = '0731 1' and mobile = '0170 2'), 1);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"kellerbauer": {"name": "Keller Löffler GmbH", "phone": null}}');
+select test.expect('Ein genanntes Feld mit null wird geleert', (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'kellerbauer' and phone is null and mobile = '0170 2'), 1);
+select test.throws('Unbekannte Rolle wird abgelehnt', $$select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"hausmeister": {"name": "X"}}')$$);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"flur": " 3 "}',
+  p_bauherr => '{"name": "Familie Reinhardt", "address": "Lindenweg 12, 89073 Ulm", "street": " Größlestraße 7 ", "postal_code": "89077", "city": "Ulm", "mobile": "0170 4", "site_street": "Am Hölzle 12", "site_postal_code": "89134", "site_city": "Blaustein", "site_district": "Bermaringen", "site_state": "Baden-Württemberg"}');
+select test.expect('Bauherr: getrennte Anschrift, Mobil und Bauort gespeichert, Flur am Projekt',
+  (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id where p.id = 'a0000000-0000-4000-8000-000000000001' and b.street = 'Größlestraße 7' and b.postal_code = '89077'
+     and b.city = 'Ulm' and b.mobile = '0170 4' and b.site_street = 'Am Hölzle 12' and b.site_district = 'Bermaringen' and b.site_state = 'Baden-Württemberg' and p.flur = '3'), 1);
+select public.set_project_bauherr('a0000000-0000-4000-8000-000000000001', '{"name": "Familie Reinhardt", "phone": "0731 5"}');
+select test.expect('Aufruf ohne die neuen Schlüssel (ältere App) lässt Anschrift, Mobil und Bauort stehen',
+  (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id where p.id = 'a0000000-0000-4000-8000-000000000001' and b.street = 'Größlestraße 7' and b.mobile = '0170 4' and b.site_city = 'Blaustein' and b.phone = '0731 5'), 1);
+select public.create_project('{"bauherr_label": "Flurtest", "flur": "7"}');
+select test.expect('Projekt anlegen mit Flur', (select count(*) from public.projects where bauherr_label = 'Flurtest' and flur = '7'), 1);
+
+insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+values ('a0000000-0000-4000-8000-000000000001', 'Planungsprotokoll_SH.pdf', 'a0000000-0000-4000-8000-000000000001/pp/pp.pdf', '08 Bauantrag', auth.uid());
+select test.expect('Mitarbeiterin legt ein Planungsprotokoll an',
+  test.affected($$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000001', 'schwabenhaus', 'bearbeitbar', auth.uid(), id from public.documents where name = 'Planungsprotokoll_SH.pdf'$$), 1);
+select test.expect('… mit Zeitstempel', (select count(*) from public.planungsprotokolle where erstellt_am is not null and erstellt_von = auth.uid()), 1);
+select test.throws('Protokoll nicht im Namen einer anderen Person',
+  $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', 'schwabenhaus', 'flach', '00000000-0000-4000-8000-0000000000a1')$$);
+select test.throws('Protokoll nicht mit dem Dokument eines anderen Projekts',
+  $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000002', 'schwabenhaus', 'flach', auth.uid(), id from public.documents where name = 'Planungsprotokoll_SH.pdf'$$);
+select test.throws('Unbekannte Vorlage wird abgelehnt', $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', 'xyz', 'flach', auth.uid())$$);
+select test.throws('Unbekannte Variante wird abgelehnt', $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', 'schwabenhaus', 'bunt', auth.uid())$$);
+select test.throws('Protokoll ändern geht nicht (nichts wird überschrieben)', $$update public.planungsprotokolle set variante = 'flach'$$);
+select test.throws('Protokoll löschen geht nicht', $$delete from public.planungsprotokolle$$);
+select test.expect('Mitarbeiterin sieht die Vorlagen im Speicher', (select count(*) from storage.objects where bucket_id = 'vorlagen'), 1);
+select test.throws('Mitarbeiterin lädt keine Vorlage hoch', $$insert into storage.objects (bucket_id, name) values ('vorlagen', 'planungsprotokoll/neu.pdf')$$);
+select test.expect('Mitarbeiterin ändert keine Vorlage', test.affected($$update storage.objects set name = 'x' where bucket_id = 'vorlagen'$$), 0);
+
+-- Admin: Bürodaten pflegen, aber keine Vorlage hochladen (nur das Skript mit Secret key)
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin ändert die Bürodaten', test.affected($$update public.buero_daten set name = ' ABM Demo-Büro ', email = 'buero@example.de', tel = ''$$), 1);
+select test.expect('Bürodaten bereinigt und gestempelt (wer, wann)',
+  (select count(*) from public.buero_daten where name = 'ABM Demo-Büro' and tel is null and geaendert_von = auth.uid() and geaendert_am is not null), 1);
+select test.throws('Bürodaten: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set email = 'kein-at'$$);
+select test.throws('Bürodaten: Stempel lässt sich nicht setzen (kein Spaltenrecht)', $$update public.buero_daten set geaendert_von = null$$);
+select test.throws('Bürodaten lassen sich nicht löschen', $$delete from public.buero_daten$$);
+select test.throws('Admin lädt keine Vorlage über den Client hoch', $$insert into storage.objects (bucket_id, name) values ('vorlagen', 'planungsprotokoll/neu.pdf')$$);
+select test.expect('Admin sieht das Protokoll der Mitarbeiterin', (select count(*) from public.planungsprotokolle), 1);
+
+-- Freiberufler (seinem Projekt a…01 zugewiesen) und ohne Rolle: kein Zugriff
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht keine Bürodaten', (select count(*) from public.buero_daten), 0);
+select test.expect('Freiberufler ändert die Bürodaten nicht', test.affected($$update public.buero_daten set name = 'X'$$), 0);
+select test.expect('Freiberufler sieht keine Planungsprotokolle, auch nicht seines Projekts', (select count(*) from public.planungsprotokolle), 0);
+select test.throws('Freiberufler legt kein Planungsprotokoll an',
+  $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', 'schwabenhaus', 'flach', auth.uid())$$);
+select test.expect('Freiberufler sieht keine Vorlagen im Speicher', (select count(*) from storage.objects where bucket_id = 'vorlagen'), 0);
+select test.expect('Freiberufler sieht die neuen Rollen seines Projekts nicht', (select count(*) from public.project_parties where role not in ('vermesser', 'erdbauer', 'strom', 'wasser', 'elektriker_baustrom')), 0);
+select test.expect('… aber weiterhin Vermesser und Strom (Rollen aus Liste.docx)', (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001'), 2);
+select test.expect('Freiberufler sieht Bauort und Anschrift nicht (keine Bauherren-Zeile)', (select count(*) from public.bauherren), 0);
+select test.throws('Freiberufler setzt keine Beteiligten', $$select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"gas": {"name": "X"}}')$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('Ohne Rolle: keine Bürodaten', (select count(*) from public.buero_daten), 0);
+select test.expect('Ohne Rolle: keine Planungsprotokolle', (select count(*) from public.planungsprotokolle), 0);
+select test.expect('Ohne Rolle: keine Vorlagen', (select count(*) from storage.objects where bucket_id = 'vorlagen'), 0);
+
+-- Projekt löschen nimmt Protokolle und ihre Dokumente mit
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Projekt löschen nennt auch den Pfad des Protokoll-PDFs',
+  (select count(*) from unnest(public.delete_project('a0000000-0000-4000-8000-000000000001')) p where p = 'a0000000-0000-4000-8000-000000000001/pp/pp.pdf'), 1);
+select test.expect('… und die Protokollzeilen sind weg', (select count(*) from public.planungsprotokolle), 0);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',

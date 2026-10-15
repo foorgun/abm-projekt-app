@@ -10,6 +10,7 @@ import type {
   Activity,
   AgentRun,
   BauherrContact,
+  BueroDaten,
   Company,
   Dataset,
   InboxAttachment,
@@ -67,6 +68,48 @@ const TOWNS: [string, string][] = [
 ];
 
 const STREETS = ["Ahornweg", "Birkenstraße", "Lindenweg", "Am Kirchberg", "Wiesenstraße", "Gartenweg", "Eichenring", "Talstraße", "Sonnenhalde", "Mühlweg"];
+
+/** Erfundene Bürodaten für den Demo-Modus (Einstellungen). */
+export const DEMO_BUERO: BueroDaten = {
+  name: "ABM Architektur und Baumanagement (Demo)",
+  anschrift: "Musterstraße 1, 89073 Ulm",
+  tel: "0731 0000000",
+  mobil: null,
+  email: "buero@abm-demo.example",
+};
+
+const KELLER = ["Kellerbau Löffler", "Bodenplatten Süß", "Betonbau Gräter"];
+const GUTACHTER = ["Baugrundbüro Kößler", "Geotechnik Älbler"];
+const SCHORNSTEIN = ["Bezirksschornsteinfeger Rußwurm", "Kaminkehrer Höfle"];
+const SACHBEARBEITER: [string, string][] = [
+  ["Dörte Fuß", "fuss@abm-demo.example"],
+  ["Jürgen Weiß", "weiss@abm-demo.example"],
+];
+
+/**
+ * Beteiligte, die das Planungsprotokoll braucht (Kellerbauer, Gutachter, Gemeinde, Bauamt, Schornsteinfeger, Versorger,
+ * Sachbearbeiter). Bewusst lückenhaft: nicht jedes Projekt hat jede Rolle, damit leere Felder im Protokoll vorkommen.
+ * Alle Namen, Nummern und Adressen sind erfunden.
+ */
+function demoProtokollKontakte(projectId: string, idx: number, town: string): ProjectParty[] {
+  const n = String(idx + 1).padStart(3, "0");
+  const tel = (block: string) => `0731 ${block}${n}`;
+  const out: ProjectParty[] = [
+    { projectId, role: "kellerbauer", name: KELLER[idx % KELLER.length], contact: null, address: "Industriestraße 4, 89160 Dornstadt", phone: tel("100"), mobile: `0171 0000${n}`, email: "info@keller-demo.example" },
+    { projectId, role: "gemeinde", name: `Gemeinde ${town} (Demo)`, contact: null, address: `Rathausplatz 1, ${town}`, phone: tel("200"), email: "bauen@gemeinde-demo.example", fax: tel("201") },
+    { projectId, role: "bauamt", name: `Baurechtsamt ${town} (Demo)`, contact: null, phone: tel("300"), email: "baurecht@amt-demo.example", fax: tel("301") },
+    { projectId, role: "abwasser", name: `Abwasserverband ${town} (Demo)`, contact: null, phone: tel("400"), email: "abwasser@verband-demo.example" },
+  ];
+  if (idx % 2 === 0) out.push({ projectId, role: "baugrundgutachter", name: GUTACHTER[idx % GUTACHTER.length], contact: null, phone: tel("500"), mobile: `0172 0000${n}`, email: "gutachten@baugrund-demo.example" });
+  if (idx % 3 !== 2) out.push({ projectId, role: "schornsteinfeger", name: SCHORNSTEIN[idx % SCHORNSTEIN.length], contact: null, phone: tel("600"), mobile: `0173 0000${n}`, email: "kehrbezirk@demo.example" });
+  if (idx % 4 === 1) out.push({ projectId, role: "gas", name: "Gasversorgung Höhenweg (Demo)", contact: null, phone: tel("700"), email: "gas@versorger-demo.example" });
+  if (idx % 5 === 3) out.push({ projectId, role: "fernwaerme", name: "Wärmenetz Ölmühle (Demo)", contact: null, phone: tel("800"), email: "waerme@versorger-demo.example" });
+  if (idx % 2 === 1) {
+    const [name, email] = SACHBEARBEITER[idx % SACHBEARBEITER.length];
+    out.push({ projectId, role: "sachbearbeiter", name, contact: null, phone: `0731 0000${n}`, mobile: null, email });
+  }
+  return out;
+}
 
 const VERMESSER = ["Vermessungsbüro Albrecht & Partner", "Ingenieurbüro Kessler Vermessung", "Vermessung Donautal"];
 const ERDBAU = ["Erdbau Hummel GmbH", "Tiefbau Gerber", "Baggerbetrieb Rösch"];
@@ -283,13 +326,24 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     });
 
     const street = `${r.pick(STREETS)} ${r.int(1, 48)}`;
+    const home = `${r.pick(STREETS)} ${r.int(1, 60)}`;
     bauherren.push({
       projectId: id,
       name: `Familie ${name}`,
-      address: `${r.pick(STREETS)} ${r.int(1, 60)}, ${plz} ${town}`,
+      address: `${home}, ${plz} ${town}`,
       phone: "0731 000000",
       email: `${name!.toLowerCase().replace(/[^a-z]/g, "")}@example.com`,
       buildingAddress: `${street}, ${plz} ${town}`,
+      // Planungsprotokoll: getrennte Felder (ohne weitere Zufallszahlen, damit der übrige Demo-Bestand gleich bleibt)
+      street: home,
+      postalCode: plz,
+      city: town,
+      mobile: `0170 0000${pad(idx + 1)}`,
+      siteStreet: street,
+      sitePostalCode: plz,
+      siteCity: town,
+      siteDistrict: idx % 3 === 0 ? `${town}-Süd` : null,
+      siteState: town === "Neu-Ulm" || town === "Senden" || town === "Illertissen" || town === "Weißenhorn" ? "Bayern" : "Baden-Württemberg",
     });
 
     parties.push(
@@ -299,6 +353,8 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       { projectId: id, role: "wasser", name: r.pick(WASSER), contact: null },
       { projectId: id, role: "elektriker_baustrom", name: r.pick(ELEKTRO), contact: null },
     );
+    // Weitere Beteiligte fürs Planungsprotokoll, fest nach Projektnummer gewählt (kein Zufall: der übrige Bestand bleibt gleich)
+    parties.push(...demoProtokollKontakte(id, idx, town));
   });
 
   // ---------------------------------------------------------------- Rechnungen
@@ -479,6 +535,8 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   activities.sort((a, b) => b.at.localeCompare(a.at));
 
   return {
+    buero: DEMO_BUERO,
+    planungsprotokolle: [],
     companies: COMPANIES,
     salespeople: SALESPEOPLE,
     team: TEAM,

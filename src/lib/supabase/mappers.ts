@@ -14,6 +14,7 @@ import type {
   InboxItem,
   Invoice,
   Mailbox,
+  Planungsprotokoll,
   Project,
   ProjectDocument,
   ProjectDraftRecord,
@@ -37,11 +38,14 @@ export const COLS = {
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, flur, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
-  bauherren: "id, name, address, phone, email, building_address, name2, phone2, email2",
-  project_parties: "project_id, role, name, contact",
+  bauherren:
+    "id, name, address, phone, email, building_address, name2, phone2, email2, street, postal_code, city, mobile, site_street, site_postal_code, site_city, site_district, site_state",
+  project_parties: "project_id, role, name, contact, address, phone, mobile, email, fax",
+  buero_daten: "name, anschrift, tel, mobil, email",
+  planungsprotokolle: "id, project_id, vorlage, variante, erstellt_von, erstellt_am, dokument_id",
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
   abwesenheiten: "id, user_id, art, von, bis, werktage, status, notiz, entscheidung_von, entscheidung_am, ablehn_grund, created_at",
   urlaubs_anspruch: "user_id, jahr, tage, uebertrag",
@@ -115,6 +119,7 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   notes: r.notes ?? null,
   flurstueck: r.flurstueck ?? null,
   gemarkung: r.gemarkung ?? null,
+  flur: r.flur ?? null,
   steps,
 });
 
@@ -150,13 +155,43 @@ export function toBauherrContacts(bauherren: Row[], projects: Row[]): BauherrCon
         name2: b.name2 ?? null,
         phone2: b.phone2 ?? null,
         email2: b.email2 ?? null,
+        street: b.street ?? null,
+        postalCode: b.postal_code ?? null,
+        city: b.city ?? null,
+        mobile: b.mobile ?? null,
+        siteStreet: b.site_street ?? null,
+        sitePostalCode: b.site_postal_code ?? null,
+        siteCity: b.site_city ?? null,
+        siteDistrict: b.site_district ?? null,
+        siteState: b.site_state ?? null,
       });
     }
   }
   return out;
 }
 
-export const toParty = (r: Row): ProjectParty => ({ projectId: r.project_id, role: r.role, name: r.name, contact: r.contact ?? null });
+export const toParty = (r: Row): ProjectParty => ({
+  projectId: r.project_id,
+  role: r.role,
+  name: r.name,
+  contact: r.contact ?? null,
+  address: r.address ?? null,
+  phone: r.phone ?? null,
+  mobile: r.mobile ?? null,
+  email: r.email ?? null,
+  fax: r.fax ?? null,
+});
+
+/** Erzeugte Fassung eines Planungsprotokolls; `erstelltVon` wird zum Anzeigenamen. */
+export const toPlanungsprotokoll = (r: Row, names: Map<string, string> = new Map()): Planungsprotokoll => ({
+  id: r.id,
+  projectId: r.project_id,
+  vorlage: r.vorlage,
+  variante: r.variante,
+  erstelltVon: r.erstellt_von ? (names.get(r.erstellt_von) ?? null) : null,
+  erstelltAm: stamp(r.erstellt_am),
+  dokumentId: r.dokument_id ?? null,
+});
 
 export const toDocument = (r: Row, names: Map<string, string> = new Map()): ProjectDocument => ({
   id: r.id,

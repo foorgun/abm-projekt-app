@@ -7,6 +7,7 @@ import { DataProvider } from "./lib/store";
 import { Abwesenheit } from "./pages/Abwesenheit";
 import { Dashboard } from "./pages/Dashboard";
 import { Documents } from "./pages/Documents";
+import { Einstellungen } from "./pages/Einstellungen";
 import { AgentDashboard } from "./pages/agent/AgentDashboard";
 import { Mailboxes } from "./pages/agent/Mailboxes";
 import { ReviewList } from "./pages/agent/ReviewList";
@@ -65,7 +66,7 @@ export function App() {
                 <Route path="agent" element={<AgentDashboard />} />
                 <Route path="agent/pruefung" element={<ReviewList />} />
                 <Route path="agent/postfaecher" element={<Mailboxes />} />
-                <Route path="einstellungen" element={<Placeholder title="Einstellungen" />} />
+                <Route path="einstellungen" element={<Einstellungen />} />
                 <Route path="hilfe" element={<Help />} />
                 {Styleguide && (
                   <Route

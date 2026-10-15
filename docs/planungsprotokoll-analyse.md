@@ -1,6 +1,6 @@
 # Planungsprotokoll: Analyse und Machbarkeitstest
 
-Stand: 14.10.2026. Nur Analyse und Spike, **kein Feature**. Nichts davon ist in der App eingebaut.
+Stand: 14.10.2026 (Analyse und Spike). **Nachtrag 15.10.2026:** Stufe (a) ist gebaut, siehe Abschnitt 6.
 
 Grundlage sind drei ausfüllbare PDF-Vorlagen (AcroForm) der Hausbaufirmen in `vorlagen/planungsprotokoll/`.
 Es sind Firmendokumente, deshalb sind sie per `.gitignore` aus dem Repo ausgeschlossen. Die Feldtabelle je Vorlage steht in
@@ -225,3 +225,17 @@ nachgepflegt werden.
 - Architekt auf dem Protokoll: der zuständige Mitarbeiter mit eigener Durchwahl oder immer die Bürodaten von ABM?
 - Dürfen wir die Vorlagen im Storage ablegen? Wer liefert neue Revisionen?
 - Wird ein befülltes, noch bearbeitbares PDF von den Hausbaufirmen angenommen, oder braucht es eine flache Fassung?
+
+## 6. Umsetzung Stufe (a), 15.10.2026
+
+- Reiter „Planungsprotokoll“ im Projekt (nur Admin und Mitarbeiter): Vorlage nach Hausbaufirma (sonst Auswahl), Stand
+  „x von y Feldern“, Knöpfe „Planungsprotokoll erzeugen“ (bearbeitbar) und „Flache Fassung erzeugen“, Liste der Fassungen
+  mit Download, darunter die Angaben für Seite 1 (Bauherr/Bauort getrennt, Sachbearbeiter, 13 Rollen), alles einklappbar.
+- Code: `src/lib/planungsprotokoll/` (`daten.ts` Werte aus dem Projekt, `zuordnung.ts` Feldnamen je Vorlage, `pdf.ts`
+  Befüllen, Prüfen, Einbrennen, `erzeugen.ts` im Browser), Reiter `src/pages/project/PlanungsprotokollTab.tsx`,
+  Einstellungen `src/pages/Einstellungen.tsx` (Bürodaten).
+- Datenbank: Migration 0013 (Rollen als Text mit Prüfregel, getrennte Kontaktfelder, Bauherr/Bauort getrennt, Flur,
+  Bürodaten, Datenübernahme) und 0014 (Tabelle `planungsprotokolle`, privater Bucket `vorlagen`).
+- Eigene Einbrenn-Funktion statt `form.flatten()` von pdf-lib, das an Feldern dieser Vorlagen abbricht. Pixelvergleich
+  bearbeitbar gegen flach (pdf.js, alle Seiten): Living Haus und Bien-Zenker gleich; Schwabenhaus nur auf Seite 4
+  Kantenpixel an den Rahmen der vier leeren Bildfelder.

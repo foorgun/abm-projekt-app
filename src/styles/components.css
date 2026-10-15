@@ -5630,3 +5630,129 @@ li:first-child > .doc-card {
   font-size: var(--fs-12);
   color: var(--muted);
 }
+
+/* ---------------------------------------------------------------- Planungsprotokoll (Projektseite) */
+
+.pp-start {
+  display: grid;
+  gap: var(--sp-3);
+  max-width: 760px;
+}
+
+.pp-vorlage,
+.pp-stand {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.pp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.pp-form {
+  gap: var(--sp-2);
+}
+
+.pp-rollen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+}
+
+/* Einklappbare Gruppe: Titel links, Kurzstand rechts */
+.pp-group {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface-2);
+}
+
+.pp-group > summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-14);
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.pp-group > summary > span:first-child {
+  flex: none;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.pp-group > summary > .muted {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-13);
+}
+
+.pp-group[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.pp-group-body {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.pp-group-body .field-hint {
+  margin: 0;
+}
+
+.pp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-3);
+}
+
+@media (max-width: 480px) {
+  .pp-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .pp-group > summary > .muted {
+    flex: 1 1 0;
+    text-align: right;
+  }
+}
+
+.settings-page {
+  max-width: 760px;
+}
+
+/* Aufklappbare Zusatzfelder im Formular (z. B. getrennte Anschrift fürs Planungsprotokoll) */
+.form-details {
+  display: grid;
+  gap: var(--sp-3);
+  border-top: 1px solid var(--border);
+  padding-top: var(--sp-2);
+}
+
+.form-details > summary {
+  font-size: var(--fs-13);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.form-details > summary:hover,
+.form-details[open] > summary {
+  color: var(--text-2);
+}
+
+.form-details[open] {
+  gap: var(--sp-3);
+}
+
+.form-details .field-hint {
+  margin: 0;
+}

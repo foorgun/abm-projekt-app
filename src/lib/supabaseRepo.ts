@@ -11,6 +11,7 @@ import type { ExtractResponse } from "./extract/types";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
+import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewProject } from "./projectForm";
 import {
@@ -21,6 +22,7 @@ import {
   type MailboxInput,
   type ProjectFields,
   type ProjectPatch,
+  type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
   type NewTask,
@@ -50,6 +52,7 @@ import {
   toInvoice,
   toMailbox,
   toParty,
+  toPlanungsprotokoll,
   toProject,
   toProjectDraft,
   toSalesperson,
@@ -109,6 +112,7 @@ const PROJECT_COLUMN: Record<keyof ProjectFields, string> = {
   baubetreuung: "baubetreuung",
   flurstueck: "flurstueck",
   gemarkung: "gemarkung",
+  flur: "flur",
 };
 
 /** Projektfelder → Spaltennamen. Nur genannte Felder; leere Texte werden zu null. */
@@ -123,7 +127,21 @@ export function projectJson(fields: Partial<ProjectFields>): Record<string, stri
 
 export function bauherrJson(b: BauherrInput): Record<string, string | null> {
   const v = (x: string | null | undefined) => x?.trim() || null;
-  return { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress), name2: v(b.name2), phone2: v(b.phone2), email2: v(b.email2) };
+  const out: Record<string, string | null> = { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress), name2: v(b.name2), phone2: v(b.phone2), email2: v(b.email2) };
+  // Getrennte Felder nur, wenn genannt: fehlt ein Schlüssel, lässt die Datenbank den Wert stehen (Migration 0013)
+  const extra: [keyof BauherrInput, string][] = [
+    ["street", "street"],
+    ["postalCode", "postal_code"],
+    ["city", "city"],
+    ["mobile", "mobile"],
+    ["siteStreet", "site_street"],
+    ["sitePostalCode", "site_postal_code"],
+    ["siteCity", "site_city"],
+    ["siteDistrict", "site_district"],
+    ["siteState", "site_state"],
+  ];
+  for (const [key, col] of extra) if (b[key] !== undefined) out[col] = v(b[key]);
+  return out;
 }
 
 export function createSupabaseRepo(): Repo {
@@ -204,14 +222,17 @@ export function createSupabaseRepo(): Repo {
           userNames(),
         ]);
       // Urlaub und Krankheit: nur für Admin und Mitarbeiter (Freiberufler bekämen ohnehin keine Zeile)
-      const [absences, entitlements, staffRows] = isStaff()
+      const [absences, entitlements, staffRows, protokolle, bueroRows] = isStaff()
         ? await Promise.all([
             all(sb, "abwesenheiten", COLS.abwesenheiten, ["von", "id"]),
             all(sb, "urlaubs_anspruch", COLS.urlaubs_anspruch, ["jahr", "user_id"]),
             // Rollen anderer sehen nur Admins (RLS auf user_roles); Mitarbeiter bekommen hier nur sich selbst
             all(sb, "user_roles", "user_id, role, full_name", ["user_id"]),
+            // Planungsprotokoll (Migration 0013/0014): nur Admin und Mitarbeiter
+            all(sb, "planungsprotokolle", COLS.planungsprotokolle, ["erstellt_am", "id"]),
+            all(sb, "buero_daten", COLS.buero_daten, ["name"]),
           ])
-        : [[], [], []];
+        : [[], [], [], [], []];
       const mitarbeiter: StaffMember[] = staffRows
         .filter((r) => r.role === "admin" || r.role === "mitarbeiter")
         .map((r) => ({ id: r.user_id, name: (r.full_name as string)?.trim() || "Unbekannt", role: r.role }))
@@ -245,6 +266,9 @@ export function createSupabaseRepo(): Repo {
         mitarbeiter,
         abwesenheiten: absences.map((a) => toAbwesenheit(a, names)),
         urlaubsAnspruch: entitlements.map(toUrlaubsAnspruch),
+        buero: bueroRows[0] ? { name: bueroRows[0].name ?? null, anschrift: bueroRows[0].anschrift ?? null, tel: bueroRows[0].tel ?? null, mobil: bueroRows[0].mobil ?? null, email: bueroRows[0].email ?? null } : null,
+        // neueste zuerst
+        planungsprotokolle: protokolle.map((r) => toPlanungsprotokoll(r, names)).reverse(),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
       last = data;
@@ -289,6 +313,7 @@ export function createSupabaseRepo(): Repo {
             intakeMonth: input.intakeMonth,
             flurstueck: input.flurstueck ?? null,
             gemarkung: input.gemarkung ?? null,
+            flur: input.flur ?? null,
           }),
           kind: input.kind,
         },
@@ -429,6 +454,58 @@ export function createSupabaseRepo(): Repo {
       }
       await log(projectId, "datei", `${file.name} abgelegt`);
       return toDocument(data as unknown as Row, new Map([[me, user.name]]));
+    },
+
+    // ---------------------------------------------------------------- Planungsprotokoll (Migration 0013/0014)
+
+    async saveBueroDaten(daten) {
+      if (user.role !== "admin") throw new PermissionError();
+      const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
+      // Bereinigen und E-Mail prüfen macht zusätzlich ein Trigger in der Datenbank; die Zeilenregel lässt nur Admins ändern
+      const { data, error } = await sb
+        .from("buero_daten")
+        .update({ name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email) })
+        .eq("id", true)
+        .select("name");
+      if (error) fail(error, "Bürodaten konnten nicht gespeichert werden");
+      if (!data?.length) throw new PermissionError();
+    },
+
+    async vorlageLaden(vorlage) {
+      requireStaff();
+      const info = VORLAGEN[vorlage];
+      const { data, error } = await sb.storage.from(VORLAGEN_BUCKET).download(info.speicherPfad);
+      if (error || !data) throw new Error(`Die Vorlage „${info.firma}“ liegt noch nicht im Speicher (Bucket „${VORLAGEN_BUCKET}“, ${info.speicherPfad}). Ein Admin lädt sie mit scripts/vorlagen-hochladen.ts hoch.`);
+      return data.arrayBuffer();
+    },
+
+    async savePlanungsprotokoll({ projectId, vorlage, variante, fileName, blob }: ProtokollAblage) {
+      requireStaff();
+      // Erst als normales Dokument in den Projektordner (eigener Speicherpfad, nie überschrieben), dann als Fassung eintragen
+      const doc = await repo.uploadDocument({ projectId, folderPath: PROTOKOLL_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, blob });
+      const me = await userId();
+      const { data, error } = await sb
+        .from("planungsprotokolle")
+        .insert({ project_id: projectId, vorlage, variante, erstellt_von: me, dokument_id: doc.id })
+        .select(COLS.planungsprotokolle)
+        .single();
+      if (error) fail(error, `Das PDF liegt im Ordner „${PROTOKOLL_ORDNER}“, ließ sich aber nicht in die Liste der Fassungen eintragen`);
+      return toPlanungsprotokoll(data as unknown as Row, new Map([[me, user.name]]));
+    },
+
+    async planungsprotokollDatei(protokoll) {
+      requireStaff();
+      if (!protokoll.dokumentId) throw new Error("Zu dieser Fassung gibt es kein Dokument.");
+      let path = last?.documents.find((d) => d.id === protokoll.dokumentId)?.storagePath;
+      if (!path) {
+        const { data, error } = await sb.from("documents").select("storage_path").eq("id", protokoll.dokumentId).maybeSingle();
+        if (error) fail(error, "Dokument konnte nicht geladen werden");
+        path = (data as Row | null)?.storage_path;
+      }
+      if (!path) throw new Error("Das Dokument zu dieser Fassung ist nicht mehr vorhanden.");
+      const { data, error } = await sb.storage.from(BUCKET).download(path);
+      if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
+      return data;
     },
 
     async documentUrl(doc) {

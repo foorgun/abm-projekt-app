@@ -121,11 +121,17 @@ async function extractorStatus(sb: SupabaseClient): Promise<number | "nicht erre
   return error?.context?.status ?? response?.status ?? (error ? "nicht erreichbar" : 200);
 }
 /** Datei-Ablage im Speicher versuchen. Eine wider Erwarten angelegte Datei wird gleich wieder entfernt. */
-async function uploadAttempt(sb: SupabaseClient, path: string): Promise<Outcome> {
-  const up = await sb.storage.from("project-documents").upload(path, new Blob(["Rollenprüfung"], { type: "text/plain" }), { upsert: false });
-  if (!up.error) await sb.storage.from("project-documents").remove([path]);
+async function uploadAttempt(sb: SupabaseClient, path: string, bucket = "project-documents"): Promise<Outcome> {
+  const up = await sb.storage.from(bucket).upload(path, new Blob(["Rollenprüfung"], { type: "text/plain" }), { upsert: false });
+  if (!up.error) await sb.storage.from(bucket).remove([path]);
   return outcome(up.error as DbError | null, 1);
 }
+/** Dateien im Bucket "vorlagen" zählen (Ordner planungsprotokoll). Ohne Berechtigung liefert der Speicher eine leere Liste. */
+async function vorlagenAnzahl(sb: SupabaseClient): Promise<Outcome> {
+  const res = await sb.storage.from("vorlagen").list("planungsprotokoll");
+  return outcome(res.error as DbError | null, (res.data ?? []).filter((f) => f.name.endsWith(".pdf")).length);
+}
+const KLASSISCH = ["vermesser", "erdbauer", "strom", "wasser", "elektriker_baustrom"];
 // Testanträge der Rollenprüfung liegen weit in der Zukunft (2. und 3. März 2099, Montag und Dienstag) und werden am Ende
 // zurückgezogen bzw. abgelehnt. Solche Zeilen zählen in keinem laufenden Jahr und blockieren spätere Läufe nicht.
 const TEST_VON = "2099-03-02";
@@ -142,6 +148,8 @@ const anon = publicClient();
 for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("delete_project", { p_id: NIL })));
 for (const t of ["abwesenheiten", "urlaubs_anspruch"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t, undefined, "user_id"));
+for (const t of ["buero_daten", "planungsprotokolle"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+expectRows("nicht angemeldet", "Vorlagen im Speicher (Bucket vorlagen)", 0, await vorlagenAnzahl(anon));
 expectDenied("nicht angemeldet", "Abwesenheitskalender aufrufen", await attempt(anon.rpc("kalender_abwesenheiten", { p_von: "2026-01-01", p_bis: "2026-12-31" })));
 
 // ---- Bezugswerte: was ein Admin sieht
@@ -154,6 +162,7 @@ const all = {
   invoices: await count(ref.sb, "invoices"),
   bauherren: await count(ref.sb, "bauherren"),
   roles: await count(ref.sb, "user_roles"),
+  vorlagen: await vorlagenAnzahl(ref.sb),
 };
 const allProjects = await read<{ id: string; bauherr_id: string | null }>("Bezugswerte (Admin)", "Projekte lesen", ref.sb.from("projects").select("id, bauherr_id").limit(5000));
 const zero = (o: Outcome) => o.kind === "zeilen" && o.n === 0;
@@ -217,6 +226,39 @@ for (const k of mitPasswort) {
     if (kal.error) record(who, "Abwesenheitskalender aufrufen", "aufrufbar", show(outcome(kal.error, 0, kal.status)), false);
     else if (k.rolle === "mitarbeiter") expectRows(who, `Kalender liefert für Mitarbeiter keine "art" (${(kal.data ?? []).length} Einträge)`, 0, { kind: "zeilen", n: arten });
     else record(who, "Abwesenheitskalender aufrufen (Admin, mit Art)", "aufrufbar", `${(kal.data ?? []).length} Einträge, ${arten} mit Art`, true);
+  }
+
+  // ---- Planungsprotokoll (Migrationen 0013/0014): nur Admin und Mitarbeiter; Vorlagen hochladen nur per Secret key
+  expectDenied(who, "Vorlage in den Bucket vorlagen hochladen", await uploadAttempt(sb, "planungsprotokoll/rollenpruefung.txt", "vorlagen"));
+  expectDenied(who, "Planungsprotokoll ändern", await attempt(sb.from("planungsprotokolle").update({ variante: "flach" }).eq("id", NIL).select("id")));
+  expectDenied(who, "Planungsprotokoll löschen", await attempt(sb.from("planungsprotokolle").delete().eq("id", NIL).select("id")));
+  expectDenied(who, "Bürodaten neu anlegen", await attempt(sb.from("buero_daten").insert({ id: true, name: "Rollenprüfung" }).select("id")));
+  // Anlegen mit einem Projekt, das es nicht gibt: mit Berechtigung scheitert es erst am Fremdschlüssel, es entsteht keine Zeile
+  const pp = await attempt(sb.from("planungsprotokolle").insert({ project_id: NIL, vorlage: "schwabenhaus", variante: "flach", erstellt_von: id }).select("id"));
+  if (k.rolle === "freiberufler") {
+    expectRows(who, "sieht keine Bürodaten", 0, await count(sb, "buero_daten"));
+    expectBlocked(who, "Bürodaten ändern", await attempt(sb.from("buero_daten").update({ name: "Rollenprüfung" }).eq("id", true).select("id")));
+    expectRows(who, "sieht keine Planungsprotokolle", 0, await count(sb, "planungsprotokolle"));
+    expectDenied(who, "Planungsprotokoll anlegen", pp);
+    expectRows(who, "sieht keine Vorlagen im Speicher", 0, await vorlagenAnzahl(sb));
+    expectRows(who, "sieht keine Beteiligten der neuen Rollen (Kellerbauer, Ämter, Sachbearbeiter …)", 0, await count(sb, "project_parties", (q) => q.not("role", "in", `(${KLASSISCH.join(",")})`), "project_id"));
+  } else {
+    expectRows(who, "Bürodaten lesen (eine Zeile)", 1, await count(sb, "buero_daten"));
+    const list = await count(sb, "planungsprotokolle");
+    record(who, "Planungsprotokolle lesen", "lesbar", show(list), list.kind === "zeilen");
+    record(who, "Planungsprotokoll anlegen: Berechtigung vorhanden", "abgelehnt nur wegen unbekanntem Projekt", show(pp), pp.kind === "fehler" && /foreign key|violates/i.test(pp.detail));
+    expectRows(who, "Vorlagen im Speicher lesen", all.vorlagen, await vorlagenAnzahl(sb));
+    if (all.vorlagen.kind === "zeilen" && all.vorlagen.n < 3) rows.push([who, "Vorlagen im Bucket", "3", `${all.vorlagen.n} (npm run vorlagen:hochladen)`, "–"]);
+    expectRows(who, "neue Spalten lesbar (project_parties.mobile)", await count(ref.sb, "project_parties", undefined, "project_id"), await count(sb, "project_parties", undefined, "mobile"));
+    expectRows(who, "neue Spalten lesbar (bauherren.site_state)", all.bauherren, await count(sb, "bauherren", undefined, "site_state"));
+    expectRows(who, "neue Spalten lesbar (projects.flur)", all.projects, await count(sb, "projects", undefined, "flur"));
+    if (k.rolle === "admin") {
+      // ungültige E-Mail: die Datenbank lehnt erst NACH der Berechtigungsprüfung ab (Trigger), es ändert sich nichts
+      const bad = await attemptRule(sb.from("buero_daten").update({ email: "rollenpruefung-ohne-at" }).eq("id", true).select("id"));
+      record(who, "Bürodaten ändern: Berechtigung vorhanden", "abgelehnt nur wegen ungültiger E-Mail", show(bad), bad.kind === "gesperrt" && /E-Mail/.test(bad.detail));
+    } else {
+      expectBlocked(who, "Bürodaten ändern (nur Admin)", await attempt(sb.from("buero_daten").update({ name: "Rollenprüfung" }).eq("id", true).select("id")));
+    }
   }
 
   if (k.rolle === "admin" || k.rolle === "mitarbeiter") {

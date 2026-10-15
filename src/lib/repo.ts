@@ -5,7 +5,29 @@
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
-import type { Abwesenheit, AgentRule, AgentSettings, Company, ContractMeta, Dataset, DocumentType, KalenderEintrag, Mailbox, MailboxStatus, PartyRole, Project, ProjectDocument, ProjectDraftRecord, Salesperson, Task, TeamMember } from "./types";
+import type {
+  Abwesenheit,
+  AgentRule,
+  AgentSettings,
+  BueroDaten,
+  Company,
+  ContractMeta,
+  Dataset,
+  DocumentType,
+  KalenderEintrag,
+  Mailbox,
+  MailboxStatus,
+  PartyRole,
+  Planungsprotokoll,
+  Project,
+  ProjectDocument,
+  ProjectDraftRecord,
+  ProtokollVariante,
+  ProtokollVorlage,
+  Salesperson,
+  Task,
+  TeamMember,
+} from "./types";
 
 export interface NewProject {
   bauherrLabel: string;
@@ -23,6 +45,7 @@ export interface NewProject {
   vermesser?: string | null;
   flurstueck?: string | null;
   gemarkung?: string | null;
+  flur?: string | null;
   /** Kontaktdaten des Bauherrn (nur Admin und Mitarbeiter). */
   bauherr?: BauherrInput | null;
   /** Projektordner aus der Vorlage anlegen (im Echtbetrieb im Speicher; im Demo-Modus protokolliert) */
@@ -40,12 +63,42 @@ export interface BauherrInput {
   name2?: string | null;
   phone2?: string | null;
   email2?: string | null;
+  /** Getrennte Anschrift, Mobil und Bauort (Planungsprotokoll). Nicht genannt (undefined) = unverändert. */
+  street?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  mobile?: string | null;
+  siteStreet?: string | null;
+  sitePostalCode?: string | null;
+  siteCity?: string | null;
+  siteDistrict?: string | null;
+  siteState?: string | null;
+}
+
+/** Ein Beteiligter. Außer dem Namen gilt: nicht genannt (undefined) = unverändert, null oder leer = leeren. */
+export interface PartyInput {
+  name: string;
+  contact?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  mobile?: string | null;
+  email?: string | null;
+  fax?: string | null;
+}
+
+/** Erzeugtes Planungsprotokoll ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
+export interface ProtokollAblage {
+  projectId: string;
+  vorlage: ProtokollVorlage;
+  variante: ProtokollVariante;
+  fileName: string;
+  blob: Blob;
 }
 
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
   Project,
-  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung"
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
 >;
 
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */
@@ -54,7 +107,7 @@ export interface ProjectPatch {
   /** Alle Kontaktfelder auf einmal (die Kachel wird als Ganzes gespeichert). */
   bauherr?: BauherrInput;
   /** Beteiligte je Rolle; null trägt den Beteiligten aus. */
-  parties?: Partial<Record<PartyRole, { name: string; contact: string | null } | null>>;
+  parties?: Partial<Record<PartyRole, PartyInput | null>>;
 }
 
 export interface NewTask {
@@ -212,6 +265,16 @@ export interface Repo {
   setUrlaubsAnspruch(userId: string, jahr: number, werte: { tage: number; uebertrag: number }): Promise<void>;
   /** Kalender: wer im Zeitraum abwesend ist. Für Nicht-Admins ohne Grund (art ist null). */
   kalenderAbwesenheiten(von: string, bis: string): Promise<KalenderEintrag[]>;
+
+  // --- Planungsprotokoll (nur Admin und Mitarbeiter; Migration 0013/0014) ---
+  /** Bürodaten speichern (nur Admin). Leere Werte leeren das Feld. */
+  saveBueroDaten(daten: BueroDaten): Promise<void>;
+  /** PDF-Vorlage laden: Echtbetrieb aus dem privaten Bucket "vorlagen", Demo-Modus aus dem lokalen Ordner. */
+  vorlageLaden(vorlage: ProtokollVorlage): Promise<ArrayBuffer>;
+  /** Erzeugtes Protokoll im Projektordner ablegen und als neue Fassung eintragen (nie überschreiben). */
+  savePlanungsprotokoll(input: ProtokollAblage): Promise<Planungsprotokoll>;
+  /** Datei einer Fassung zum Herunterladen. */
+  planungsprotokollDatei(protokoll: Planungsprotokoll): Promise<Blob>;
 
   /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
   resetDemo?(): Promise<void>;
