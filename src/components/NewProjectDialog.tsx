@@ -18,6 +18,7 @@ import {
   type Sicherheit,
   type Vertragsart,
 } from "../lib/extract";
+import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
@@ -82,6 +83,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const toast = useToast();
   // Stammdaten anlegen und Verträge ablegen dürfen Admin und Mitarbeiter (die Datenbank prüft das ebenfalls)
   const canCreate = user.role !== "freiberufler";
+  // Pilot: keine Aufgaben, Rechnungen und Prüfliste; Hinweise darauf entfallen bzw. zeigen auf die Projektliste
+  const pilot = isPilot();
   const companies = data?.companies ?? [];
   const team = data?.team ?? [];
   const projects = data?.projects ?? [];
@@ -268,7 +271,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   async function closeDialog() {
     if (draft && savedId && !busy) {
       const res = await mutate((r) => r.saveProjectDraft({ id: savedId, draft, form: formState(), docType, file: draft.datei }));
-      if (res.ok) toast("Entwurf gespeichert", "ok", "Weiter über die Prüfliste: „Neues Projekt vorgeschlagen“.");
+      if (res.ok) toast("Entwurf gespeichert", "ok", pilot ? "Weiter über die Projektliste: „Angefangene Projekte“." : "Weiter über die Prüfliste: „Neues Projekt vorgeschlagen“.");
     }
     onClose();
   }
@@ -298,12 +301,13 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
       return setServerError(res.error);
     }
     const notes = [v.createFolders ? "Projektordner aus der Vorlage angelegt." : "Ohne Projektordner angelegt."];
-    if (missing.length) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
+    if (missing.length && !pilot) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
     const filingError = await fileInto(res.value.id);
     setBusy(false);
     if (draft && !filingError) notes.push(`${draft.datei.name} als ${VERTRAGSART_LABEL[docType]} abgelegt.`);
     toast(`Projekt ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
-    if (filingError) toast("Dokument nicht abgelegt", "danger", `${filingError} Der Entwurf bleibt in der Prüfliste; von dort lässt sich das Dokument dem Projekt hinzufügen.`);
+    if (filingError)
+      toast("Dokument nicht abgelegt", "danger", `${filingError} Der Entwurf bleibt ${pilot ? "in der Projektliste unter „Angefangene Projekte“" : "in der Prüfliste"}; von dort lässt sich das Dokument dem Projekt hinzufügen.`);
     onClose();
     navigate(`/projekte/${res.value.id}`);
   }
@@ -837,7 +841,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
           {draft && (
             <fieldset className="form-group">
               <legend>Weitere Angaben aus dem Vertrag</legend>
-              <p className="field-hint">Werden mit dem Dokument gespeichert, nicht als Projektfelder. Der Vertragspreis belegt keine Rechnungsbeträge vor.</p>
+              <p className="field-hint">Werden mit dem Dokument gespeichert, nicht als Projektfelder.{pilot ? "" : " Der Vertragspreis belegt keine Rechnungsbeträge vor."}</p>
               <div className="dialog-row">
                 <Field label="Vertragsdatum" htmlFor="np-vdatum">
                   <Input id="np-vdatum" type="date" value={meta.vertragsdatum ?? ""} onChange={(e) => setMetaField("vertragsdatum", e.target.value)} />
@@ -864,7 +868,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
                   {draft.felder.foerderung.wert && (
                     <li>
                       KfW/WEF-Förderung angekreuzt. Frist {FOERDER_FRIST_MONATE} Monate ab Vertragsdatum
-                      {foerderFrist(meta.vertragsdatum) ? `: bis ${formatDate(foerderFrist(meta.vertragsdatum)!)}` : " (Vertragsdatum fehlt)"}. Nur als Hinweis, es entsteht keine Aufgabe.
+                      {foerderFrist(meta.vertragsdatum) ? `: bis ${formatDate(foerderFrist(meta.vertragsdatum)!)}` : " (Vertragsdatum fehlt)"}. Nur als Hinweis{pilot ? "" : ", es entsteht keine Aufgabe"}.
                     </li>
                   )}
                 </ul>
@@ -876,7 +880,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
 
           {missing.length > 0 && (
             <p className="form-note" aria-live="polite">
-              Noch offen: {missing.join(", ")}. Dafür wird eine Aufgabe „Fehlende Angaben nachfragen“ angelegt.
+              Noch offen: {missing.join(", ")}. {pilot ? "Lässt sich später in der Projektübersicht nachtragen." : "Dafür wird eine Aufgabe „Fehlende Angaben nachfragen“ angelegt."}
             </p>
           )}
 

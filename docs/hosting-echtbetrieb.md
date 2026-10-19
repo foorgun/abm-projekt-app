@@ -55,6 +55,7 @@ Der lokale Ordner `public/design/` ist nicht eingecheckt und wird deshalb auch n
    | `VITE_SUPABASE_URL` | wie in deiner lokalen `.env` | Text |
    | `VITE_SUPABASE_ANON_KEY` | der Publishable key, beginnt mit `sb_publishable_` | Text |
    | `NODE_VERSION` | `20` | Text |
+   | `VITE_APP_MODE` | `pilot` für die Testphase (nur Projekte, Dokumente, Planungsprotokoll); weglassen oder `voll` für alles | Text |
 
    **Nie den Secret key (`sb_secret_…`) eintragen.** Alles, was mit `VITE_` beginnt, landet im Browser jedes Besuchers.
    Der Publishable key darf dort stehen: ohne Anmeldung gibt die Datenbank damit nichts heraus (`check:setup`, `check:roles`).
@@ -66,6 +67,27 @@ Der lokale Ordner `public/design/` ist nicht eingecheckt und wird deshalb auch n
 **Noch nicht weitergeben.** Bis Schritt 3 erledigt ist, kann jeder mit der Adresse die Anmeldeseite sehen (aber ohne Konto nichts lesen).
 
 Jeder spätere `git push` auf `main` baut und veröffentlicht automatisch neu.
+
+### Pilot-Modus (`VITE_APP_MODE`)
+
+Für die Testphase zeigt die App nur das Nötigste. Der Schalter wirkt beim **Bauen**: nach jeder Änderung der Variable
+in Cloudflare unter **Deployments** den letzten Stand mit **Retry deployment** neu bauen (oder einen neuen Commit pushen).
+
+| Wert | Was sichtbar ist |
+|---|---|
+| `pilot` | Seitenleiste: Projekte, unten Einstellungen (nur Admin) und Hilfe. Button "Neues Projekt" (mit Dokument lesen und Prüfmaske). Projekt-Detail mit Prozessleiste und den Reitern Übersicht, Dokumente, Planungsprotokoll. Suche oben. |
+| nicht gesetzt, leer oder `voll` | alles wie bisher |
+
+Im Pilot ausgeblendet (nicht gelöscht, Daten bleiben in der Datenbank): Dashboard, Menüpunkte Aktive/Abgeschlossene
+Projekte und Pipeline, Aufgaben, globale Dokumente-Seite, Rechnungen, Abwesenheit, Posteingangs-Agent mit Prüfliste und
+Postfächern, Adressbuch, Auswertungen, Warnungsglocke, Warnungen zu Rechnungen, im Projekt die Reiter Aufgaben,
+Rechnungen und Aktivität. Jede andere Adresse (auch `#/` und direkte Links wie `#/rechnungen`) führt zur Projektliste.
+Angefangene Projekte aus einem Dokument ("Später weitermachen") stehen im Pilot oben in der Projektliste statt in der Prüfliste.
+
+Der Schalter ist nur Oberfläche: Was eine Rolle darf, entscheidet weiter die Datenbank (`npm run check:roles`).
+Die Aufgabe "Fehlende Angaben nachfragen" legt die Datenbank beim Anlegen weiterhin an; sie ist im Pilot nur nicht sichtbar.
+
+Lokal ausprobieren: `VITE_APP_MODE=pilot npm run dev` bzw. `VITE_APP_MODE=pilot npm run build`.
 
 ## 3. Cloudflare Access davor schalten
 
@@ -144,6 +166,7 @@ Trotzdem einmal einstellen (Dashboard → **Authentication**):
 **Cloudflare**
 - [ ] Pages-Projekt mit Git verbinden, Build `npm run build`, Ausgabe `dist` (Schritt 2)
 - [ ] Production-Variablen `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `NODE_VERSION=20`; für Preview keine Supabase-Variablen
+- [ ] Testphase: `VITE_APP_MODE=pilot` (Production), danach neu bauen; später entfernen für den vollen Umfang
 - [ ] Zero Trust einrichten, One-time PIN aktiv (Schritt 3)
 - [ ] Access-Anwendung für `<projektname>.pages.dev` **und** `*.<projektname>.pages.dev`, Policy "Allow" mit einzelnen Adressen
 - [ ] Im privaten Fenster prüfen: ohne Freigabe keine App

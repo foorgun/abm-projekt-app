@@ -3,6 +3,7 @@ import {
   BookUser,
   Bot,
   CalendarOff,
+  CircleHelp,
   ClipboardCheck,
   Columns3,
   Files,
@@ -13,7 +14,9 @@ import {
   ListTodo,
   Mail,
   Receipt,
+  Settings,
 } from "lucide-react";
+import { isPilot, pilotNavAllows } from "../../lib/appMode";
 import type { AppRole } from "../../lib/session";
 
 export type CountKey = "tasks" | "review";
@@ -72,3 +75,23 @@ export const NAV: NavGroup[] = [
   },
   { label: "Adressbuch", items: [{ to: "/kontakte", label: "Kontakte", icon: BookUser, soon: true }] },
 ];
+
+/** Untere Leiste der Navigation (Einstellungen, Hilfe). */
+export const META_NAV: NavEntry[] = [
+  { to: "/einstellungen", label: "Einstellungen", icon: Settings },
+  { to: "/hilfe", label: "Hilfe", icon: CircleHelp },
+];
+
+/**
+ * Sichtbare Navigation für eine Rolle. Im Pilot nur die Projektliste (als "Projekte"), Einstellungen (Admin) und Hilfe;
+ * die übrigen Einträge bleiben hier stehen und erscheinen wieder, sobald VITE_APP_MODE nicht "pilot" ist.
+ */
+export function visibleNav(role: AppRole, pilot = isPilot()): { groups: NavGroup[]; meta: NavEntry[] } {
+  const byRole = (i: NavEntry) => !i.hiddenFor?.includes(role);
+  const inPilot = (i: NavEntry) => !pilot || (!i.soon && pilotNavAllows(i.to, role));
+  const groups = NAV.map((g) => ({
+    ...g,
+    items: g.items.filter((i) => byRole(i) && inPilot(i)).map((i) => (pilot && i.to === "/projekte" ? { ...i, label: "Projekte" } : i)),
+  })).filter((g) => g.items.length > 0);
+  return { groups, meta: META_NAV.filter((i) => byRole(i) && inPilot(i)) };
+}

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight, ChevronsUpDown, CircleHelp, LogOut, RotateCcw, Settings, UserRound } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, ChevronsUpDown, LogOut, RotateCcw, UserRound } from "lucide-react";
 import logo from "../../assets/abm-logo.png";
+import { homePath, isPilot } from "../../lib/appMode";
 import { ROLE_LABEL, useSession, type AppRole } from "../../lib/session";
 import { useData } from "../../lib/store";
 import { useToast } from "../Toast";
 import { Avatar, Badge, Button, Dialog, IconButton, Menu } from "../ui";
-import { COUNT_HINT, NAV, type CountKey } from "./nav";
+import { COUNT_HINT, visibleNav, type CountKey } from "./nav";
 
 export function Sidebar({
   collapsed,
@@ -26,13 +27,15 @@ export function Sidebar({
   const [confirmReset, setConfirmReset] = useState(false);
   const roles: AppRole[] = ["admin", "mitarbeiter", "freiberufler"];
   const canReset = repo.mode === "demo" && Boolean(repo.resetDemo);
+  const pilot = isPilot();
+  const nav = visibleNav(user.role, pilot);
 
   async function resetDemo() {
     setConfirmReset(false);
     const res = await mutate((r) => r.resetDemo!());
     if (!res.ok) return toast(res.error, "danger");
     setRole("admin");
-    navigate("/");
+    navigate(homePath(pilot));
     onNavigate();
     toast("Demo zurückgesetzt: alle Änderungen verworfen");
   }
@@ -40,7 +43,7 @@ export function Sidebar({
   return (
     <aside className="sidebar" aria-label="Hauptnavigation">
       <div className="sidebar-top">
-        <NavLink to="/" className="sidebar-logo" onClick={onNavigate} aria-label="ABM – zum Dashboard">
+        <NavLink to={homePath(pilot)} className="sidebar-logo" onClick={onNavigate} aria-label={pilot ? "ABM – zur Projektliste" : "ABM – zum Dashboard"}>
           <img src={logo} alt="ABM Architektur und Baumanagement" />
           <span className="sidebar-logo-mark" aria-hidden>
             ABM
@@ -57,9 +60,8 @@ export function Sidebar({
       </div>
 
       <nav className="sidebar-scroll">
-        {NAV.map((group) => {
-          const items = group.items.filter((i) => !i.hiddenFor?.includes(user.role));
-          if (!items.length) return null;
+        {nav.groups.map((group) => {
+          const items = group.items;
           return (
             <div className="nav-group" key={group.label}>
               <div className="nav-group-label">{group.label}</div>
@@ -110,14 +112,15 @@ export function Sidebar({
 
       <div className="sidebar-bottom">
         <div className="sidebar-meta">
-          <NavLink to="/einstellungen" className="nav-item" onClick={onNavigate} title="Einstellungen">
-            <Settings size={18} aria-hidden />
-            <span className="nav-label">Einstellungen</span>
-          </NavLink>
-          <NavLink to="/hilfe" className="nav-item" onClick={onNavigate} title="Hilfe">
-            <CircleHelp size={18} aria-hidden />
-            <span className="nav-label">Hilfe</span>
-          </NavLink>
+          {nav.meta.map((item) => {
+            const Icon = item.icon;
+            return (
+              <NavLink key={item.to} to={item.to} className="nav-item" onClick={onNavigate} title={item.label}>
+                <Icon size={18} aria-hidden />
+                <span className="nav-label">{item.label}</span>
+              </NavLink>
+            );
+          })}
         </div>
         <Menu
           side="top"

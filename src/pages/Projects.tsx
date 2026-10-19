@@ -1,11 +1,13 @@
 import { useCallback, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { Check, ChevronDown, Columns3, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { DraftsCard } from "../components/DraftsCard";
 import { StatusPill, WarnIcon } from "../components/ProjectBits";
 import { PageHead } from "../components/layout/PageHead";
 import { useNewProject } from "../components/NewProjectDialog";
 import { Button, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Menu, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
+import { isPilot } from "../lib/appMode";
 import { formatDate, formatDue, formatMonth } from "../lib/format";
 import {
   DEFAULT_FILTERS,
@@ -55,6 +57,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const filters = filtersFromParams(params);
   const openNewProject = useNewProject();
   const staff = user.role !== "freiberufler";
+  const pilot = isPilot();
   const [extraColumns, setExtraColumns] = useState(readColumns);
   // Wer mit gesetztem Filter ankommt (z. B. vom Dashboard), sieht die Filterleiste gleich offen
   const moreFilters = [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.group, filters.storno].filter(Boolean).length;
@@ -161,9 +164,10 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     },
     {
       key: "next",
-      header: "Nächste Aufgabe",
+      // Im Pilot ohne Aufgaben: nur der nächste Prozessschritt
+      header: pilot ? "Nächster Schritt" : "Nächste Aufgabe",
       render: (p) => {
-        const t = data ? nextTaskFor(p.id, data.tasks) : null;
+        const t = data && !pilot ? nextTaskFor(p.id, data.tasks) : null;
         if (t) {
           const overdue = Boolean(t.dueOn && t.dueOn < today);
           return (
@@ -180,8 +184,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         }
         const s = p.status === "aktiv" ? nextStep(p, steps) : null;
         return s ? (
-          <span className="next-task muted" title={`Nächster Schritt: ${s.label}`}>
-            <span className="next-task-title">Schritt: {s.label}</span>
+          <span className={pilot ? "next-task" : "next-task muted"} title={`Nächster Schritt: ${s.label}`}>
+            <span className="next-task-title">{pilot ? s.label : `Schritt: ${s.label}`}</span>
           </span>
         ) : (
           <span className="muted">–</span>
@@ -198,6 +202,10 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     <>
       {head}
       <div className="stack">
+        {/* Im Pilot gibt es keine Prüfliste: angefangene Projekte aus einem Dokument stehen hier */}
+        {pilot && staff && data && data.projectDrafts.some((d) => d.status === "offen") && (
+          <DraftsCard drafts={data.projectDrafts.filter((d) => d.status === "offen")} title="Angefangene Projekte" />
+        )}
         <Tabs<ProjectTab>
           label="Projektstatus"
           value={tab}

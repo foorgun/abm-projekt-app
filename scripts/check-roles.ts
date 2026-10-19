@@ -276,6 +276,24 @@ for (const k of mitPasswort) {
     record(who, "neue Spalten lesbar (documents.doc_type)", "lesbar", show(docs), docs.kind === "zeilen");
   }
 
+  // ---- Pilot-Modus (VITE_APP_MODE=pilot): Projekt anlegen, Dokument ablegen, Planungsprotokoll erzeugen.
+  // Es bleibt nichts zurück: das Projekt scheitert am leeren Bauherrn, die Testdatei wird sofort wieder entfernt,
+  // die Dokument-Zeile scheitert an der Prüfregel für meta, die erst NACH der Zeilenregel greift.
+  if (k.rolle === "admin" || k.rolle === "mitarbeiter") {
+    const cp = await attempt(sb.rpc("create_project", { p_project: { bauherr_label: "" } }));
+    record(who, "Pilot: Projekt anlegen: Berechtigung vorhanden", "abgelehnt nur wegen leerem Bauherrn", show(cp), cp.kind === "fehler" && /Nachnamen/.test(cp.detail));
+    const target = allProjects[0]?.id;
+    if (!target) rows.push([who, "Pilot: Dokument ablegen", "–", "übersprungen: kein Projekt in der Datenbank", "–"]);
+    else {
+      const up = await uploadAttempt(sb, `${target}/${NIL}/rollenpruefung.txt`);
+      record(who, "Pilot: Datei im Projekt ablegen (wird sofort wieder entfernt)", "1", show(up), up.kind === "zeilen");
+      const left = await ref.sb.storage.from("project-documents").list(`${target}/${NIL}`);
+      expectRows(who, "Pilot: Testdatei ist wieder entfernt", 0, outcome(left.error as DbError | null, left.data?.length ?? 0));
+      const doc = await attempt(sb.from("documents").insert({ project_id: target, name: "rollenpruefung.txt", storage_path: `${target}/${NIL}/rollenpruefung.txt`, uploaded_by: id, meta: "kein Objekt" }).select("id"));
+      record(who, "Pilot: Dokument eintragen: Berechtigung vorhanden", "abgelehnt nur wegen ungültigem Wert", show(doc), doc.kind === "fehler" && /documents_meta_object|check constraint/i.test(doc.detail));
+    }
+  }
+
   if (k.rolle === "admin") {
     expectRows(who, "sieht alle Projekte", all.projects, await count(sb, "projects"));
     expectRows(who, "sieht Rechnungen", all.invoices, await count(sb, "invoices"));

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { FlaskConical, MessageSquare, MousePointerClick, TriangleAlert } from "lucide-react";
+import { isPilot } from "../lib/appMode";
 import { firstName, useSession } from "../lib/session";
 import { Button, Dialog } from "./ui";
 
@@ -29,6 +30,8 @@ function markSeen(userId: string) {
 /** Inhalt der Einführung: auch auf der Hilfeseite verwendet. */
 export function PilotIntroContent() {
   const staff = useSession().user.role !== "freiberufler";
+  // Pilot-Modus: nur Projekte, Dokumente und Planungsprotokoll; Aufgaben, Prüfliste und Agent sind ausgeblendet
+  const pilot = isPilot();
   return (
     <div className="intro">
       <p className="intro-lead">
@@ -38,7 +41,7 @@ export function PilotIntroContent() {
         <li>
           <FlaskConical size={16} aria-hidden />
           <span>
-            <strong>Was das heißt:</strong> Alle Projekte, Bauherren, Rechnungen und Mails hier sind Beispiele. Trage noch keine echten Kundendaten ein. Die zwölf Prozessschritte und die
+            <strong>Was das heißt:</strong> Alle Projekte, Bauherren{pilot ? " und Dokumente" : ", Rechnungen und Mails"} hier sind Beispiele. Trage noch keine echten Kundendaten ein. Die zwölf Prozessschritte und die
             Fristen der Warnungen (z. B. „Vertrag seit 3 Wochen offen“) sind ein erster Vorschlag und werden mit euch abgestimmt.
           </span>
         </li>
@@ -46,16 +49,18 @@ export function PilotIntroContent() {
           <MousePointerClick size={16} aria-hidden />
           <span>
             <strong>Zum Ausprobieren:</strong>{" "}
-            {staff
-              ? "ein Projekt anlegen, im Projekt einen Schritt mit Datum setzen, eine Datei in einen Ordner legen, eine Aufgabe abhaken, in der Prüfliste eine Zuordnung bestätigen."
-              : "deine zugewiesenen Projekte ansehen, den Stand im Prozess verfolgen und eine Datei in einen Projektordner legen."}{" "}
+            {staff && pilot
+              ? "ein Projekt aus einem Dokument anlegen, im Projekt einen Schritt mit Datum setzen, eine Datei in einen Ordner legen, ein Planungsprotokoll erzeugen."
+              : staff
+                ? "ein Projekt anlegen, im Projekt einen Schritt mit Datum setzen, eine Datei in einen Ordner legen, eine Aufgabe abhaken, in der Prüfliste eine Zuordnung bestätigen."
+                : "deine zugewiesenen Projekte ansehen, den Stand im Prozess verfolgen und eine Datei in einen Projektordner legen."}{" "}
             Fehler machen ist ausdrücklich erlaubt, es sind Beispieldaten.
           </span>
         </li>
         <li>
           <TriangleAlert size={16} aria-hidden />
           <span>
-            <strong>Was noch nicht geht:</strong> Der Posteingangs-Agent liest noch keine echten Postfächer. Die Beispieldokumente haben keinen Inhalt und lassen sich nicht öffnen; selbst
+            <strong>Was noch nicht geht:</strong> {pilot ? "" : "Der Posteingangs-Agent liest noch keine echten Postfächer. "}Die Beispieldokumente haben keinen Inhalt und lassen sich nicht öffnen; selbst
             hochgeladene Dateien schon.
           </span>
         </li>

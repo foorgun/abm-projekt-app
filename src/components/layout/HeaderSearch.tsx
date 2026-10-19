@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { FilePlus2, ListTodo, Search } from "lucide-react";
+import { isPilot } from "../../lib/appMode";
 import { matchesQuery } from "../../lib/projectFilters";
 import { phaseOf, projectTitle } from "../../lib/projects";
 import { useSession } from "../../lib/session";
@@ -53,7 +54,8 @@ export function HeaderSearch({ placeholder, onNewProject }: { placeholder: strin
     ? (data?.projects ?? []).filter((p) => matchesQuery(p, q, p.companyId ? companyName.get(p.companyId) : null)).slice(0, MAX)
     : [];
   const term = q.trim().toLowerCase();
-  const available = staff ? COMMANDS : [];
+  // Im Pilot gibt es keine Aufgaben: nur "Neues Projekt"
+  const available = staff ? COMMANDS.filter((c) => !isPilot() || c.id === "project") : [];
   const commands = term ? available.filter((c) => c.words.some((w) => w.startsWith(term) || term.split(/\s+/).every((t) => c.words.some((x) => x.startsWith(t))))) : available;
   // Reihenfolge der Auswahl: Befehle, dann Projekte
   const options = [...commands.map((c) => ({ kind: "cmd" as const, c })), ...hits.map((p) => ({ kind: "project" as const, p }))];

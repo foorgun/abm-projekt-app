@@ -3,6 +3,7 @@ import { Building2, Hammer, Lock, Pencil } from "lucide-react";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Skeleton } from "../components/ui";
+import { isPilot } from "../lib/appMode";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { BueroDaten } from "../lib/types";
@@ -42,9 +43,11 @@ export function Einstellungen() {
         ) : (
           <BueroKarte buero={data.buero} admin={user.role === "admin"} />
         )}
-        <Card>
-          <EmptyState icon={<Hammer size={18} />} title="Weitere Einstellungen folgen" text="Benutzer, Ordnervorlage und Schwellen des Agenten kommen in einem späteren Schritt." />
-        </Card>
+        {!isPilot() && (
+          <Card>
+            <EmptyState icon={<Hammer size={18} />} title="Weitere Einstellungen folgen" text="Benutzer, Ordnervorlage und Schwellen des Agenten kommen in einem späteren Schritt." />
+          </Card>
+        )}
       </div>
     </>
   );

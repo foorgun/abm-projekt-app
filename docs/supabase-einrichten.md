@@ -91,6 +91,7 @@ where u.email = 'frei@example.com' and p.abm_nr in ('8161-101', '8161-102', '826
 ```
 npm run dev          # Echtbetrieb, sobald .env die beiden VITE_SUPABASE_*-Werte enthält → Anmeldeseite
 npm run dev:demo     # Demo-Modus mit erfundenen Daten auf http://localhost:5199 (ignoriert .env)
+VITE_APP_MODE=pilot npm run dev   # Pilot-Modus: nur Projekte, Dokumente, Planungsprotokoll (siehe docs/hosting-echtbetrieb.md)
 ```
 
 Anmeldung mit E-Mail und Passwort. Nach den Migrationen ist die Datenbank leer: Dashboard und Listen zeigen leere Zustände,

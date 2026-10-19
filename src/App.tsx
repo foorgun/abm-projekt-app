@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { HashRouter, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { AppShell } from "./components/layout/AppShell";
+import { pilotRedirect } from "./lib/appMode";
 import { createBackend, type Backend } from "./lib/createRepo";
 import { SessionProvider, useSession } from "./lib/session";
 import { DataProvider } from "./lib/store";
@@ -52,33 +53,35 @@ export function App() {
           <HashRouter>
             <Routes>
               <Route element={<AppShell />}>
-                <Route index element={<Dashboard />} />
-                <Route path="projekte" element={<Projects tab="alle" />} />
-                <Route path="projekte/aktiv" element={<Projects tab="aktiv" />} />
-                <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
-                <Route path="projekte/:id" element={<ProjectDetail />} />
-                <Route path="pipeline" element={<Pipeline />} />
-                <Route path="aufgaben" element={<Tasks />} />
-                <Route path="dokumente" element={<Documents />} />
-                <Route path="rechnungen" element={<Invoices />} />
-                <Route path="auswertungen" element={<Reports />} />
-                <Route path="abwesenheit" element={<Abwesenheit />} />
-                <Route path="agent" element={<AgentDashboard />} />
-                <Route path="agent/pruefung" element={<ReviewList />} />
-                <Route path="agent/postfaecher" element={<Mailboxes />} />
-                <Route path="einstellungen" element={<Einstellungen />} />
-                <Route path="hilfe" element={<Help />} />
-                {Styleguide && (
-                  <Route
-                    path="styleguide"
-                    element={
-                      <Suspense fallback={null}>
-                        <Styleguide />
-                      </Suspense>
-                    }
-                  />
-                )}
-                <Route path="*" element={<Placeholder title="Seite nicht gefunden" notFound />} />
+                <Route element={<PilotGate />}>
+                  <Route index element={<Dashboard />} />
+                  <Route path="projekte" element={<Projects tab="alle" />} />
+                  <Route path="projekte/aktiv" element={<Projects tab="aktiv" />} />
+                  <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
+                  <Route path="projekte/:id" element={<ProjectDetail />} />
+                  <Route path="pipeline" element={<Pipeline />} />
+                  <Route path="aufgaben" element={<Tasks />} />
+                  <Route path="dokumente" element={<Documents />} />
+                  <Route path="rechnungen" element={<Invoices />} />
+                  <Route path="auswertungen" element={<Reports />} />
+                  <Route path="abwesenheit" element={<Abwesenheit />} />
+                  <Route path="agent" element={<AgentDashboard />} />
+                  <Route path="agent/pruefung" element={<ReviewList />} />
+                  <Route path="agent/postfaecher" element={<Mailboxes />} />
+                  <Route path="einstellungen" element={<Einstellungen />} />
+                  <Route path="hilfe" element={<Help />} />
+                  {Styleguide && (
+                    <Route
+                      path="styleguide"
+                      element={
+                        <Suspense fallback={null}>
+                          <Styleguide />
+                        </Suspense>
+                      }
+                    />
+                  )}
+                  <Route path="*" element={<Placeholder title="Seite nicht gefunden" notFound />} />
+                </Route>
               </Route>
             </Routes>
           </HashRouter>
@@ -97,6 +100,17 @@ function StartError({ message }: { message: string }) {
       </div>
     </main>
   );
+}
+
+/**
+ * Pilot-Modus (VITE_APP_MODE=pilot): nicht freigegebene Seiten leiten auf die Projektliste um, auch bei direkter URL
+ * und beim Wurzelpfad. Außerhalb des Pilots durchlässig.
+ */
+function PilotGate() {
+  const { pathname } = useLocation();
+  const { user } = useSession();
+  const target = pilotRedirect(pathname, user.role);
+  return target ? <Navigate to={target} replace /> : <Outlet />;
 }
 
 /** Im Echtbetrieb: Daten und App erst nach der Anmeldung mit zugewiesener Rolle. Im Demo-Modus immer durchlässig. */

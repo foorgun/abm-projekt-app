@@ -3,6 +3,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { computeAlerts, type Alert } from "./alerts";
+import { isPilot, PILOT_ALERT_KINDS } from "./appMode";
 import { todayIso } from "./format";
 import type { Repo } from "./repo";
 import { useSession } from "./session";
@@ -84,7 +85,9 @@ export function DataProvider({ repo, children }: { repo: Repo; children: ReactNo
 
   const value = useMemo<DataValue>(() => {
     const allAlerts = data ? computeAlerts(data, today) : [];
-    const alerts = data ? visibleAlerts(allAlerts, data.tasks) : [];
+    const shown = data ? visibleAlerts(allAlerts, data.tasks) : [];
+    // Pilot: keine Warnungen zu Rechnungen (der Bereich ist ausgeblendet)
+    const alerts = isPilot() ? shown.filter((a) => PILOT_ALERT_KINDS.includes(a.kind)) : shown;
     const dueTaskCount = data ? data.tasks.filter((t) => t.status === "offen" && t.dueOn && t.dueOn <= today).length : 0;
     // Zur Prüfung: unsichere Anhänge des Agenten und offene Entwürfe "Neues Projekt vorgeschlagen"
     const reviewCount = data ? data.inboxAttachments.filter((a) => a.status === "pruefen").length + data.projectDrafts.filter((d) => d.status === "offen").length : 0;

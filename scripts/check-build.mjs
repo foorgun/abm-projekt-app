@@ -62,6 +62,9 @@ if (pub.VITE_SUPABASE_URL && pub.VITE_SUPABASE_ANON_KEY) {
   check("Publishable key beginnt mit sb_publishable_", pub.VITE_SUPABASE_ANON_KEY.startsWith("sb_publishable_"));
   check("Echtbetrieb: Projektadresse und Publishable key sind enthalten (gewollt, öffentlich)", all.includes(pub.VITE_SUPABASE_URL) && all.includes(pub.VITE_SUPABASE_ANON_KEY));
 } else rows.push(["Echtbetrieb", "–", "ohne VITE_SUPABASE_* gebaut: das ist ein Demo-Build"]);
+// Umfang der Oberfläche (Vite nimmt die Umgebung vor .env)
+const mode = (process.env.VITE_APP_MODE ?? pub.VITE_APP_MODE ?? "").trim().toLowerCase() === "pilot" ? "pilot" : "voll";
+rows.push(["Oberfläche (VITE_APP_MODE)", "–", mode === "pilot" ? "Pilot: nur Projekte, Dokumente, Planungsprotokoll" : "voller Umfang"]);
 
 // ---- Interne Seiten
 check("Styleguide ist nicht im Build", !/styleguide/i.test(all), where("styleguide").concat(where("Styleguide")).join(", "));

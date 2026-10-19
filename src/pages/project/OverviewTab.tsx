@@ -3,6 +3,7 @@ import { Lock, Pencil } from "lucide-react";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, Field, IconButton, Input, Select } from "../../components/ui";
+import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
@@ -26,7 +27,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
  * Speichert eine Änderung an den Projektdaten. Prüft vorher mit denselben Regeln wie das Repo und meldet,
  * wenn sich dadurch die Aufgabe "Fehlende Angaben nachfragen" erledigt.
  */
-function useProjectSave(project: Project, data: Dataset) {
+function useProjectSave(project: Project, data: Dataset, pilot = isPilot()) {
   const { mutate, today } = useData();
   const toast = useToast();
   const [busy, setBusy] = useState(false);
@@ -43,7 +44,7 @@ function useProjectSave(project: Project, data: Dataset) {
     const res = await mutate((r) => r.updateProject(project.id, patch));
     setBusy(false);
     if (!res.ok) return setError(res.error);
-    toast("Gespeichert", "ok", openTask && !plan.followup ? "Alle Angaben sind da: Aufgabe „Fehlende Angaben nachfragen“ erledigt." : `Geändert: ${plan.changed.join(", ")}`);
+    toast("Gespeichert", "ok", openTask && !plan.followup && !pilot ? "Alle Angaben sind da: Aufgabe „Fehlende Angaben nachfragen“ erledigt." : `Geändert: ${plan.changed.join(", ")}`);
     onDone();
   }
   return { save, busy, error, clearError: () => setError(null) };
@@ -108,7 +109,7 @@ function EditForm({ onSubmit, onCancel, onEdit, busy, error, children }: { onSub
 }
 
 /** Übersicht: Projektdaten und Projektbeteiligte (Felder wie in Liste.docx). Für Admin und Mitarbeiter bearbeitbar. */
-export function OverviewTab({ project, data, contact, staff }: { project: Project; data: Dataset; contact: BauherrContact | null; staff: boolean }) {
+export function OverviewTab({ project, data, contact, staff, pilot = false }: { project: Project; data: Dataset; contact: BauherrContact | null; staff: boolean; pilot?: boolean }) {
   const company = data.companies.find((c) => c.id === project.companyId);
   const sales = data.salespeople.find((s) => s.id === project.salespersonId);
   const member = (id: string | null) => data.team.find((t) => t.id === id);
@@ -131,7 +132,7 @@ export function OverviewTab({ project, data, contact, staff }: { project: Projec
     <div className="stack">
       {missing.length > 0 && (
         <p className="form-note" role="status">
-          Noch offen: {missing.join(", ")}. Sobald alles eingetragen ist, erledigt sich die Aufgabe „Fehlende Angaben nachfragen“ von selbst.
+          Noch offen: {missing.join(", ")}.{pilot ? " Über den Stift an der jeweiligen Kachel nachtragen." : " Sobald alles eingetragen ist, erledigt sich die Aufgabe „Fehlende Angaben nachfragen“ von selbst."}
         </p>
       )}
       <div className="grid-2 grid-top">
