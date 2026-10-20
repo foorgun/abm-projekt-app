@@ -107,5 +107,5 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Die Quelle nennt manche Straßen ohne Bezirksangabe (nur über weitere Abfragen der Seite erreichbar, die die App bewusst nicht nutzt).
   Dann meldet die App „nicht gefunden“ und es bleibt die Handeingabe. Kommt das in der Praxis oft vor?
 - Hausnummernbereiche wie „96-104“ gelten als unsicher (nur gleiche Parität wie der Startwert) und werden nie vorgewählt.
-- Auch „nichts gefunden“ wird 90 Tage gespeichert. Neue Straßen im Neubaugebiet tauchen in der App also ggf. erst später auf;
-  zur Not löscht ein Admin den Eintrag in `schornsteinfeger_suche` (Supabase-Dashboard).
+- Zwischenspeicher: Treffer 90 Tage, „nicht gefunden“ nur 24 Stunden (neue Straßen im Neubaugebiet tauchen so bald auf),
+  „Quelle nicht erreichbar“ gar nicht. Passen diese Fristen?

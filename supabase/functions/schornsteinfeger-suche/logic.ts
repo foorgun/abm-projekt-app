@@ -7,8 +7,10 @@ export const QUELLE_URL = "https://schornsteinfeger-liv-baden-wuerttemberg.de/wp
 export const QUELLE_LABEL = "Landesinnungsverband BW";
 export const USER_AGENT = "ABM-App (Planungsprotokoll)";
 export const TIMEOUT_MS = 10_000;
-/** Gültigkeit des Zwischenspeichers (Suche und Details) */
+/** Gültigkeit des Zwischenspeichers für Treffer und Details */
 export const CACHE_TAGE = 90;
+/** "nicht_gefunden" gilt nur kurz (neue Straßen, Tippfehler der Quelle); "quelle_nicht_erreichbar" wird nie gespeichert */
+export const CACHE_NICHT_GEFUNDEN_STUNDEN = 24;
 /** Höchstens so viele Abrufe an der Quelle je Person und Tag (Treffer aus dem Zwischenspeicher zählen nicht) */
 export const MAX_ABRUFE_PRO_TAG = 30;
 
@@ -407,6 +409,22 @@ export function detailsLesen(html: string): { ok: true; details: Details } | { o
 /** Ab wann ein Eintrag im Zwischenspeicher noch gilt (ISO-Zeit). */
 export function cacheGrenze(now: Date): string {
   return new Date(now.getTime() - CACHE_TAGE * 24 * 60 * 60 * 1000).toISOString();
+}
+
+const STUNDE_MS = 60 * 60 * 1000;
+
+/** Wie lange ein Suchergebnis gespeichert wird (in ms); null = gar nicht. */
+export function speicherFrist(status: SuchStatus): number | null {
+  if (status === "quelle_nicht_erreichbar") return null;
+  if (status === "nicht_gefunden") return CACHE_NICHT_GEFUNDEN_STUNDEN * STUNDE_MS;
+  return CACHE_TAGE * 24 * STUNDE_MS;
+}
+
+/** Gilt ein gespeichertes Suchergebnis noch? Die Frist hängt davon ab, ob es Bezirke enthält (nicht von der Hausnummer). */
+export function cacheGueltig(treffer: Treffer[], abgerufenAm: string, now: Date): boolean {
+  const frist = speicherFrist(bezirkeAbgleichen(treffer, null).status);
+  const am = Date.parse(abgerufenAm);
+  return frist !== null && Number.isFinite(am) && now.getTime() - am < frist;
 }
 
 /** Beginn des Tages (UTC) für das Tageslimit. */

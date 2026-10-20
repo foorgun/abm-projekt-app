@@ -7,6 +7,7 @@
 //
 // Schonung der Quelle:
 //   * Zwischenspeicher (Migration 0015): gleiche Suche bzw. gleiche Details innerhalb von 90 Tagen gehen nicht erneut hinaus.
+//     "nicht_gefunden" gilt nur 24 Stunden, "quelle_nicht_erreichbar" wird nie gespeichert (speicherFrist in logic.ts).
 //   * Höchstens 30 Abrufe an der Quelle je Person und Tag (Tabelle schornsteinfeger_abrufe), Timeout 10 s, ein Versuch,
 //     nacheinander, nie parallel. Bei 403 oder 429 sofort aufhören (kein zweiter Versuch mit dem Namensanfang).
 //   * Details nur für Kandidaten, die vorher in einer Suche vorkamen (kein Abklappern aller Kennungen).
@@ -17,11 +18,13 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   bsmIds,
   cacheGrenze,
+  cacheGueltig,
   detailsLesen,
   MAX_ABRUFE_PRO_TAG,
   parseAnfrage,
   passendeTreffer,
   QUELLE_URL,
+  speicherFrist,
   strassenAnfang,
   strassenLesen,
   strassenSchluessel,
@@ -135,8 +138,10 @@ Deno.serve(async (req) => {
     // --- Suche -----------------------------------------------------------------------------------------
     const strasse = strasseNormalisieren(anfrage.strasse);
     const key = strassenSchluessel(strasse);
-    const cached = await admin.from("schornsteinfeger_suche").select("treffer, suchbegriff").eq("plz", anfrage.plz).eq("strasse_key", key).gte("abgerufen_am", grenze).maybeSingle();
-    if (cached.data) return json(suchAntwort(cached.data.treffer as Treffer[], anfrage.hausnummer, cached.data.suchbegriff as string));
+    const cached = await admin.from("schornsteinfeger_suche").select("treffer, suchbegriff, abgerufen_am").eq("plz", anfrage.plz).eq("strasse_key", key).gte("abgerufen_am", grenze).maybeSingle();
+    if (cached.data && cacheGueltig(cached.data.treffer as Treffer[], cached.data.abgerufen_am as string, now)) {
+      return json(suchAntwort(cached.data.treffer as Treffer[], anfrage.hausnummer, cached.data.suchbegriff as string));
+    }
 
     let suchbegriff = strasse;
     const erster = await abrufen("suche", { do: "suchestrasse", plz: anfrage.plz, street: strasse });
@@ -161,9 +166,12 @@ Deno.serve(async (req) => {
       treffer = passendeTreffer(g2.treffer, anfrage.plz, anfang, "anfang");
     }
 
-    // Auch "nichts gefunden" wird gespeichert: dieselbe Anfrage geht 90 Tage nicht erneut hinaus
-    await admin.from("schornsteinfeger_suche").upsert({ plz: anfrage.plz, strasse_key: key, suchbegriff, treffer, bsm_ids: bsmIds(treffer), abgerufen_am: now.toISOString() });
-    return json(suchAntwort(treffer, anfrage.hausnummer, suchbegriff));
+    // Treffer gelten 90 Tage, "nichts gefunden" 24 Stunden (beim Lesen geprüft); ein älterer Eintrag wird überschrieben
+    const antwort = suchAntwort(treffer, anfrage.hausnummer, suchbegriff);
+    if (speicherFrist(antwort.status) !== null) {
+      await admin.from("schornsteinfeger_suche").upsert({ plz: anfrage.plz, strasse_key: key, suchbegriff, treffer, bsm_ids: bsmIds(treffer), abgerufen_am: now.toISOString() });
+    }
+    return json(antwort);
   } catch (e) {
     console.error(`Fegersuche: ${e instanceof Error ? e.message : "unerwarteter Fehler"}`);
     return fail("error", "Der Vorschlag ist gerade nicht verfügbar. Bitte von Hand eintragen.", 500);

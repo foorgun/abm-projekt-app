@@ -1,7 +1,7 @@
 // Schornsteinfeger vorschlagen: Hausnummern-Abgleich, Straßen-Normalisierung, Parser der Quelle, Eingabe, Bauadresse.
 // Alle Namen, Kennungen und Kontaktdaten sind erfunden; nur die Hausnummernlisten folgen der Struktur der Quelle.
 import { describe, expect, it } from "vitest";
-import { cacheGrenze, MAX_ABRUFE_PRO_TAG, parseAnfrage, suchAntwort, tagesbeginn, TIMEOUT_MS, CACHE_TAGE, bsmIds } from "../../../supabase/functions/schornsteinfeger-suche/logic";
+import { cacheGrenze, cacheGueltig, MAX_ABRUFE_PRO_TAG, parseAnfrage, speicherFrist, suchAntwort, tagesbeginn, TIMEOUT_MS, CACHE_TAGE, CACHE_NICHT_GEFUNDEN_STUNDEN, bsmIds } from "../../../supabase/functions/schornsteinfeger-suche/logic";
 import source from "../../../supabase/functions/schornsteinfeger-suche/index.ts?raw";
 import {
   bauadresseFuerSuche,
@@ -288,6 +288,33 @@ describe("Eingabe, Limits, Funktion", () => {
     expect(TIMEOUT_MS).toBe(10_000);
     expect(cacheGrenze(new Date("2026-10-20T12:00:00Z"))).toBe("2026-07-22T12:00:00.000Z");
     expect(tagesbeginn(new Date("2026-10-20T23:59:00Z"))).toBe("2026-10-20T00:00:00.000Z");
+  });
+  it("Speicherfrist je Ergebnis: Treffer 90 Tage, nicht_gefunden 24 Stunden, quelle_nicht_erreichbar gar nicht", () => {
+    expect(CACHE_NICHT_GEFUNDEN_STUNDEN).toBe(24);
+    const tag = 24 * 60 * 60 * 1000;
+    for (const s of ["eindeutig", "mehrdeutig", "ohne_hausnummer"] as const) expect(speicherFrist(s), s).toBe(90 * tag);
+    expect(speicherFrist("nicht_gefunden")).toBe(tag);
+    expect(speicherFrist("quelle_nicht_erreichbar")).toBeNull();
+  });
+  it("gespeicherte Treffer gelten 90 Tage, unabhängig von der Hausnummer", () => {
+    const am = "2026-07-22T12:00:00.000Z";
+    expect(cacheGueltig(VOGELSANG, am, new Date("2026-10-20T11:59:59Z"))).toBe(true);
+    expect(cacheGueltig(VOGELSANG, am, new Date("2026-10-20T12:00:00Z"))).toBe(false);
+  });
+  it("gespeichertes nicht_gefunden (leer oder ohne Bezirke) gilt nur 24 Stunden", () => {
+    const am = "2026-10-20T08:00:00.000Z";
+    for (const treffer of [[], [{ ...VOGELSANG[0], bezirke: null }]] as Treffer[][]) {
+      expect(cacheGueltig(treffer, am, new Date("2026-10-21T07:59:59Z"))).toBe(true);
+      expect(cacheGueltig(treffer, am, new Date("2026-10-21T08:00:00Z"))).toBe(false);
+      expect(cacheGueltig(treffer, am, new Date("2026-11-01T08:00:00Z"))).toBe(false);
+    }
+    expect(cacheGueltig(VOGELSANG, "kein Datum", new Date())).toBe(false);
+  });
+  it("die Funktion speichert nur mit Frist und prüft sie beim Lesen", () => {
+    expect(source).toContain("cacheGueltig(cached.data.treffer");
+    expect(source).toMatch(/if \(speicherFrist\(antwort\.status\) !== null\) \{\s*await admin\.from\("schornsteinfeger_suche"\)\.upsert/);
+    // nur ein Schreibzugriff auf den Such-Zwischenspeicher, und der steht hinter der Fristprüfung
+    expect(source.match(/from\("schornsteinfeger_suche"\)\.upsert/g)).toHaveLength(1);
   });
   it("die Funktion prüft Rolle, hört bei 403/429 auf und holt Details nur für Kandidaten aus einer Suche", () => {
     expect(source).toContain('role?.role !== "admin" && role?.role !== "mitarbeiter"');
