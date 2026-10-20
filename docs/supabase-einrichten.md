@@ -22,7 +22,7 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0014). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/` (0001 bis 0015). Sie enthalten kein Passwort und keinen Schlüssel.
 
 ### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
 
@@ -38,19 +38,30 @@ Das erzeugt `supabase/.out/migrationen-gesamt.sql` (alle Migrationen in einer Tr
 4. Erwartet: "Success. No rows returned". Bei einem Fehler wurde nichts übernommen; Meldung an mich weitergeben.
 
 Nicht zweimal ausführen (beim zweiten Mal bricht es ab, weil die Typen schon existieren; das schadet nicht).
-Spätere Migrationen einzeln nachziehen: `npm run db:bundle -- --ab 0007` erzeugt eine Datei nur mit den neuen.
+Spätere Migrationen einzeln nachziehen: `npm run db:bundle -- --ab 7` (gleichbedeutend `--ab 0007`) erzeugt eine Datei nur mit den neuen.
 
-### Weg B: Supabase CLI (nicht von mir geprüft)
+### Weg B: Supabase CLI mit `db query` (geprüft am 20.10.2026 mit Migration 0015)
+
+> **Nicht `npx supabase db push` benutzen.** Die Migrationen wurden über den SQL-Editor eingespielt, deshalb ist die
+> Migrationshistorie der CLI leer (`npx supabase migration list --linked` zeigt bei „remote“ nichts). `db push` hielte
+> darum alle Migrationen ab 0001 für neu und würde sie noch einmal ausführen.
+
+Dieselbe Bundle-Datei wie bei Weg A, nur ohne Kopieren: `db query --linked` schickt genau diese eine Datei über die
+Management API an das verknüpfte Projekt (eine Transaktion, alles oder nichts). Braucht kein Datenbank-Passwort.
 
 ```
-npx supabase login
-npx supabase link --project-ref <projekt-ref>     # fragt nach dem Datenbank-Passwort, speichert es nicht im Repo
-npx supabase db push
+npx supabase login                                   # einmalig, öffnet den Browser
+npx supabase link --project-ref <projekt-ref>        # einmalig; die Verknüpfung steht in supabase/.temp/ (nicht im Repo)
+npm run db:bundle -- --ab 15                         # nur die neuen Migrationen, hier ab 0015
+# Datei supabase/.out/migrationen-ab-0015.sql lesen: nur die erwarteten Anweisungen?
+npx supabase db query --linked -f supabase/.out/migrationen-ab-0015.sql
 ```
 
-Die CLI merkt sich, welche Migrationen schon gelaufen sind. Ich konnte diesen Weg hier nicht ausprobieren
-(kein Zugang zum Projekt); insbesondere ist offen, ob sie unsere Dateinamen `0001_…` ohne Zeitstempel annimmt.
-Wenn Weg A einmal benutzt wurde, bei Weg A bleiben.
+Danach prüfen, ob die Tabellen da sind und RLS aktiv ist (nur lesend), z. B.:
+
+```
+npx supabase db query --linked "select relname, relrowsecurity from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname like 'schornsteinfeger%'"
+```
 
 ### Danach prüfen
 

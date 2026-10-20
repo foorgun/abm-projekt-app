@@ -7,8 +7,14 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(root, "supabase", "migrations");
-const from = process.argv.includes("--ab") ? process.argv[process.argv.indexOf("--ab") + 1] : "0000";
-const files = readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f) && f.slice(0, 4) >= from).sort();
+// "--ab 15" und "--ab 0015" sind gleich: die Nummern werden als Zahl verglichen, nicht als Text
+const ab = process.argv.includes("--ab") ? process.argv[process.argv.indexOf("--ab") + 1] : "0";
+if (!/^\d{1,4}$/.test(ab ?? "")) {
+  console.error(`Ungültige Angabe bei --ab: "${ab ?? ""}". Erwartet wird die Nummer einer Migration, z. B. --ab 15 oder --ab 0015.`);
+  process.exit(1);
+}
+const from = ab.padStart(4, "0");
+const files = readdirSync(dir).filter((f) => /^\d{4}_.*\.sql$/.test(f) && Number(f.slice(0, 4)) >= Number(ab)).sort();
 if (!files.length) {
   console.error(`Keine Migration ab ${from} gefunden.`);
   process.exit(1);

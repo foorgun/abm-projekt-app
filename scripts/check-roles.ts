@@ -66,7 +66,15 @@ function expectText(konto: string, what: string, expected: string, actual: strin
  * dort lehnt die Datenbank "*" für JEDE Rolle ab. Gezählt wird mit einer normalen Abfrage (nicht HEAD), damit ein Fehler
  * seinen Code und Text mitbringt.
  */
-const KEY: Record<string, string> = { project_steps: "project_id", project_members: "project_id", user_roles: "user_id", step_definitions: "key", agent_settings: "id" };
+const KEY: Record<string, string> = {
+  project_steps: "project_id",
+  project_members: "project_id",
+  user_roles: "user_id",
+  step_definitions: "key",
+  agent_settings: "id",
+  schornsteinfeger_suche: "plz",
+  schornsteinfeger_details: "bsm_id",
+};
 
 async function count(sb: SupabaseClient, tableName: string, filter?: (q: any) => any, column?: string): Promise<Outcome> {
   let q: any = sb.from(tableName).select(column ?? KEY[tableName] ?? "id", { count: "exact" });
@@ -120,6 +128,22 @@ async function extractorStatus(sb: SupabaseClient): Promise<number | "nicht erre
   const { error, response } = (await sb.functions.invoke("extract-project", { body: { images: [] } })) as { error: { context?: Response } | null; response?: Response };
   return error?.context?.status ?? response?.status ?? (error ? "nicht erreichbar" : 200);
 }
+/**
+ * Edge Function schornsteinfeger-suche aufrufen, ohne dass etwas an die Quelle geht: die PLZ ist ungültig. Die Funktion prüft
+ * zuerst Anmeldung und Rolle (Freiberufler: 403), erst danach die Eingabe (Admin und Mitarbeiter: 400).
+ */
+async function fegersucheStatus(sb: SupabaseClient): Promise<number | "nicht erreichbar"> {
+  const { error, response } = (await sb.functions.invoke("schornsteinfeger-suche", { body: { art: "suche", plz: "0", strasse: "" } })) as { error: { context?: Response } | null; response?: Response };
+  return error?.context?.status ?? response?.status ?? (error ? "nicht erreichbar" : 200);
+}
+const SCHORNSTEINFEGER_TABELLEN = ["schornsteinfeger_suche", "schornsteinfeger_details", "schornsteinfeger_abrufe"];
+/** Schreibversuche mit ungültigen Werten: mit Berechtigung scheiterten sie an der Prüfregel, es entsteht in keinem Fall eine Zeile. */
+const SCHORNSTEINFEGER_SCHREIBEN: Record<string, Record<string, unknown>> = {
+  schornsteinfeger_suche: { plz: "x", strasse_key: "", suchbegriff: "rollenpruefung" },
+  schornsteinfeger_details: { bsm_id: "x", details: [] },
+  schornsteinfeger_abrufe: { user_id: NIL, art: "rollenpruefung" },
+};
+
 /** Datei-Ablage im Speicher versuchen. Eine wider Erwarten angelegte Datei wird gleich wieder entfernt. */
 async function uploadAttempt(sb: SupabaseClient, path: string, bucket = "project-documents"): Promise<Outcome> {
   const up = await sb.storage.from(bucket).upload(path, new Blob(["Rollenprüfung"], { type: "text/plain" }), { upsert: false });
@@ -149,6 +173,7 @@ for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles",
 expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("delete_project", { p_id: NIL })));
 for (const t of ["abwesenheiten", "urlaubs_anspruch"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t, undefined, "user_id"));
 for (const t of ["buero_daten", "planungsprotokolle"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+for (const t of SCHORNSTEINFEGER_TABELLEN) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 expectRows("nicht angemeldet", "Vorlagen im Speicher (Bucket vorlagen)", 0, await vorlagenAnzahl(anon));
 expectDenied("nicht angemeldet", "Abwesenheitskalender aufrufen", await attempt(anon.rpc("kalender_abwesenheiten", { p_von: "2026-01-01", p_bis: "2026-12-31" })));
 
@@ -188,6 +213,18 @@ for (const k of mitPasswort) {
   else expectText(who, "Auslesung (Edge Function): Rolle zugelassen", "nicht abgewiesen", fn === 401 || fn === 403 ? `Status ${fn}` : "nicht abgewiesen");
   // Das Protokoll der Auslesungen schreibt nur die Funktion (service_role): für JEDE Rolle gesperrt
   expectDenied(who, "extraction_log beschreiben", await attempt(sb.from("extraction_log").insert({ user_id: id, model: "rollenpruefung" }).select("id")));
+
+  // ---- Schornsteinfeger-Vorschlag (Migration 0015): lesen nur Admin, schreiben nur die Funktion, Function nur Admin/Mitarbeiter
+  for (const t of SCHORNSTEINFEGER_TABELLEN) {
+    const n = await count(sb, t);
+    if (k.rolle === "admin") record(who, `${t} lesen (nur Admin)`, "lesbar", show(n), n.kind === "zeilen");
+    else expectRows(who, `${t}: sieht keine Zeile`, 0, n);
+    expectDenied(who, `${t} beschreiben`, await attempt(sb.from(t).insert(SCHORNSTEINFEGER_SCHREIBEN[t]).select()));
+  }
+  const feger = await fegersucheStatus(sb);
+  if (feger === 404 || feger === "nicht erreichbar") rows.push([who, "Schornsteinfeger-Vorschlag (Edge Function)", "–", "übersprungen: Funktion schornsteinfeger-suche ist nicht deployt", "–"]);
+  else if (k.rolle === "freiberufler") expectText(who, "Schornsteinfeger-Vorschlag (Edge Function) aufrufen", "403 abgewiesen", feger === 403 ? "403 abgewiesen" : `Status ${feger}`);
+  else expectText(who, "Schornsteinfeger-Vorschlag (Edge Function): Rolle zugelassen", "400 (ungültige Eingabe, nichts an die Quelle)", feger === 400 ? "400 (ungültige Eingabe, nichts an die Quelle)" : `Status ${feger}`);
 
   // ---- Projekt löschen (Migration 0011): nur Admin. Geprüft wird mit einer ID, die es nicht gibt: die Funktion prüft
   // zuerst die Berechtigung und meldet erst danach "Projekt nicht gefunden". Es wird in keinem Fall etwas gelöscht.
