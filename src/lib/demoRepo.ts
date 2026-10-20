@@ -14,6 +14,7 @@ import { cleanMeta } from "./extract/applyDraft";
 import { checkContractFile } from "./extract/contractFile";
 import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
+import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
 import { isAllowedFolder, templateOf } from "./folders";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
 import { planProjectUpdate } from "./projectEdit";
@@ -835,6 +836,16 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const blob = protokollBlobs.get(protokoll.id);
       if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
       return blob;
+    },
+
+    async schornsteinfegerSuchen(anfrage) {
+      requireStaff();
+      return done(demoSuche(anfrage));
+    },
+
+    async schornsteinfegerDetails(bsmId) {
+      requireStaff();
+      return done(demoDetails(bsmId));
     },
 
     async saveAgentSettings(settings: AgentSettings) {

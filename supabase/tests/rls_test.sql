@@ -996,6 +996,50 @@ select test.expect('Projekt löschen nennt auch den Pfad des Protokoll-PDFs',
 select test.expect('… und die Protokollzeilen sind weg', (select count(*) from public.planungsprotokolle), 0);
 rollback;
 
+-- Schornsteinfeger-Vorschlag (0015): Zwischenspeicher und Abruf-Protokoll schreibt nur die Edge Function -------------
+begin;
+set local role anon;
+select test.throws('anon darf den Schornsteinfeger-Zwischenspeicher nicht ansprechen', $$select count(*) from public.schornsteinfeger_suche$$);
+select test.throws('anon darf die Schornsteinfeger-Details nicht ansprechen', $$select count(*) from public.schornsteinfeger_details$$);
+select test.throws('anon darf das Abruf-Protokoll nicht ansprechen', $$select count(*) from public.schornsteinfeger_abrufe$$);
+rollback;
+
+begin;
+-- wie die Edge Function (service_role umgeht RLS)
+set local role service_role;
+insert into public.schornsteinfeger_suche (plz, strasse_key, suchbegriff, treffer, bsm_ids)
+  values ('89000', 'musterstrasse', 'Musterstraße', '[{"strasse": "Musterstraße", "plz": "89000", "bezirke": []}]', '{"9001"}');
+insert into public.schornsteinfeger_details (bsm_id, details) values ('9001', '{"name": "Erika Beispiel"}');
+insert into public.schornsteinfeger_abrufe (user_id, art, http_status) values ('00000000-0000-4000-8000-0000000000a2', 'suche', 200);
+select test.throws('Zwischenspeicher: PLZ muss fünfstellig sein', $$insert into public.schornsteinfeger_suche (plz, strasse_key, suchbegriff) values ('890', 'x', 'x')$$);
+select test.throws('Abruf-Protokoll: unbekannte Art wird abgelehnt', $$insert into public.schornsteinfeger_abrufe (user_id, art) values ('00000000-0000-4000-8000-0000000000a2', 'alles')$$);
+reset role;
+set local role authenticated;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiterin sieht den Zwischenspeicher nicht (nur über die Funktion)', (select count(*) from public.schornsteinfeger_suche), 0);
+select test.expect('Mitarbeiterin sieht keine gespeicherten Details', (select count(*) from public.schornsteinfeger_details), 0);
+select test.expect('Mitarbeiterin sieht das Abruf-Protokoll nicht, auch die eigenen Abrufe nicht', (select count(*) from public.schornsteinfeger_abrufe), 0);
+select test.throws('Mitarbeiterin schreibt nicht in den Zwischenspeicher', $$insert into public.schornsteinfeger_suche (plz, strasse_key, suchbegriff) values ('89000', 'andere', 'Andere')$$);
+select test.throws('Mitarbeiterin schreibt keine Details', $$insert into public.schornsteinfeger_details (bsm_id, details) values ('9002', '{}')$$);
+select test.throws('Mitarbeiterin umgeht das Tageslimit nicht (Protokoll löschen)', $$delete from public.schornsteinfeger_abrufe$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin liest den Zwischenspeicher', (select count(*) from public.schornsteinfeger_suche), 1);
+select test.expect('Admin liest die Details', (select count(*) from public.schornsteinfeger_details), 1);
+select test.expect('Admin liest das Abruf-Protokoll', (select count(*) from public.schornsteinfeger_abrufe), 1);
+select test.throws('Admin ändert den Zwischenspeicher nicht', $$update public.schornsteinfeger_suche set treffer = '[]'$$);
+select test.throws('Admin löscht keine Details', $$delete from public.schornsteinfeger_details$$);
+select test.throws('Admin schreibt nicht ins Abruf-Protokoll', $$insert into public.schornsteinfeger_abrufe (user_id, art) values (auth.uid(), 'suche')$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht den Zwischenspeicher nicht', (select count(*) from public.schornsteinfeger_suche), 0);
+select test.expect('Freiberufler sieht keine Details', (select count(*) from public.schornsteinfeger_details), 0);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('Ohne Rolle: kein Zwischenspeicher', (select count(*) from public.schornsteinfeger_suche), 0);
+select test.expect('Ohne Rolle: kein Abruf-Protokoll', (select count(*) from public.schornsteinfeger_abrufe), 0);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',

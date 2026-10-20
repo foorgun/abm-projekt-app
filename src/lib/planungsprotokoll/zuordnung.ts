@@ -1,8 +1,9 @@
 // Feldzuordnung Seite 1: Formularfeld der Vorlage → Wert aus den Protokolldaten.
 // Grundlage: Feld-Inventar docs/planungsprotokoll/<vorlage>.json (scripts/planungsprotokoll/felder.mjs) und der
 // Machbarkeitstest (docs/planungsprotokoll-analyse.md). Living Haus und Bien-Zenker haben dieselben Feldnamen.
-// Nicht zugeordnet und damit unberührt: alles ab Seite 2, das Rich-Text-Feld von Schwabenhaus und die vier
-// Summenfelder der Flächenberechnung von Living Haus/Bien-Zenker.
+// Nicht zugeordnet und damit unberührt: alles ab Seite 2 (Ausnahme: der Schornsteinfeger bei Schwabenhaus, der dort erst
+// auf Seite 2 steht), das Rich-Text-Feld von Schwabenhaus und die vier Summenfelder der Flächenberechnung von
+// Living Haus/Bien-Zenker.
 
 import type { ProtokollVorlage } from "../types";
 import { nameAnschrift, type Kontakt, type ProtokollDaten, type ProtokollRolle } from "./daten";
@@ -58,6 +59,15 @@ for (const [prefix, r] of [
   });
 }
 
+// Schornsteinfeger (Seite 2): Name und Anschrift getrennt, nur ein Telefonfeld. Es heißt "SchornsteinTel", ist im
+// Formular aber mit "Mobil:" beschriftet: deshalb die Mobilnummer, ohne sie die Festnetznummer.
+Object.assign(SCHWABENHAUS, {
+  SchornsteinName: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.name,
+  SchornsteinAnschrift: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.anschrift,
+  SchornsteinTel: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.mobil ?? d.beteiligte.schornsteinfeger.tel,
+  SchornsteinMail: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.mail,
+});
+
 const t = (n: string) => `Textfeld 1.${n}`;
 const FB22: Zuordnung = {
   [t("01")]: (d) => d.projektNr,
@@ -111,9 +121,9 @@ export function feldStand(vorlage: ProtokollVorlage, daten: ProtokollDaten): { g
   return { gefuellt: werte.filter(Boolean).length, gesamt: werte.length };
 }
 
-/** Beteiligte, die auf Seite 1 der Vorlage vorkommen (für den Hinweis „noch leer“). */
+/** Beteiligte, die die Vorlage vorbefüllt (für den Hinweis „noch leer“; bei Schwabenhaus der Schornsteinfeger auf Seite 2). */
 export const ROLLEN_SEITE1: Record<ProtokollVorlage, ProtokollRolle[]> = {
-  schwabenhaus: ["architekt", "vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt"],
+  schwabenhaus: ["architekt", "vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt", "schornsteinfeger"],
   "living-haus": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "gas", "fernwaerme", "wasser", "abwasser"],
   "bien-zenker": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "gas", "fernwaerme", "wasser", "abwasser"],
 };

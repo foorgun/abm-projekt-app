@@ -91,7 +91,21 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   Gewollt, oder lieber leer lassen?
 - Living Haus/Bien-Zenker haben nur eine „Genehmigungsbehörde (Gemeinde bzw. Bauamt)“: die App setzt das Bauamt ein, ohne Bauamt die
   Gemeinde. Passt das?
-- Schwabenhaus Seite 2 (Versorger Strom, Wasser, Abwasser, Schornstein, Gas, Fernwärme, Sonstige mit Anschrift) wird noch nicht befüllt
-  (Stufe a = Seite 1). Die Daten sind da; soll Seite 2 als Nächstes dazukommen?
+- Schwabenhaus Seite 2 (Versorger Strom, Wasser, Abwasser, Gas, Fernwärme, Sonstige mit Anschrift) wird noch nicht befüllt
+  (Stufe a = Seite 1). Ausnahme: der Schornsteinfeger (Name, Anschrift, Telefon, E-Mail). Die Daten sind da; soll der Rest von Seite 2
+  als Nächstes dazukommen?
+- Schwabenhaus hat beim Schornsteinfeger nur ein Telefonfeld („SchornsteinTel“, im Formular beschriftet mit „Mobil:“). Die App setzt
+  die Mobilnummer ein, ohne Mobilnummer die Festnetznummer. Passt das?
 - Nehmen die Hausbaufirmen die bearbeitbare Fassung an, oder nur die flache?
 - Wer liefert neue Revisionen der Vorlagen, und wer lädt sie hoch (`npm run vorlagen:hochladen -- --ersetzen`)?
+
+## Zum Schornsteinfeger-Vorschlag (Planungsprotokoll)
+
+- **Nutzungsbedingungen der Quelle** (automatische Abfrage durch eine App) mit dem Landesinnungsverband BW klären.
+  Zwischenspeicher und Limit sind gesetzt. Die Bauadresse (PLZ, Straße) geht als Suchbegriff an die Seite, keine Namen.
+  (Zwischenspeicher 90 Tage, höchstens 30 Abrufe je Person und Tag, Details nur für den gewählten Kandidaten.)
+- Die Quelle nennt manche Straßen ohne Bezirksangabe (nur über weitere Abfragen der Seite erreichbar, die die App bewusst nicht nutzt).
+  Dann meldet die App „nicht gefunden“ und es bleibt die Handeingabe. Kommt das in der Praxis oft vor?
+- Hausnummernbereiche wie „96-104“ gelten als unsicher (nur gleiche Parität wie der Startwert) und werden nie vorgewählt.
+- Auch „nichts gefunden“ wird 90 Tage gespeichert. Neue Straßen im Neubaugebiet tauchen in der App also ggf. erst später auf;
+  zur Not löscht ein Admin den Eintrag in `schornsteinfeger_suche` (Supabase-Dashboard).

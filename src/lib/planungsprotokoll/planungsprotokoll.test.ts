@@ -127,18 +127,18 @@ async function seitenText(bytes: Uint8Array, seite = 1): Promise<string> {
 
 describe("Zuordnung je Vorlage", () => {
   for (const v of ALLE) {
-    it(`${v}: jedes zugeordnete Feld ist ein Textfeld auf Seite 1 der Vorlage`, () => {
+    it(`${v}: jedes zugeordnete Feld ist ein Textfeld auf Seite 1 der Vorlage (Schwabenhaus: Schornsteinfeger auf Seite 2)`, () => {
       const felder = INVENTAR[v].felder;
       for (const name of Object.keys(ZUORDNUNG[v])) {
         const f = felder.filter((x) => x.name === name);
         expect(f.length, name).toBeGreaterThan(0);
         expect(f.every((x) => x.typ === "Text"), name).toBe(true);
-        expect(f.some((x) => x.seite === 1), name).toBe(true);
+        expect(f.some((x) => x.seite === (v === "schwabenhaus" && name.startsWith("Schornstein") ? 2 : 1)), name).toBe(true);
       }
     });
   }
-  it("Schwabenhaus füllt 40 Felder, Living Haus und Bien-Zenker je 51 mit denselben Feldnamen", () => {
-    expect(Object.keys(ZUORDNUNG.schwabenhaus)).toHaveLength(40);
+  it("Schwabenhaus füllt 44 Felder (40 auf Seite 1, Schornsteinfeger auf Seite 2), Living Haus und Bien-Zenker je 51 mit denselben Feldnamen", () => {
+    expect(Object.keys(ZUORDNUNG.schwabenhaus)).toHaveLength(44);
     expect(Object.keys(ZUORDNUNG["living-haus"])).toHaveLength(51);
     expect(Object.keys(ZUORDNUNG["bien-zenker"]).sort()).toEqual(Object.keys(ZUORDNUNG["living-haus"]).sort());
   });

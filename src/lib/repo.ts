@@ -5,6 +5,7 @@
 import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
+import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAnfrage, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import type {
   Abwesenheit,
   AgentRule,
@@ -275,6 +276,13 @@ export interface Repo {
   savePlanungsprotokoll(input: ProtokollAblage): Promise<Planungsprotokoll>;
   /** Datei einer Fassung zum Herunterladen. */
   planungsprotokollDatei(protokoll: Planungsprotokoll): Promise<Blob>;
+  /**
+   * Schornsteinfeger zur Bauadresse vorschlagen (Echtbetrieb: Edge Function schornsteinfeger-suche, Demo: feste Beispielantwort).
+   * Wirft nie wegen der Quelle: Fehler kommen als { ok: false } bzw. Status quelle_nicht_erreichbar zurück.
+   */
+  schornsteinfegerSuchen(anfrage: SuchAnfrage): Promise<SuchAntwort | SchornsteinfegerFehler>;
+  /** Kontaktdaten des gewählten Kandidaten (nur nach einer Suche). */
+  schornsteinfegerDetails(bsmId: string): Promise<DetailAntwort | SchornsteinfegerFehler>;
 
   /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
   resetDemo?(): Promise<void>;

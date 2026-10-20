@@ -1,11 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { Download, FileCheck2, FilePen, FileText } from "lucide-react";
+import { Download, FileCheck2, FilePen, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
 import { protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
 import { dateiSpeichern, protokollErzeugen } from "../../lib/planungsprotokoll/erzeugen";
+import { bauadresseFuerSuche, kontaktAusDetails, QUELLE_HINWEIS, type Kandidat, type Passt, type SuchAntwort } from "../../lib/planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VARIANTE_LABEL, VORLAGEN, VORLAGEN_LISTE, vorlageFuerFirma } from "../../lib/planungsprotokoll/vorlagen";
 import { feldStand, nochLeer } from "../../lib/planungsprotokoll/zuordnung";
 import { PARTY_LABEL } from "../../lib/projectEdit";
@@ -81,7 +82,7 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
             )}
             {stand && (
               <p className="pp-stand" role="status">
-                Seite 1: <strong>{stand.gefuellt}</strong> von {stand.gesamt} Feldern bekommen einen Wert.
+                Vorbefüllt: <strong>{stand.gefuellt}</strong> von {stand.gesamt} Feldern bekommen einen Wert.
                 {leer.length > 0 && <span className="muted"> Noch leer: {leer.join(", ")}.</span>}
                 {!data.buero?.name && (
                   <span className="muted">
@@ -328,6 +329,12 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
                   <span className="muted">{zusammenfassung(r)}</span>
                 </summary>
                 <div className="pp-group-body">
+                  {r === "schornsteinfeger" && (
+                    <SchornsteinfegerVorschlag
+                      adresse={{ siteStreet: v.bauherr.siteStreet, sitePostalCode: v.bauherr.sitePostalCode, buildingAddress: contact?.buildingAddress }}
+                      onUebernehmen={(k) => setR("schornsteinfeger", k)}
+                    />
+                  )}
                   <div className="pp-grid">
                     {input(`${r}-name`, "Name", v.rollen[r].name, (x) => setR(r, { name: x }), { placeholder: "Firma bzw. Behörde" })}
                     {input(`${r}-adr`, "Anschrift", v.rollen[r].address, (x) => setR(r, { address: x }), { placeholder: "Straße, PLZ Ort" })}
@@ -366,5 +373,127 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
         </form>
       </CardBody>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Schornsteinfeger vorschlagen (Quelle: Fegersuche des Landesinnungsverbands BW, über die Edge Function)
+// ---------------------------------------------------------------------------
+
+const PASST_LABEL: Record<Passt, { text: string; tone: "ok" | "warn" | "neutral" }> = {
+  ja: { text: "Hausnummer passt", tone: "ok" },
+  unsicher: { text: "unsicher", tone: "warn" },
+  nein: { text: "Hausnummer nicht in der Liste", tone: "neutral" },
+};
+
+/**
+ * Knopf "Vorschlagen" im Abschnitt Schornsteinfeger: sucht mit PLZ, Straße und Hausnummer des Bauorts, zeigt die Kandidaten
+ * zur Auswahl (bei eindeutigem Treffer vorgewählt) und lädt erst nach "Übernehmen" die Kontaktdaten des gewählten. Die Werte
+ * landen nur im Formular; gespeichert wird wie immer mit "Angaben speichern". Handeingabe bleibt jederzeit möglich.
+ */
+function SchornsteinfegerVorschlag({ adresse, onUebernehmen }: { adresse: Parameters<typeof bauadresseFuerSuche>[0]; onUebernehmen: (k: ReturnType<typeof kontaktAusDetails>) => void }) {
+  const { repo } = useData();
+  const [busy, setBusy] = useState<"suche" | "details" | null>(null);
+  const [ergebnis, setErgebnis] = useState<SuchAntwort | null>(null);
+  const [wahl, setWahl] = useState<string>("");
+  const [hinweis, setHinweis] = useState<string | null>(null);
+  const [uebernommen, setUebernommen] = useState<string | null>(null);
+  const { anfrage, fehlt } = bauadresseFuerSuche(adresse);
+  const key = (k: Kandidat) => `${k.bsmId}|${k.bezirk}|${k.ortsteil ?? ""}`;
+
+  async function suchen() {
+    setHinweis(null);
+    setUebernommen(null);
+    setErgebnis(null);
+    if (!anfrage) return setHinweis(`Für den Vorschlag fehlt: ${fehlt.join(", ")}. Bitte oben unter „Bauherr und Bauort“ ergänzen oder von Hand eintragen.`);
+    setBusy("suche");
+    try {
+      const res = await repo.schornsteinfegerSuchen(anfrage);
+      if (!res.ok) return setHinweis(res.message);
+      if (res.status === "quelle_nicht_erreichbar" || res.status === "nicht_gefunden") return setHinweis(res.meldung ?? "Kein Vorschlag möglich. Bitte von Hand eintragen.");
+      setErgebnis(res);
+      setWahl(res.status === "eindeutig" ? key(res.kandidaten[0]) : "");
+    } catch (e) {
+      setHinweis(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function uebernehmen() {
+    const k = ergebnis?.kandidaten.find((x) => key(x) === wahl);
+    if (!k) return;
+    setBusy("details");
+    setHinweis(null);
+    try {
+      const res = await repo.schornsteinfegerDetails(k.bsmId);
+      if (res.ok) {
+        onUebernehmen(kontaktAusDetails(res.details));
+        setUebernommen(res.details.name);
+      } else {
+        // Ohne Kontaktdaten wenigstens den Namen; Anschrift, Tel., Mobil und E-Mail bleiben leer
+        onUebernehmen({ name: k.name, address: "", phone: "", mobile: "", email: "" });
+        setUebernommen(k.name);
+        setHinweis(`${res.message} Übernommen wurde nur der Name.`);
+      }
+      setErgebnis(null);
+    } catch (e) {
+      setHinweis(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div className="pp-vorschlag">
+      <div className="pp-vorschlag-kopf">
+        <Button size="sm" icon={<Search size={14} />} disabled={!!busy} onClick={() => void suchen()}>
+          {busy === "suche" ? "Sucht …" : "Vorschlagen"}
+        </Button>
+        <span className="field-hint">
+          {anfrage ? `Zuständigen Bezirksschornsteinfeger zu ${[anfrage.strasse, anfrage.hausnummer].filter(Boolean).join(" ")}, ${anfrage.plz} suchen (Baden-Württemberg).` : `Für den Vorschlag fehlt: ${fehlt.join(", ")}.`}
+        </span>
+      </div>
+
+      {ergebnis && (
+        <fieldset className="pp-kandidaten">
+          <legend className="field-hint">{ergebnis.meldung ?? "Ein Bezirk passt zur Hausnummer. Bitte prüfen und übernehmen."}</legend>
+          {ergebnis.kandidaten.map((k) => (
+            <label key={key(k)} className="pp-kandidat">
+              <input type="radio" name="pp-schornsteinfeger" value={key(k)} checked={wahl === key(k)} onChange={() => setWahl(key(k))} />
+              <span className="pp-kandidat-text">
+                <strong>{k.name}</strong>
+                <span className="muted">{[`Bezirk ${k.bezirk}`, k.strasse, k.ortsteil].filter(Boolean).join(" · ")}</span>
+              </span>
+              {ergebnis.status !== "ohne_hausnummer" && (
+                <Pill tone={PASST_LABEL[k.passt].tone} dot={false}>
+                  {PASST_LABEL[k.passt].text}
+                </Pill>
+              )}
+            </label>
+          ))}
+          <div className="pp-actions">
+            <Button size="sm" variant="primary" disabled={!wahl || !!busy} onClick={() => void uebernehmen()}>
+              {busy === "details" ? "Lädt Kontaktdaten …" : "Übernehmen"}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => setErgebnis(null)}>
+              Verwerfen
+            </Button>
+          </div>
+        </fieldset>
+      )}
+
+      {uebernommen && (
+        <p className="field-hint" role="status">
+          {uebernommen} ins Formular übernommen. Bitte prüfen und mit „Angaben speichern“ sichern.
+        </p>
+      )}
+      {hinweis && (
+        <p className="field-hint pp-vorschlag-hinweis" role="status">
+          {hinweis}
+        </p>
+      )}
+      {(ergebnis || uebernommen) && <p className="field-hint">{QUELLE_HINWEIS}</p>}
+    </div>
   );
 }

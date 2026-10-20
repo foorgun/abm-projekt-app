@@ -3,3 +3,7 @@
 # ist aus, weil sie mit den neuen Signaturschlüsseln (Publishable/Secret keys) gültige Anmeldungen abweisen kann.
 [functions.extract-project]
 verify_jwt = false
+
+# Gleiche Regel: Anmeldung und Rolle prüft die Funktion selbst (index.ts)
+[functions.schornsteinfeger-suche]
+verify_jwt = false

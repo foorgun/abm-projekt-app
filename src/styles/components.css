@@ -5726,6 +5726,83 @@ li:first-child > .doc-card {
   }
 }
 
+/* Schornsteinfeger vorschlagen: Knopf mit Erklärung, darunter die Kandidaten zur Auswahl */
+.pp-vorschlag {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.pp-vorschlag-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+}
+
+.pp-vorschlag-kopf .field-hint {
+  margin: 0;
+  min-width: 0;
+}
+
+.pp-vorschlag-hinweis {
+  color: var(--warn);
+}
+
+.pp-kandidaten {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-ctl);
+  background: var(--surface);
+  min-width: 0;
+}
+
+.pp-kandidaten > legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--sp-1);
+  padding: 0;
+}
+
+.pp-kandidat {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2);
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+}
+
+.pp-kandidat:hover,
+.pp-kandidat:has(input:checked) {
+  background: var(--surface-3);
+}
+
+.pp-kandidat > input {
+  flex: none;
+  accent-color: var(--accent);
+}
+
+.pp-kandidat-text {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--fs-14);
+}
+
+.pp-kandidat-text > .muted {
+  font-size: var(--fs-13);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 480px) {
+  .pp-kandidat {
+    flex-wrap: wrap;
+  }
+}
+
 .settings-page {
   max-width: 760px;
 }

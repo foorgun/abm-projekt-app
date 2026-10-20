@@ -11,6 +11,7 @@ import type { ExtractResponse } from "./extract/types";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
+import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewProject } from "./projectForm";
@@ -829,6 +830,29 @@ export function createSupabaseRepo(): Repo {
       if (!data || typeof data !== "object" || typeof (data as { ok?: unknown }).ok !== "boolean") return { ok: false, code: "error", message: "Unerwartete Antwort der Auslesung." };
       return data as ExtractResponse;
     },
+
+    async schornsteinfegerSuchen(anfrage) {
+      requireStaff();
+      return schornsteinfeger<SuchAntwort>({ art: "suche", ...anfrage }, (d) => Array.isArray((d as SuchAntwort).kandidaten));
+    },
+
+    async schornsteinfegerDetails(bsmId) {
+      requireStaff();
+      return schornsteinfeger<DetailAntwort>({ art: "details", bsmId }, (d) => typeof (d as DetailAntwort).details?.name === "string");
+    },
   };
+
+  /** Aufruf der Edge Function schornsteinfeger-suche; sie prüft Anmeldung, Rolle, Zwischenspeicher und Limit selbst. */
+  async function schornsteinfeger<T>(body: object, gueltig: (d: unknown) => boolean): Promise<T | SchornsteinfegerFehler> {
+    const nichtErreichbar: SchornsteinfegerFehler = { ok: false, code: "quelle_nicht_erreichbar", message: "Der Vorschlag ist gerade nicht erreichbar. Bitte von Hand eintragen." };
+    const { data, error } = await sb.functions.invoke("schornsteinfeger-suche", { body }).catch(() => ({ data: null, error: {} }));
+    if (error) {
+      const res = await (error as { context?: Response }).context?.json?.().catch(() => null);
+      if (res && typeof res === "object" && res.ok === false && typeof res.message === "string") return res as SchornsteinfegerFehler;
+      return nichtErreichbar;
+    }
+    if (!data || typeof data !== "object" || (data as { ok?: unknown }).ok !== true || !gueltig(data)) return nichtErreichbar;
+    return data as T;
+  }
   return repo;
 }
