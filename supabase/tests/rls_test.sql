@@ -2,7 +2,7 @@
 -- Jeder Test bricht bei Abweichung mit einem Fehler ab.
 
 create schema test;
-grant usage on schema test to anon, authenticated;
+grant usage on schema test to anon, authenticated, service_role;
 
 create function test.expect(label text, actual bigint, expected bigint) returns void
 language plpgsql as $$
@@ -33,7 +33,7 @@ begin
   get diagnostics n = row_count;
   return n;
 end $$;
-grant execute on all functions in schema test to anon, authenticated;
+grant execute on all functions in schema test to anon, authenticated, service_role;
 
 -- Benutzer ---------------------------------------------------------------
 insert into auth.users (id, email) values
