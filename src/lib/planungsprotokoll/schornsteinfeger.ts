@@ -4,6 +4,7 @@
 
 import {
   QUELLE_LABEL,
+  strasseNormalisieren,
   strasseUndHausnummer,
   suchAntwort,
   type DetailAntwort,
@@ -38,19 +39,62 @@ export interface SuchAnfrage {
   hausnummer: string | null;
 }
 
+/** Wo eine fehlende Angabe einzutragen ist (für den Verweis in der Oberfläche). */
+export type FehlendeAngabe = { feld: "bauadresse" | "plz"; text: string };
+
+/** PLZ aus einem Feld der Form "PLZ Ort" ("75173 Pforzheim"), sonst null. */
+export function plzAusOrt(ort: string | null | undefined): string | null {
+  return ort?.trim().match(/^(\d{5})\s+\S/)?.[1] ?? null;
+}
+
 /**
- * Suchbegriffe aus der Bauadresse: getrennte Felder (Bauort Straße, Bauort PLZ) gehen vor, sonst die einzeilige Bauadresse.
- * `fehlt` nennt, was für die Suche fehlt (die Hausnummer ist optional).
+ * Straße und Hausnummer aus der Bauadresse: "Vogelsangstraße 4", "Hauptstr. 12a", "Am Bach 3/1", auch mit angehängtem
+ * Ort ("…, 75173 Pforzheim" bzw. "…, Pforzheim"). Ein Flurstück statt einer Straße ergibt keine Straße.
  */
-export function bauadresseFuerSuche(a: { siteStreet?: string | null; sitePostalCode?: string | null; buildingAddress?: string | null }): { anfrage: SuchAnfrage | null; fehlt: string[] } {
-  const alt = splitAnschrift(a.buildingAddress);
-  const strasseRoh = a.siteStreet?.trim() || alt.strasse || "";
-  const plz = (a.sitePostalCode?.trim() || alt.plz || "").replace(/\s+/g, "");
-  const { strasse, hausnummer } = strasseUndHausnummer(strasseRoh);
-  const fehlt: string[] = [];
-  if (!/^\d{5}$/.test(plz)) fehlt.push(plz ? "fünfstellige PLZ des Bauorts" : "PLZ des Bauorts");
-  if (!strasse) fehlt.push("Straße des Bauorts");
-  return { anfrage: fehlt.length ? null : { plz, strasse, hausnummer }, fehlt };
+export function strasseAusBauadresse(bauadresse: string | null | undefined): { strasse: string; hausnummer: string | null; plz: string | null } {
+  const t = bauadresse?.replace(/\s+/g, " ").trim() ?? "";
+  if (!t || /^(flst|flurst|flur\b|gemarkung)/i.test(t)) return { strasse: "", hausnummer: null, plz: null };
+  const geteilt = splitAnschrift(t);
+  // Ohne PLZ: was vor dem ersten Komma steht ("Vogelsangstraße 4, Pforzheim")
+  const teil = (geteilt.plz ? (geteilt.strasse ?? "") : t.split(",")[0]).trim().replace(/\.(?=\d)/, ". ");
+  const { strasse, hausnummer } = strasseUndHausnummer(teil);
+  return { strasse: strasse ? strasseNormalisieren(strasse) : "", hausnummer, plz: geteilt.plz };
+}
+
+/**
+ * Suchbegriffe für den Schornsteinfeger-Vorschlag. Straße und Hausnummer: "Bauort Straße" aus dem Planungsprotokoll, sonst
+ * die Bauadresse des Projekts. PLZ: "Bauort PLZ" aus dem Planungsprotokoll, sonst aus der Bauadresse, sonst aus dem
+ * Feld Bauort ("75173 Pforzheim"). Die Anschrift des Bauherrn wird nie verwendet (die Funktion bekommt sie gar nicht).
+ * `fehlt` nennt genau, was fehlt und wo es einzutragen ist; die Hausnummer ist optional.
+ */
+export function bauadresseFuerSuche(a: { siteStreet?: string | null; sitePostalCode?: string | null; buildingAddress?: string | null; location?: string | null }): {
+  anfrage: SuchAnfrage | null;
+  fehlt: FehlendeAngabe[];
+} {
+  const ausBauadresse = strasseAusBauadresse(a.buildingAddress);
+  const ausProtokoll = a.siteStreet?.trim() ? strasseAusBauadresse(a.siteStreet) : null;
+  const { strasse, hausnummer } = ausProtokoll?.strasse ? ausProtokoll : ausBauadresse;
+  const plzRoh = a.sitePostalCode?.replace(/\s+/g, "") || ausBauadresse.plz || plzAusOrt(a.location) || "";
+  const fehlt: FehlendeAngabe[] = [];
+  if (!strasse) {
+    fehlt.push({
+      feld: "bauadresse",
+      text: a.buildingAddress?.trim()
+        ? `In der Bauadresse („${a.buildingAddress.trim()}“) steht keine Straße. Bitte in der Übersicht bei „Projektbeteiligte“ über den Stift Straße und Hausnummer eintragen.`
+        : "Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektbeteiligte“ eintragen (z. B. „Vogelsangstraße 4“).",
+    });
+  }
+  if (!/^\d{5}$/.test(plzRoh)) {
+    fehlt.push({
+      feld: "plz",
+      text: plzRoh
+        ? `Die PLZ des Bauorts („${plzRoh}“) ist nicht fünfstellig. Bitte in der Übersicht bei „Projektdaten“ über den Stift korrigieren.`
+        : a.location?.trim()
+          ? `Im Bauort („${a.location.trim()}“) steht keine PLZ. Bitte in der Übersicht bei „Projektdaten“ über den Stift als „PLZ Ort“ eintragen (z. B. „75173 Pforzheim“).`
+          : "PLZ des Bauorts fehlt, bitte in der Übersicht über den Stift bei „Projektdaten“ als Bauort „PLZ Ort“ eintragen (z. B. „75173 Pforzheim“).",
+    });
+  }
+  return { anfrage: fehlt.length ? null : { plz: plzRoh, strasse, hausnummer }, fehlt };
 }
 
 /** Werte für die Beteiligten-Felder (Rolle Schornsteinfeger). Fehlende Angaben bleiben leer. */

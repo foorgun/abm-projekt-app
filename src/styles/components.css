@@ -5748,6 +5748,19 @@ li:first-child > .doc-card {
   color: var(--warn);
 }
 
+.pp-vorschlag-fehlt {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding-left: var(--sp-4);
+  font-size: var(--fs-13);
+  color: var(--warn);
+}
+
+.pp-vorschlag-fehlt a {
+  color: var(--text);
+}
+
 .pp-kandidaten {
   display: grid;
   gap: var(--sp-2);

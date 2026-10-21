@@ -14,6 +14,8 @@ import {
   hausnummerPasst,
   kontaktAusDetails,
   passendeTreffer,
+  plzAusOrt,
+  strasseAusBauadresse,
   strassenAnfang,
   strassenLesen,
   strassenSchluessel,
@@ -172,20 +174,75 @@ describe("Straßennamen", () => {
   });
 });
 
-describe("Bauadresse für die Suche", () => {
-  it("getrennte Felder gehen vor", () => {
-    expect(bauadresseFuerSuche({ siteStreet: "Musterweg 12a", sitePostalCode: "89000", buildingAddress: "Anderer Weg 1, 89999 X" })).toEqual({ anfrage: { plz: "89000", strasse: "Musterweg", hausnummer: "12a" }, fehlt: [] });
+describe("PLZ aus dem Feld Bauort", () => {
+  it('liest die PLZ nur aus der Form "PLZ Ort"', () => {
+    expect(plzAusOrt("75173 Pforzheim")).toBe("75173");
+    expect(plzAusOrt("  89073   Ulm ")).toBe("89073");
+    expect(plzAusOrt("Pforzheim")).toBeNull();
+    expect(plzAusOrt("Pforzheim 75173")).toBeNull();
+    expect(plzAusOrt("7517 Pforzheim")).toBeNull();
+    expect(plzAusOrt("75173")).toBeNull();
+    expect(plzAusOrt(null)).toBeNull();
   });
-  it("sonst die einzeilige Bauadresse", () => {
-    expect(bauadresseFuerSuche({ buildingAddress: "Musterweg 7, 89000 Musterstadt" }).anfrage).toEqual({ plz: "89000", strasse: "Musterweg", hausnummer: "7" });
+});
+
+describe("Straße und Hausnummer aus der Bauadresse", () => {
+  const fall = (eingabe: string, strasse: string, hausnummer: string | null, plz: string | null = null) =>
+    it(`"${eingabe}"`, () => expect(strasseAusBauadresse(eingabe)).toEqual({ strasse, hausnummer, plz }));
+  fall("Vogelsangstraße 4", "Vogelsangstraße", "4");
+  fall("Hauptstr. 12a", "Hauptstraße", "12a");
+  fall("Hauptstr.12a", "Hauptstraße", "12a");
+  fall("Am Bach 3/1", "Am Bach", "3/1");
+  fall("Ulmer Str. 15 A", "Ulmer Straße", "15 A");
+  fall("Vogelsangstraße 4, 75173 Pforzheim", "Vogelsangstraße", "4", "75173");
+  fall("Vogelsangstraße 4, Pforzheim", "Vogelsangstraße", "4");
+  fall("Baugebiet Lerchenfeld", "Baugebiet Lerchenfeld", null);
+  fall("Flurstück 1234/5", "", null);
+  fall("Flst. 88", "", null);
+  fall("", "", null);
+});
+
+describe("Bauadresse für die Suche", () => {
+  it("Bauort „75173 Pforzheim“ und Bauadresse ohne PLZ: Suche möglich (der gemeldete Fall)", () => {
+    expect(bauadresseFuerSuche({ buildingAddress: "Vogelsangstraße 4", location: "75173 Pforzheim" })).toEqual({ anfrage: { plz: "75173", strasse: "Vogelsangstraße", hausnummer: "4" }, fehlt: [] });
+  });
+  it("PLZ: Protokollfeld vor Bauadresse vor Bauort", () => {
+    expect(bauadresseFuerSuche({ buildingAddress: "Hauptstr. 12a, 89000 Musterstadt", location: "75173 Pforzheim" }).anfrage?.plz).toBe("89000");
+    expect(bauadresseFuerSuche({ sitePostalCode: "70176", buildingAddress: "Hauptstr. 12a, 89000 Musterstadt", location: "75173 Pforzheim" }).anfrage?.plz).toBe("70176");
+  });
+  it("Straße: Protokollfeld „Bauort Straße“ vor der Bauadresse", () => {
+    expect(bauadresseFuerSuche({ siteStreet: "Am Bach 3/1", buildingAddress: "Vogelsangstraße 4", location: "75173 Pforzheim" }).anfrage).toEqual({ plz: "75173", strasse: "Am Bach", hausnummer: "3/1" });
+    // leeres Protokollfeld zählt nicht
+    expect(bauadresseFuerSuche({ siteStreet: "  ", buildingAddress: "Vogelsangstraße 4", location: "75173 Pforzheim" }).anfrage?.strasse).toBe("Vogelsangstraße");
   });
   it("ohne Hausnummer ist die Suche möglich", () => {
-    expect(bauadresseFuerSuche({ siteStreet: "Baugebiet Lerchenfeld", sitePostalCode: "89000" }).anfrage).toEqual({ plz: "89000", strasse: "Baugebiet Lerchenfeld", hausnummer: null });
+    expect(bauadresseFuerSuche({ buildingAddress: "Baugebiet Lerchenfeld", location: "89000 Musterstadt" }).anfrage).toEqual({ plz: "89000", strasse: "Baugebiet Lerchenfeld", hausnummer: null });
   });
-  it("nennt, was fehlt", () => {
-    expect(bauadresseFuerSuche({}).fehlt).toEqual(["PLZ des Bauorts", "Straße des Bauorts"]);
-    expect(bauadresseFuerSuche({ siteStreet: "Musterweg 1", sitePostalCode: "890" }).fehlt).toEqual(["fünfstellige PLZ des Bauorts"]);
-    expect(bauadresseFuerSuche({ sitePostalCode: "89000" })).toEqual({ anfrage: null, fehlt: ["Straße des Bauorts"] });
+  it("die Anschrift des Bauherrn wird nie verwendet", () => {
+    // Auch wenn ein Aufrufer den ganzen Kontakt übergibt: address, street, postalCode, city spielen keine Rolle
+    const kontakt = { address: "Wohnweg 1, 89073 Ulm", street: "Wohnweg 1", postalCode: "89073", city: "Ulm", buildingAddress: null, location: null };
+    const r = bauadresseFuerSuche(kontakt as Parameters<typeof bauadresseFuerSuche>[0]);
+    expect(r.anfrage).toBeNull();
+    expect(r.fehlt.map((f) => f.feld)).toEqual(["bauadresse", "plz"]);
+  });
+  it("nennt genau, was fehlt und wo es einzutragen ist", () => {
+    const leer = bauadresseFuerSuche({});
+    expect(leer.fehlt.map((f) => f.feld)).toEqual(["bauadresse", "plz"]);
+    expect(leer.fehlt[0].text).toBe("Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektbeteiligte“ eintragen (z. B. „Vogelsangstraße 4“).");
+    expect(leer.fehlt[1].text).toContain("PLZ des Bauorts fehlt");
+    expect(leer.fehlt[1].text).toContain("„Projektdaten“");
+
+    const nurPlz = bauadresseFuerSuche({ location: "75173 Pforzheim" });
+    expect(nurPlz.fehlt.map((f) => f.feld)).toEqual(["bauadresse"]);
+
+    const flurstueck = bauadresseFuerSuche({ buildingAddress: "Flurstück 1234/5", location: "75173 Pforzheim" });
+    expect(flurstueck.fehlt[0].text).toContain("„Flurstück 1234/5“) steht keine Straße");
+
+    const ortOhnePlz = bauadresseFuerSuche({ buildingAddress: "Vogelsangstraße 4", location: "Pforzheim" });
+    expect(ortOhnePlz.fehlt).toEqual([{ feld: "plz", text: expect.stringContaining("Im Bauort („Pforzheim“) steht keine PLZ") }]);
+
+    const kurz = bauadresseFuerSuche({ siteStreet: "Musterweg 1", sitePostalCode: "890" });
+    expect(kurz.fehlt).toEqual([{ feld: "plz", text: expect.stringContaining("(„890“) ist nicht fünfstellig") }]);
   });
 });
 

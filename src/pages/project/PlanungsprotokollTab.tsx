@@ -331,7 +331,9 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
                 <div className="pp-group-body">
                   {r === "schornsteinfeger" && (
                     <SchornsteinfegerVorschlag
-                      adresse={{ siteStreet: v.bauherr.siteStreet, sitePostalCode: v.bauherr.sitePostalCode, buildingAddress: contact?.buildingAddress }}
+                      // Nur Bauort und Bauadresse, nie die Anschrift des Bauherrn
+                      adresse={{ siteStreet: v.bauherr.siteStreet, sitePostalCode: v.bauherr.sitePostalCode, buildingAddress: contact?.buildingAddress, location: project.location }}
+                      uebersicht={`/projekte/${project.id}`}
                       onUebernehmen={(k) => setR("schornsteinfeger", k)}
                     />
                   )}
@@ -391,7 +393,16 @@ const PASST_LABEL: Record<Passt, { text: string; tone: "ok" | "warn" | "neutral"
  * zur Auswahl (bei eindeutigem Treffer vorgewählt) und lädt erst nach "Übernehmen" die Kontaktdaten des gewählten. Die Werte
  * landen nur im Formular; gespeichert wird wie immer mit "Angaben speichern". Handeingabe bleibt jederzeit möglich.
  */
-function SchornsteinfegerVorschlag({ adresse, onUebernehmen }: { adresse: Parameters<typeof bauadresseFuerSuche>[0]; onUebernehmen: (k: ReturnType<typeof kontaktAusDetails>) => void }) {
+function SchornsteinfegerVorschlag({
+  adresse,
+  uebersicht,
+  onUebernehmen,
+}: {
+  adresse: Parameters<typeof bauadresseFuerSuche>[0];
+  /** Link auf die Übersicht des Projekts, wo Bauadresse (Projektbeteiligte) und Bauort (Projektdaten) bearbeitet werden */
+  uebersicht: string;
+  onUebernehmen: (k: ReturnType<typeof kontaktAusDetails>) => void;
+}) {
   const { repo } = useData();
   const [busy, setBusy] = useState<"suche" | "details" | null>(null);
   const [ergebnis, setErgebnis] = useState<SuchAntwort | null>(null);
@@ -405,7 +416,7 @@ function SchornsteinfegerVorschlag({ adresse, onUebernehmen }: { adresse: Parame
     setHinweis(null);
     setUebernommen(null);
     setErgebnis(null);
-    if (!anfrage) return setHinweis(`Für den Vorschlag fehlt: ${fehlt.join(", ")}. Bitte oben unter „Bauherr und Bauort“ ergänzen oder von Hand eintragen.`);
+    if (!anfrage) return;
     setBusy("suche");
     try {
       const res = await repo.schornsteinfegerSuchen(anfrage);
@@ -447,13 +458,24 @@ function SchornsteinfegerVorschlag({ adresse, onUebernehmen }: { adresse: Parame
   return (
     <div className="pp-vorschlag">
       <div className="pp-vorschlag-kopf">
-        <Button size="sm" icon={<Search size={14} />} disabled={!!busy} onClick={() => void suchen()}>
+        <Button size="sm" icon={<Search size={14} />} disabled={!!busy || !anfrage} onClick={() => void suchen()}>
           {busy === "suche" ? "Sucht …" : "Vorschlagen"}
         </Button>
         <span className="field-hint">
-          {anfrage ? `Zuständigen Bezirksschornsteinfeger zu ${[anfrage.strasse, anfrage.hausnummer].filter(Boolean).join(" ")}, ${anfrage.plz} suchen (Baden-Württemberg).` : `Für den Vorschlag fehlt: ${fehlt.join(", ")}.`}
+          {anfrage
+            ? `Zuständigen Bezirksschornsteinfeger zu ${[anfrage.strasse, anfrage.hausnummer].filter(Boolean).join(" ")}, ${anfrage.plz} suchen (Baden-Württemberg).${anfrage.hausnummer ? "" : " Ohne Hausnummer: alle Bezirke der Straße zur Auswahl."}`
+            : "Für den Vorschlag fehlt noch etwas:"}
         </span>
       </div>
+      {!anfrage && (
+        <ul className="pp-vorschlag-fehlt" role="status">
+          {fehlt.map((f) => (
+            <li key={f.feld}>
+              {f.text} <Link to={uebersicht}>{f.feld === "bauadresse" ? "Zur Bauadresse" : "Zum Bauort"}</Link>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {ergebnis && (
         <fieldset className="pp-kandidaten">
