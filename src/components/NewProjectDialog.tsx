@@ -33,7 +33,7 @@ import type { ContractMeta, Project } from "../lib/types";
 import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
-import { Button, Checkbox, Dialog, Field, Input, Pill, Select, Skeleton, type Tone } from "./ui";
+import { AiSpinner, Button, Checkbox, Dialog, Field, Input, Pill, Select, type Tone } from "./ui";
 
 /** Öffnet den Dialog "Neues Projekt"; mit der ID eines Entwurfs wird dieser fortgesetzt. */
 // Als Klick-Handler bekommt die Funktion ein Ereignis statt einer ID, deshalb "unknown": nur Zeichenketten zählen
@@ -118,6 +118,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const [newSurveyors, setNewSurveyors] = useState<string[]>(resumed?.form.project.vermesser ? [resumed.form.project.vermesser] : []);
   const [touched, setTouched] = useState(Boolean(resumed));
   const [busy, setBusy] = useState(false);
+  /** KI liest gerade die Plan-Seite nach (eigene Anzeige neben dem Knopf) */
+  const [readingPlan, setReadingPlan] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
   // Vertrag ablegen dürfen nur Admin und Mitarbeiter; alle anderen sehen direkt das Formular
   const [step, setStep] = useState<Step>(resumed || !canCreate ? "form" : "start");
@@ -248,6 +250,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     const page = viewPage;
     if (!draft || !blob || page < 2 || page > pageCount) return;
     setBusy(true);
+    setReadingPlan(true);
     try {
       const again = await extractProjectFromDocument(new File([blob], draft.datei.name, { type: draft.datei.type }), extractorEnv, { planPage: page });
       const haustyp = again.felder.haustyp;
@@ -258,6 +261,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     } catch (e) {
       toast("Plan-Seite nicht gelesen", "danger", e instanceof Error ? e.message : undefined);
     }
+    setReadingPlan(false);
     setBusy(false);
   }
 
@@ -388,11 +392,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     return (
       <Dialog title="Neues Projekt" wide onClose={onClose} footer={<Button onClick={onClose}>Abbrechen</Button>}>
         {step === "loading" ? (
-          <div className="contract-loading" role="status" aria-live="polite">
-            <p>Vertrag wird gelesen …</p>
-            <Skeleton h={36} />
-            <Skeleton h={36} />
-            <Skeleton h={36} />
+          <div className="contract-loading">
+            <AiSpinner label="KI liest den Vertrag …" hint="Die Projektfelder werden gleich vorbefüllt." />
           </div>
         ) : (
           <div className="contract-start">
@@ -548,6 +549,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
                     <Button size="sm" onClick={() => void readPlanPage()} disabled={busy || viewPage < 2}>
                       Diese Seite lesen
                     </Button>
+                    {readingPlan && <AiSpinner size="sm" label="KI liest …" />}
                   </span>
                 </Field>
               </div>

@@ -7,6 +7,7 @@ import { trendPercent } from "../components/charts/scale";
 import { useToast } from "../components/Toast";
 import { PageHead } from "../components/layout/PageHead";
 import {
+  AiSpinner,
   Badge,
   Button,
   Card,
@@ -413,6 +414,10 @@ export function Styleguide() {
           </div>
           <Skeleton w="60%" />
           <TableSkeleton rows={3} cols={4} />
+          <div className="row">
+            <AiSpinner label="KI liest den Vertrag …" hint="Die Projektfelder werden gleich vorbefüllt." />
+            <AiSpinner size="sm" label="KI liest …" />
+          </div>
         </Section>
 
         <Section title="Farben (Tokens)">
