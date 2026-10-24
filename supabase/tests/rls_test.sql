@@ -1106,6 +1106,7 @@ select test.throws('Verlauf: Mitarbeiter schreibt nicht direkt in die Tabelle',
 select test.expect('Verlauf: die Kennung abm.verlauf gilt außerhalb der Funktionen nicht',
   (select count(*) from (select current_setting('abm.verlauf', true) v) x where v = 'an'), 0);
 select public.update_project('a0000000-0000-4000-8000-000000000003', p_project => '{"location": "Verlaufsort"}', p_activity => 'Projektdaten geändert: Bauort');
+do $$ begin raise notice 'DIAG %', (select string_agg(text || ' | ' || actor || ' | ' || coalesce(actor_id::text, '-'), ' ;; ') from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003'); end $$;
 select test.expect('Verlauf: update_project schreibt seinen Eintrag weiterhin selbst',
   (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projektdaten geändert: Bauort' and actor = 'Mira Mitarbeiter'), 1);
 select public.log_activity('a0000000-0000-4000-8000-000000000001', 'schritt', 'Testschritt erledigt', '{"schritt": "test"}');
