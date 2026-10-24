@@ -5,8 +5,11 @@
 --   * details jsonb: strukturierte Angaben zum Eintrag (z. B. Dokument-ID, Ordner, neuer Status). Nie Kontaktdaten.
 --   * Lesen: wer das Projekt sehen darf. Freiberufler nur zugewiesene Projekte und dort keine Einträge zu Rechnungen
 --     und Aufgaben (die sehen sie auch sonst nicht). Einträge ohne Projekt bleiben bei Admin und Mitarbeitern.
---   * Schreiben: nicht mehr direkt aus der App (INSERT-Recht entzogen), nur noch über Funktionen und Trigger.
---     Anzeigename und Benutzer-ID setzt immer die Datenbank, nie der Client.
+--   * Schreiben: nicht mehr direkt aus der App, nur noch über Funktionen und Trigger. Anzeigename und Benutzer-ID setzt
+--     immer die Datenbank, nie der Client. Das INSERT-Recht selbst bleibt, weil create_project, update_project und
+--     resolve_review mit den Rechten des Aufrufers laufen und ihre Einträge selbst schreiben. Die Zeilenregel lässt das
+--     Einfügen aber nur zu, solange die Einstellung abm.verlauf = 'an' gilt; die tragen nur diese Funktionen
+--     (ALTER FUNCTION … SET, gilt nur während des Aufrufs). Über die Daten-API ist sie nicht setzbar.
 --   * Neu protokolliert, unabhängig davon, über welchen Weg die Änderung kommt:
 --       - Dokument abgelegt (Trigger auf documents, nur Herkunft "upload"; der Agent protokolliert selbst)
 --       - Dokument entfernt (Trigger auf documents)
@@ -35,7 +38,18 @@ create policy activities_read on public.activities for select to authenticated
 -- Schreiben nur über Funktionen und Trigger
 -- ---------------------------------------------------------------------------
 drop policy if exists activities_write on public.activities;
-revoke insert on public.activities from authenticated;
+create policy activities_write on public.activities for insert to authenticated
+  with check (current_setting('abm.verlauf', true) = 'an' and public.is_staff() and actor_id = auth.uid());
+
+do $$
+declare f regprocedure;
+begin
+  for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+           where n.nspname = 'public' and p.proname in ('create_project', 'update_project', 'resolve_review')
+  loop
+    execute format('alter function %s set abm.verlauf = %L', f, 'an');
+  end loop;
+end $$;
 
 -- Anzeigename für Trigger: angemeldeter Benutzer, sonst "System" (SQL-Editor, Skripte mit Secret key)
 create function public.activity_actor() returns text

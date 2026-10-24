@@ -693,7 +693,7 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1
 insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
 values ('a0000000-0000-4000-8000-000000000001', 'vertrag.pdf', 'a0000000-0000-4000-8000-000000000001/x/vertrag.pdf', '00 Verträge', auth.uid());
 insert into public.tasks (project_id, title) values ('a0000000-0000-4000-8000-000000000001', 'Löschtest');
-insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'Löschtest', 'Admin', auth.uid());
+select public.log_activity('a0000000-0000-4000-8000-000000000001', 'projekt', 'Löschtest');  -- seit 0016 nicht mehr direkt
 insert into public.project_drafts (file_name, file_size, storage_path, status) values ('entwurf.pdf', 5, 'drafts/d1/entwurf.pdf', 'offen');
 update public.project_drafts set project_id = 'a0000000-0000-4000-8000-000000000001' where file_name = 'entwurf.pdf';
 insert into public.project_drafts (file_name, file_size, storage_path) values ('anderer.pdf', 5, 'drafts/d2/anderer.pdf');
@@ -1097,8 +1097,14 @@ select test.throws('Verlauf: Freiberufler ohne Zuweisung protokolliert nichts',
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
 select test.expect('Verlauf: Entfernen der Zuweisung ist protokolliert (ohne Anmeldung als "System")',
   (select count(*) from public.activities where text = 'Zuweisung entfernt: Frank Frei' and actor = 'System'), 1);
+-- auch mit korrektem Namen und eigener Benutzer-ID: direkt geht es nicht, nur über Funktionen (abm.verlauf)
 select test.throws('Verlauf: Mitarbeiter schreibt nicht direkt in die Tabelle',
-  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', 'Jemand anders', auth.uid())$$);
+  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', 'Mira Mitarbeiter', auth.uid())$$);
+select test.expect('Verlauf: die Kennung abm.verlauf gilt außerhalb der Funktionen nicht',
+  (select count(*) from (select current_setting('abm.verlauf', true) v) x where v = 'an'), 0);
+select public.update_project('a0000000-0000-4000-8000-000000000003', p_project => '{"location": "Verlaufsort"}', p_activity => 'Projektdaten geändert: Bauort');
+select test.expect('Verlauf: update_project schreibt seinen Eintrag weiterhin selbst',
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projektdaten geändert: Bauort' and actor = 'Mira Mitarbeiter'), 1);
 select public.log_activity('a0000000-0000-4000-8000-000000000001', 'schritt', 'Testschritt erledigt', '{"schritt": "test"}');
 select test.expect('Verlauf: log_activity setzt Name und Benutzer selbst',
   (select count(*) from public.activities where text = 'Testschritt erledigt' and actor = 'Mira Mitarbeiter'

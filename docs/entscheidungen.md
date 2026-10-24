@@ -535,10 +535,13 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Lesen wie das Projekt:** Admin und Mitarbeiter alles, Freiberufler nur zugewiesene Projekte und dort keine Einträge zu
   Rechnungen und Aufgaben (die sehen sie auch sonst nicht). Der Reiter "Aktivität" im Projekt ist deshalb jetzt auch für
   Freiberufler und im Pilot sichtbar.
-- **Schreiben nur über die Datenbank:** Das INSERT-Recht für angemeldete Benutzer ist weg. Die App schreibt über
+- **Schreiben nur über die Datenbank:** Direktes Einfügen über die Daten-API lehnt die Zeilenregel ab. Die App schreibt über
   `log_activity` (nur Admin und Mitarbeiter, keine Dokument- oder Agent-Einträge) und `log_document_event` (Öffnen und
   Herunterladen, jede Rolle mit Zugriff). Dokument abgelegt/entfernt, Statuswechsel und Zuweisungen schreiben Trigger.
-  Name und Benutzer setzt immer die Datenbank.
+  Name und Benutzer setzt immer die Datenbank. `create_project`, `update_project` und `resolve_review` laufen mit den
+  Rechten des Aufrufers und schreiben weiter selbst: Sie tragen `abm.verlauf = 'an'` (ALTER FUNCTION … SET), und nur
+  dann lässt die Zeilenregel das Einfügen zu. Eine neue Funktion dieser Art braucht dieselbe Einstellung, ebenso eine
+  dieser drei, wenn sie später mit `create or replace` neu angelegt wird (sonst scheitert ihr Eintrag; die RLS-Tests merken das).
 - **Ohne Anmeldung kein Dokument- oder Statuseintrag:** Seed, Excel-Import und Demo-Daten erzeugen sonst lauter
   "System"-Einträge. Zuweisungen werden immer protokolliert (aus `konten:anlegen` als "System").
 - **Nicht protokolliert:** Dokument löschen gibt es in der App nicht (nur mit dem ganzen Projekt); der Trigger dafür greift
