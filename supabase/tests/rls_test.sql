@@ -1100,11 +1100,9 @@ select test.throws('Verlauf: Freiberufler ohne Zuweisung protokolliert nichts',
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
 select test.expect('Verlauf: Entfernen der Zuweisung ist protokolliert (ohne Anmeldung als "System")',
   (select count(*) from public.activities where text = 'Zuweisung entfernt: Frank Frei' and actor = 'System'), 1);
--- auch mit korrektem Namen und eigener Benutzer-ID: direkt geht es nicht, nur über Funktionen (abm.verlauf)
+-- auch mit korrektem Namen und eigener Benutzer-ID: direkt geht es nicht, nur über Funktionen (Trigger, 0016)
 select test.throws('Verlauf: Mitarbeiter schreibt nicht direkt in die Tabelle',
   $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', public.current_user_name(), auth.uid())$$);
-select test.expect('Verlauf: die Kennung abm.verlauf gilt außerhalb der Funktionen nicht',
-  (select count(*) from (select current_setting('abm.verlauf', true) v) x where v = 'an'), 0);
 select public.update_project('a0000000-0000-4000-8000-000000000003', p_project => '{"location": "Verlaufsort"}', p_activity => 'Projektdaten geändert: Bauort');
 select test.expect('Verlauf: update_project schreibt seinen Eintrag weiterhin selbst',
   (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projektdaten geändert: Bauort' and actor = public.current_user_name()), 1);

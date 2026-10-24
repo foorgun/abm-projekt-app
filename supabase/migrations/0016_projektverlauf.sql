@@ -6,10 +6,12 @@
 --   * Lesen: wer das Projekt sehen darf. Freiberufler nur zugewiesene Projekte und dort keine Einträge zu Rechnungen
 --     und Aufgaben (die sehen sie auch sonst nicht). Einträge ohne Projekt bleiben bei Admin und Mitarbeitern.
 --   * Schreiben: nicht mehr direkt aus der App, nur noch über Funktionen und Trigger. Anzeigename und Benutzer-ID setzt
---     immer die Datenbank, nie der Client. Das INSERT-Recht selbst bleibt, weil create_project, update_project und
---     resolve_review mit den Rechten des Aufrufers laufen und ihre Einträge selbst schreiben. Die Zeilenregel lässt das
---     Einfügen aber nur zu, solange die Einstellung abm.verlauf = 'an' gilt; die tragen nur diese Funktionen
---     (ALTER FUNCTION … SET, gilt nur während des Aufrufs). Über die Daten-API ist sie nicht setzbar.
+--     immer die Datenbank, nie der Client. Das INSERT-Recht und die Zeilenregel bleiben, weil create_project,
+--     update_project und resolve_review mit den Rechten des Aufrufers laufen und ihre Einträge selbst schreiben.
+--     Ein Trigger lehnt aber jedes Einfügen eines angemeldeten Benutzers ab, das nicht aus einer dieser drei
+--     Funktionen kommt (Aufrufkette PG_CONTEXT). Ein INSERT über die Daten-API hat keine davon in der Kette.
+--     Eine neue Funktion, die mit den Rechten des Aufrufers in activities schreibt, muss in die Liste.
+--     (ALTER FUNCTION … SET mit einer eigenen Kennung ginge auch, ist bei Supabase aber nicht erlaubt.)
 --   * Neu protokolliert, unabhängig davon, über welchen Weg die Änderung kommt:
 --       - Dokument abgelegt (Trigger auf documents, nur Herkunft "upload"; der Agent protokolliert selbst)
 --       - Dokument entfernt (Trigger auf documents)
@@ -37,19 +39,24 @@ create policy activities_read on public.activities for select to authenticated
 -- ---------------------------------------------------------------------------
 -- Schreiben nur über Funktionen und Trigger
 -- ---------------------------------------------------------------------------
-drop policy if exists activities_write on public.activities;
-create policy activities_write on public.activities for insert to authenticated
-  with check (current_setting('abm.verlauf', true) = 'an' and public.is_staff() and actor_id = auth.uid());
-
-do $$
-declare f regprocedure;
+-- Zeilenregel activities_write (0002) bleibt: nur Admin und Mitarbeiter, nur mit der eigenen Benutzer-ID.
+-- Zusätzlich: angemeldete Benutzer nur aus diesen Funktionen heraus. Funktionen mit den Rechten des Eigentümers
+-- (log_activity, Trigger dieser Migration), Superuser und Secret key (Seed, Import, Agent) sind nicht betroffen.
+create function public.activities_only_from_functions() returns trigger
+language plpgsql set search_path = public as $$
+declare
+  v_ctx text;
 begin
-  for f in select p.oid::regprocedure from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-           where n.nspname = 'public' and p.proname in ('create_project', 'update_project', 'resolve_review')
-  loop
-    execute format('alter function %s set abm.verlauf = %L', f, 'an');
-  end loop;
+  if current_user <> 'authenticated' then return new; end if;
+  get diagnostics v_ctx = pg_context;
+  if v_ctx !~ '\m(create_project|update_project|resolve_review)\(' then
+    raise exception 'Verlaufseinträge entstehen nur über die Funktionen der App' using errcode = '42501';
+  end if;
+  return new;
 end $$;
+
+create trigger activities_only_from_functions before insert on public.activities
+  for each row execute function public.activities_only_from_functions();
 
 -- Anzeigename für Trigger: angemeldeter Benutzer, sonst "System" (SQL-Editor, Skripte mit Secret key)
 create function public.activity_actor() returns text
@@ -163,6 +170,7 @@ create trigger project_members_activity after insert or delete on public.project
 -- Rechte
 -- ---------------------------------------------------------------------------
 revoke all on function public.activity_actor() from public, anon;
+revoke all on function public.activities_only_from_functions() from public, anon;
 revoke all on function public.log_activity(uuid, public.activity_kind, text, jsonb) from public, anon;
 revoke all on function public.log_document_event(uuid, text) from public, anon;
 revoke all on function public.activities_on_document() from public, anon;

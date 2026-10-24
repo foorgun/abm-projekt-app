@@ -539,9 +539,11 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   `log_activity` (nur Admin und Mitarbeiter, keine Dokument- oder Agent-Einträge) und `log_document_event` (Öffnen und
   Herunterladen, jede Rolle mit Zugriff). Dokument abgelegt/entfernt, Statuswechsel und Zuweisungen schreiben Trigger.
   Name und Benutzer setzt immer die Datenbank. `create_project`, `update_project` und `resolve_review` laufen mit den
-  Rechten des Aufrufers und schreiben weiter selbst: Sie tragen `abm.verlauf = 'an'` (ALTER FUNCTION … SET), und nur
-  dann lässt die Zeilenregel das Einfügen zu. Eine neue Funktion dieser Art braucht dieselbe Einstellung, ebenso eine
-  dieser drei, wenn sie später mit `create or replace` neu angelegt wird (sonst scheitert ihr Eintrag; die RLS-Tests merken das).
+  Rechten des Aufrufers und schreiben weiter selbst; deshalb bleiben INSERT-Recht und Zeilenregel. Ein Trigger
+  (`activities_only_from_functions`) lehnt jedes Einfügen eines angemeldeten Benutzers ab, das nicht aus einer dieser
+  drei Funktionen kommt (Aufrufkette `PG_CONTEXT`); ein INSERT über die Daten-API hat keine davon. Eine neue Funktion,
+  die mit den Rechten des Aufrufers in `activities` schreibt, muss dort in die Liste (sonst scheitert ihr Eintrag). Der erste Versuch mit
+  `ALTER FUNCTION … SET abm.verlauf` scheiterte bei Supabase an fehlenden Rechten (eigene Parameter nur für Superuser).
 - **Ohne Anmeldung kein Dokument- oder Statuseintrag:** Seed, Excel-Import und Demo-Daten erzeugen sonst lauter
   "System"-Einträge. Zuweisungen werden immer protokolliert (aus `konten:anlegen` als "System").
 - **Nicht protokolliert:** Dokument löschen gibt es in der App nicht (nur mit dem ganzen Projekt); der Trigger dafür greift
