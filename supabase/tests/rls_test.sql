@@ -1087,7 +1087,10 @@ select test.expect('Verlauf: Hochladen wird protokolliert (Trigger)',
 
 -- Ohne Zuweisung sieht der Freiberufler nichts mehr
 reset role;
+-- wie ein Skript mit Secret key: ohne Anmeldung
+select set_config('request.jwt.claim.sub', '', true);
 delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
 set local role authenticated;
 select test.expect('Verlauf: Freiberufler ohne Zuweisung sieht keinen Eintrag', (select count(*) from public.activities), 0);
 select test.throws('Verlauf: Freiberufler ohne Zuweisung protokolliert nichts',
