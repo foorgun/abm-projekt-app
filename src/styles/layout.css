@@ -56,8 +56,9 @@
 .sidebar-logo img {
   height: 44px;
   width: auto;
-  /* Logo ist weiß auf Schwarz: Schwarz verschwindet auf der dunklen Fläche */
-  mix-blend-mode: screen;
+  /* Logo ist weiß auf Schwarz: je nach Darstellung umkehren und den Hintergrund ausblenden (tokens.css) */
+  filter: var(--logo-filter);
+  mix-blend-mode: var(--logo-blend);
 }
 
 .sidebar-logo-mark {

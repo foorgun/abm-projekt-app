@@ -8,6 +8,7 @@ import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } fr
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAnfrage, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import type {
   Abwesenheit,
+  Activity,
   AgentRule,
   AgentSettings,
   BueroDaten,
@@ -222,8 +223,13 @@ export interface Repo {
    * Liefert je Dokument Projekt und, bei Herkunft Agent, die zugehörige Mail (Betreff, Absender, Begründung).
    */
   listDocuments(filter: DocumentFilter): Promise<DocumentListResult>;
-  /** Nur Echtbetrieb: kurzlebiger Link zum Öffnen einer Datei aus dem privaten Speicher. */
+  /** Nur Echtbetrieb: kurzlebiger Link zum Öffnen einer Datei aus dem privaten Speicher. Vermerkt das Öffnen im Verlauf. */
   documentUrl?(doc: ProjectDocument): Promise<string>;
+  /**
+   * Verlauf eines Projekts, neueste zuerst, höchstens `limit` Einträge. Wird erst beim Aufklappen in der Projektliste geladen.
+   * Sichtbarkeit wie in der Datenbank: Freiberufler nur zugewiesene Projekte, ohne Einträge zu Rechnungen und Aufgaben.
+   */
+  projectHistory(projectId: string, limit: number): Promise<Activity[]>;
 
   createTask(input: NewTask): Promise<Task>;
   updateTask(id: string, patch: TaskPatch): Promise<Task>;

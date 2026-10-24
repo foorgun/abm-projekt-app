@@ -58,6 +58,9 @@ function newId(prefix: string) {
   return `${prefix}-n${Date.now().toString(36)}${idCounter}`;
 }
 
+/** Verlaufseinträge, die Freiberufler nie sehen (wie Rechnungen und Aufgaben selbst). */
+const FREELANCER_HIDDEN_ACTIVITIES: Activity["kind"][] = ["rechnung", "aufgabe"];
+
 /** Was eine Rolle sehen darf (entspricht den RLS-Policies). */
 export function visibleFor(db: Dataset, user: SessionUser): Dataset {
   if (user.role === "admin") return { ...db, meId: DEMO_ME.admin };
@@ -79,7 +82,8 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     parties: db.parties.filter((x) => ids.has(x.projectId) && CLASSIC_PARTY_ROLES.includes(x.role)),
     documents: db.documents.filter((d) => ids.has(d.projectId)),
     tasks: [],
-    activities: [],
+    // wie RLS (0016): Verlauf der zugewiesenen Projekte, ohne Einträge zu Rechnungen und Aufgaben
+    activities: db.activities.filter((a) => a.projectId !== null && ids.has(a.projectId) && FREELANCER_HIDDEN_ACTIVITIES.every((k) => k !== a.kind)),
     mailboxes: [],
     inboxItems: [],
     inboxAttachments: [],
@@ -568,6 +572,11 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         };
       });
       return done(structuredClone(filterDocuments(rows, filter, todayIso())));
+    },
+
+    async projectHistory(projectId, limit) {
+      const rows = visibleFor(db, user).activities.filter((a) => a.projectId === projectId);
+      return done(structuredClone([...rows].sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit)));
     },
 
     async createTask(input: NewTask) {

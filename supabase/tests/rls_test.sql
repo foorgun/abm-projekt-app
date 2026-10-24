@@ -144,7 +144,8 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
 select test.expect('Mitarbeiter sieht Ordnervorlage (127 Ordner)', (select count(*) from public.folder_templates), 127);
 select test.expect('Mitarbeiter sieht Aufgaben',      (select count(*) from public.tasks), 2);
-select test.expect('Mitarbeiter sieht Aktivitäten',   (select count(*) from public.activities), 1);
+-- Seed-Eintrag plus "Zugewiesen" aus dem Trigger auf project_members (0016)
+select test.expect('Mitarbeiter sieht Aktivitäten',   (select count(*) from public.activities), 2);
 select test.expect('Mitarbeiter sieht Postfächer',    (select count(*) from public.mailboxes), 1);
 select test.expect('Mitarbeiter sieht Posteingang',   (select count(*) from public.inbox_items), 2);
 select test.expect('Mitarbeiter sieht Anhänge',       (select count(*) from public.inbox_attachments), 2);
@@ -194,7 +195,10 @@ select test.expect('Freiberufler sieht Ordnervorlage',               (select cou
 select test.expect('Freiberufler sieht Beteiligte nur seines Projekts', (select count(*) from public.project_parties), 2);
 select test.expect('Freiberufler sieht Dokumente seines Projekts',   (select count(*) from public.documents), 1);
 select test.expect('Freiberufler sieht KEINE Aufgaben',              (select count(*) from public.tasks), 0);
-select test.expect('Freiberufler sieht KEINE Aktivitäten',           (select count(*) from public.activities), 0);
+-- seit 0016: Verlauf des zugewiesenen Projekts (ohne Rechnungen und Aufgaben), nichts aus fremden Projekten
+select test.expect('Freiberufler sieht Aktivitäten nur seines Projekts', (select count(*) from public.activities), 2);
+select test.expect('Freiberufler sieht keine Aktivitäten fremder Projekte',
+  (select count(*) from public.activities where project_id is distinct from 'a0000000-0000-4000-8000-000000000001'), 0);
 select test.expect('Freiberufler sieht KEINE Postfächer',            (select count(*) from public.mailboxes), 0);
 select test.expect('Freiberufler sieht KEINEN Posteingang',          (select count(*) from public.inbox_items), 0);
 select test.expect('Freiberufler sieht KEINE Anhänge',               (select count(*) from public.inbox_attachments), 0);
@@ -1038,6 +1042,86 @@ select test.expect('Freiberufler sieht keine Details', (select count(*) from pub
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
 select test.expect('Ohne Rolle: kein Zwischenspeicher', (select count(*) from public.schornsteinfeger_suche), 0);
 select test.expect('Ohne Rolle: kein Abruf-Protokoll', (select count(*) from public.schornsteinfeger_abrufe), 0);
+rollback;
+
+-- ===========================================================================
+-- Migration 0016: Projektverlauf (activities lesen wie das Projekt, schreiben nur über Funktionen und Trigger)
+-- ===========================================================================
+begin;
+-- Einträge, die ein Freiberufler nie sehen darf: Rechnung und Aufgabe im eigenen Projekt, fremdes Projekt, ohne Projekt
+insert into public.activities (project_id, kind, text, actor) values
+  ('a0000000-0000-4000-8000-000000000001', 'rechnung', 'Rechnung versendet: Test', 'Test'),
+  ('a0000000-0000-4000-8000-000000000001', 'aufgabe',  'Aufgabe angelegt: Test',   'Test'),
+  ('a0000000-0000-4000-8000-000000000002', 'projekt',  'Projekt angelegt',         'Test'),
+  (null,                                   'projekt',  'Eintrag ohne Projekt',     'Test');
+-- Dokument im fremden Projekt (als Superuser ohne Anmeldung: kein Verlaufseintrag)
+insert into public.documents (id, project_id, name, storage_path, folder_path) values
+  ('d0000000-0000-4000-8000-000000000016', 'a0000000-0000-4000-8000-000000000002', 'Fremd.pdf', 'a0000000-0000-4000-8000-000000000002/v/fremd.pdf', '08 Bauantrag');
+select test.expect('Verlauf: Einfügen ohne Anmeldung (Seed, Import) erzeugt keinen Dokument-Eintrag',
+  (select count(*) from public.activities where text = 'Fremd.pdf abgelegt'), 0);
+set local role authenticated;
+
+-- Freiberufler (nur Projekt 1)
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Verlauf: Freiberufler sieht keine Rechnungs-, Aufgaben-, fremden oder projektlosen Einträge',
+  (select count(*) from public.activities
+   where project_id is distinct from 'a0000000-0000-4000-8000-000000000001' or kind in ('rechnung', 'aufgabe')), 0);
+select test.expect('Verlauf: Freiberufler sieht den Verlauf seines Projekts',
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000001'), 2);
+select test.throws('Verlauf: Freiberufler schreibt nicht direkt in die Tabelle',
+  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'datei', 'x', 'x', auth.uid())$$);
+select test.throws('Verlauf: Freiberufler darf log_activity nicht aufrufen',
+  $$select public.log_activity('a0000000-0000-4000-8000-000000000001', 'projekt', 'gefälscht')$$);
+select public.log_document_event('d0000000-0000-4000-8000-000000000001', 'geoeffnet');
+select test.expect('Verlauf: Öffnen eines Dokuments wird mit Name und Benutzer protokolliert',
+  (select count(*) from public.activities where text = 'Baugenehmigung.pdf geöffnet' and actor = 'Frank Frei'
+     and actor_id = '00000000-0000-4000-8000-0000000000a3' and details->>'aktion' = 'geoeffnet'), 1);
+select test.throws('Verlauf: Dokument eines fremden Projekts lässt sich nicht protokollieren',
+  $$select public.log_document_event('d0000000-0000-4000-8000-000000000016', 'geoeffnet')$$);
+select test.throws('Verlauf: unbekannte Aktion wird abgelehnt',
+  $$select public.log_document_event('d0000000-0000-4000-8000-000000000001', 'geloescht')$$);
+insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by) values
+  ('a0000000-0000-4000-8000-000000000001', 'Skizze.pdf', 'a0000000-0000-4000-8000-000000000001/v/skizze.pdf', '08 Bauantrag', '00000000-0000-4000-8000-0000000000a3');
+select test.expect('Verlauf: Hochladen wird protokolliert (Trigger)',
+  (select count(*) from public.activities where text = 'Skizze.pdf abgelegt' and actor = 'Frank Frei' and details->>'aktion' = 'hochgeladen'), 1);
+
+-- Ohne Zuweisung sieht der Freiberufler nichts mehr
+reset role;
+delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+set local role authenticated;
+select test.expect('Verlauf: Freiberufler ohne Zuweisung sieht keinen Eintrag', (select count(*) from public.activities), 0);
+select test.throws('Verlauf: Freiberufler ohne Zuweisung protokolliert nichts',
+  $$select public.log_document_event('d0000000-0000-4000-8000-000000000001', 'geoeffnet')$$);
+
+-- Mitarbeiter
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Verlauf: Entfernen der Zuweisung ist protokolliert (ohne Anmeldung als "System")',
+  (select count(*) from public.activities where text = 'Zuweisung entfernt: Frank Frei' and actor = 'System'), 1);
+select test.throws('Verlauf: Mitarbeiter schreibt nicht direkt in die Tabelle',
+  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', 'Jemand anders', auth.uid())$$);
+select public.log_activity('a0000000-0000-4000-8000-000000000001', 'schritt', 'Testschritt erledigt', '{"schritt": "test"}');
+select test.expect('Verlauf: log_activity setzt Name und Benutzer selbst',
+  (select count(*) from public.activities where text = 'Testschritt erledigt' and actor = 'Mira Mitarbeiter'
+     and actor_id = '00000000-0000-4000-8000-0000000000a2' and details->>'schritt' = 'test'), 1);
+select test.throws('Verlauf: log_activity schreibt keine Dokument-Einträge',
+  $$select public.log_activity('a0000000-0000-4000-8000-000000000001', 'datei', 'gefälscht.pdf abgelegt')$$);
+select test.throws('Verlauf: log_activity ohne Text wird abgelehnt',
+  $$select public.log_activity('a0000000-0000-4000-8000-000000000001', 'projekt', '  ')$$);
+update public.projects set status = 'abgeschlossen' where id = 'a0000000-0000-4000-8000-000000000003';
+select test.expect('Verlauf: Statuswechsel wird protokolliert (Trigger)',
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003'
+     and text = 'Projekt abgeschlossen' and actor = 'Mira Mitarbeiter' and details->>'nach' = 'abgeschlossen'), 1);
+update public.projects set status = 'abgeschlossen' where id = 'a0000000-0000-4000-8000-000000000003';
+select test.expect('Verlauf: gleicher Status ergibt keinen zweiten Eintrag',
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projekt abgeschlossen'), 1);
+select test.throws('Verlauf: Einträge bleiben unveränderlich', $$update public.activities set details = '{}'$$);
+select test.throws('Verlauf: Einträge bleiben unlöschbar',     $$delete from public.activities$$);
+
+-- Projekt löschen (Admin): Dokumente und Zuweisungen gehen mit, ohne dass die Trigger stören
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select public.delete_project('a0000000-0000-4000-8000-000000000002');
+select test.expect('Verlauf: nach dem Löschen bleibt kein Eintrag des Projekts',
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000002'), 0);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------

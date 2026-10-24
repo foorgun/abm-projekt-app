@@ -1,5 +1,5 @@
 // Pilot-Modus für die Testphase: Build-Variable VITE_APP_MODE. "pilot" zeigt nur Projektliste, Projekt anlegen
-// (mit Dokument lesen), Projekt-Detail (Prozess, Übersicht, Dokumente, Planungsprotokoll), Einstellungen (Admin) und Hilfe.
+// (mit Dokument lesen), Projekt-Detail (Prozess, Übersicht, Dokumente, Planungsprotokoll, Verlauf), Einstellungen und Hilfe.
 // Nicht gesetzt oder "voll": alles wie bisher. Ausgeblendete Bereiche bleiben im Code und in der Datenbank, sie sind
 // nur nicht erreichbar. Zugriffsschutz bleibt Sache der Datenbank (RLS); das hier ist reine Oberfläche.
 
@@ -35,16 +35,16 @@ export const PILOT_ROUTES: { path: string; roles?: AppRole[] }[] = [
   { path: "projekte/aktiv" },
   { path: "projekte/abgeschlossen" },
   { path: "projekte/:id" },
-  // Bürodaten fürs Planungsprotokoll pflegt nur ein Admin
-  { path: "einstellungen", roles: ["admin"] },
+  // für alle: die Darstellung (hell/dunkel) ist persönlich; Bürodaten pflegt trotzdem nur ein Admin (Seite und Datenbank)
+  { path: "einstellungen" },
   { path: "hilfe" },
 ];
 
 /** Menüpunkte der Seitenleiste im Pilot (Ziele aus nav.ts bzw. der unteren Leiste). */
-export const PILOT_NAV: { to: string; roles?: AppRole[] }[] = [{ to: "/projekte" }, { to: "/einstellungen", roles: ["admin"] }, { to: "/hilfe" }];
+export const PILOT_NAV: { to: string; roles?: AppRole[] }[] = [{ to: "/projekte" }, { to: "/einstellungen" }, { to: "/hilfe" }];
 
 /** Reiter im Projekt-Detail, die im Pilot sichtbar bleiben (zusätzlich gelten die Rollenregeln der Seite). */
-export const PILOT_PROJECT_TABS = ["uebersicht", "dokumente", "planungsprotokoll"] as const;
+export const PILOT_PROJECT_TABS = ["uebersicht", "dokumente", "planungsprotokoll", "aktivitaet"] as const;
 
 /** Warnungen, die im Pilot erscheinen: nur solche zum Prozess, keine zu Rechnungen. */
 export const PILOT_ALERT_KINDS: AlertKind[] = ["contract_open", "permit_waiting"];

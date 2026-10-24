@@ -83,7 +83,7 @@ export const META_NAV: NavEntry[] = [
 ];
 
 /**
- * Sichtbare Navigation für eine Rolle. Im Pilot nur die Projektliste (als "Projekte"), Einstellungen (Admin) und Hilfe;
+ * Sichtbare Navigation für eine Rolle. Im Pilot nur die Projektliste (als "Projekte"), Einstellungen und Hilfe;
  * die übrigen Einträge bleiben hier stehen und erscheinen wieder, sobald VITE_APP_MODE nicht "pilot" ist.
  */
 export function visibleNav(role: AppRole, pilot = isPilot()): { groups: NavGroup[]; meta: NavEntry[] } {

@@ -527,3 +527,27 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
 - **Demo-Modus:** Je Rolle gibt es eine erfundene Person ("ich" als Admin ist Mehmet Cetin, als Mitarbeiter Jana Albrecht),
   damit sich die Sichten zeigen lassen.
 
+
+## Projektverlauf in der Projektliste, Darstellung hell/dunkel (Migration 0016)
+
+- **Keine zweite Tabelle:** Den Verlauf gab es schon als `activities` (0002, unveränderlich und unlöschbar). 0016 ergänzt
+  `details jsonb` und ändert die Regeln, statt eine `project_history` daneben zu stellen. Die Benutzer-ID steht in `actor_id`.
+- **Lesen wie das Projekt:** Admin und Mitarbeiter alles, Freiberufler nur zugewiesene Projekte und dort keine Einträge zu
+  Rechnungen und Aufgaben (die sehen sie auch sonst nicht). Der Reiter "Aktivität" im Projekt ist deshalb jetzt auch für
+  Freiberufler und im Pilot sichtbar.
+- **Schreiben nur über die Datenbank:** Das INSERT-Recht für angemeldete Benutzer ist weg. Die App schreibt über
+  `log_activity` (nur Admin und Mitarbeiter, keine Dokument- oder Agent-Einträge) und `log_document_event` (Öffnen und
+  Herunterladen, jede Rolle mit Zugriff). Dokument abgelegt/entfernt, Statuswechsel und Zuweisungen schreiben Trigger.
+  Name und Benutzer setzt immer die Datenbank.
+- **Ohne Anmeldung kein Dokument- oder Statuseintrag:** Seed, Excel-Import und Demo-Daten erzeugen sonst lauter
+  "System"-Einträge. Zuweisungen werden immer protokolliert (aus `konten:anlegen` als "System").
+- **Nicht protokolliert:** Dokument löschen gibt es in der App nicht (nur mit dem ganzen Projekt); der Trigger dafür greift
+  erst, wenn das einmal kommt. Umbenennen oder Verschieben eines Dokuments erzeugt noch keinen Eintrag.
+- **Laden erst beim Aufklappen:** Die Projektliste lädt je aufgeklappter Zeile die letzten 10 Einträge
+  (`Repo.projectHistory`), nicht den Verlauf aller Projekte.
+- **Darstellung pro Browser:** Hell, Dunkel oder System, gespeichert in `localStorage` (`abm.darstellung`). Ein Profil pro
+  Benutzer gibt es in der Datenbank nicht (der Name steht bei der Rolle), deshalb nur lokal. Gesetzt wird das Attribut
+  `data-theme` vor dem ersten Rendern durch `public/theme-init.js`: eine eigene Datei, weil die Content-Security-Policy
+  keine Inline-Skripte erlaubt. Kontrast beider Farbsätze prüft `src/styles/contrast.test.ts`.
+- **Einstellungen im Pilot für alle Rollen:** Die Darstellung ist persönlich. Bürodaten sehen weiterhin nur Admin und
+  Mitarbeiter, ändern nur Admins.

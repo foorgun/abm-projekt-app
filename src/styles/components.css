@@ -2403,7 +2403,8 @@ a.list-item:hover {
 }
 
 .table-sticky-first tbody tr:hover td:first-child {
-  background: var(--surface-2);
+  /* gleiche Fläche wie die übrige Zeile beim Hover (.table tbody tr:hover td), nur deckend */
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
 }
 
 .table-sticky-first .row-group th:first-child {
@@ -2412,6 +2413,191 @@ a.list-item:hover {
 
 .table td.warn-cell {
   text-align: center;
+}
+
+/* Projektliste: Plus/Pfeil links (Verlauf aufklappen) und "Projekt öffnen" rechts, beides eigene Klickziele */
+.table th.toggle-cell,
+.table td.toggle-cell {
+  box-sizing: border-box;
+  width: 44px;
+  min-width: 44px;
+  max-width: 44px;
+  padding-left: var(--sp-3);
+  padding-right: 0;
+}
+
+/* Mit Plus-Spalte bleibt zusätzlich die ABM-Nr. beim horizontalen Scrollen stehen */
+.table-sticky-first:has(td.toggle-cell) td.toggle-cell + td,
+.table-sticky-first:has(td.toggle-cell) th:nth-child(2) {
+  position: sticky;
+  left: 44px;
+  z-index: 1;
+}
+
+.table-sticky-first:has(td.toggle-cell) td.toggle-cell + td {
+  background: var(--surface);
+}
+
+.table-sticky-first:has(td.toggle-cell) tbody tr:hover td.toggle-cell + td {
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+}
+
+.row-toggle {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.row-toggle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.row-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.row-toggle[aria-expanded="true"] {
+  color: var(--text);
+  background: var(--neutral-soft);
+}
+
+.row-toggle[aria-expanded="true"] svg {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row-toggle svg {
+    transition: none;
+  }
+}
+
+.table td.action-cell {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.row-open {
+  text-decoration: none;
+}
+
+/* Schmale Bildschirme: nur das Icon, der Text bleibt für Screenreader */
+@media (max-width: 640px) {
+  .row-open {
+    width: var(--ctl-h-sm);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .row-open-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+.table-sticky-first .row-detail td {
+  background: var(--surface-2);
+}
+
+/* Aufgeklappter Verlauf einer Projektzeile */
+.history {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 760px;
+}
+
+.history-title {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.history-list {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-item {
+  display: grid;
+  grid-template-columns: 128px minmax(96px, 160px) 1fr;
+  gap: var(--sp-3);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-13);
+}
+
+.history-item:last-child {
+  border-bottom: 0;
+}
+
+.history-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.history-actor {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-text {
+  color: var(--text);
+}
+
+.history-loading {
+  display: grid;
+  gap: var(--sp-2);
+  max-width: 420px;
+}
+
+.history-empty {
+  margin: 0;
+  font-size: var(--fs-13);
+}
+
+.history-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--danger);
+  font-size: var(--fs-13);
+}
+
+.history-all {
+  justify-self: start;
+  color: var(--accent-text);
+  font-size: var(--fs-13);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .history-item {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
 }
 
 .warn-icon[data-tone="danger"] { color: var(--danger); }
@@ -5019,8 +5205,9 @@ li:first-child > .doc-card {
   height: 52px;
   width: auto;
   justify-self: start;
-  /* Logo ist weiß auf Schwarz: Schwarz verschwindet auf der dunklen Fläche */
-  mix-blend-mode: screen;
+  /* Logo ist weiß auf Schwarz: je nach Darstellung umkehren und den Hintergrund ausblenden (tokens.css) */
+  filter: var(--logo-filter);
+  mix-blend-mode: var(--logo-blend);
 }
 
 .auth-title {

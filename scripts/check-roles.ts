@@ -311,6 +311,12 @@ for (const k of mitPasswort) {
     expectRows(who, "neue Spalten lesbar (bauherren.name2)", all.bauherren, await count(sb, "bauherren", undefined, "name2"));
     const docs = await count(sb, "documents", undefined, "doc_type");
     record(who, "neue Spalten lesbar (documents.doc_type)", "lesbar", show(docs), docs.kind === "zeilen");
+    // Projektverlauf (Migration 0016): lesen ja (mit details), direkt schreiben nein, log_activity mit Berechtigung
+    expectRows(who, "Verlauf lesen (activities.details)", await count(ref.sb, "activities"), await count(sb, "activities", undefined, "details"));
+    expectDenied(who, "Verlauf direkt schreiben (nur über Funktionen)", await attempt(sb.from("activities").insert({ project_id: null, kind: "projekt", text: "Rollenprüfung", actor: "x", actor_id: id }).select("id")));
+    // unbekanntes Projekt: mit Berechtigung scheitert es erst daran, es entsteht kein Eintrag
+    const la = await attempt(sb.rpc("log_activity", { p_project_id: NIL, p_kind: "projekt", p_text: "Rollenprüfung" }));
+    record(who, "Verlauf über log_activity: Berechtigung vorhanden", "abgelehnt nur wegen unbekanntem Projekt", show(la), la.kind === "fehler" && /nicht gefunden/.test(la.detail));
   }
 
   // ---- Pilot-Modus (VITE_APP_MODE=pilot): Projekt anlegen, Dokument ablegen, Planungsprotokoll erzeugen.
@@ -370,9 +376,21 @@ for (const k of mitPasswort) {
     expectRows(who, "sieht keine Kontaktdaten der Bauherren", 0, await count(sb, "bauherren"));
     const ownBauherr = mine.find((p) => p.bauherr_id)?.bauherr_id;
     if (ownBauherr) expectRows(who, "Bauherr des eigenen Projekts gezielt per ID", 0, await count(sb, "bauherren", (q) => q.eq("id", ownBauherr)));
-    for (const t of ["companies", "salespeople", "tasks", "activities", "mailboxes", "inbox_items", "inbox_attachments", "agent_rules", "agent_settings"]) {
+    for (const t of ["companies", "salespeople", "tasks", "mailboxes", "inbox_items", "inbox_attachments", "agent_rules", "agent_settings"]) {
       expectRows(who, `sieht nichts in ${t}`, 0, await count(sb, t));
     }
+    // Projektverlauf (Migration 0016): nur zugewiesene Projekte, ohne Rechnungen und Aufgaben, nie direkt schreiben
+    const ownIds = mine.map((p) => p.id);
+    expectRows(who, "Verlauf: keine Einträge fremder oder ohne Projekt", 0, await count(sb, "activities", (q) => (ownIds.length ? q.or(`project_id.is.null,project_id.not.in.(${ownIds.join(",")})`) : q)));
+    expectRows(who, "Verlauf: keine Einträge zu Rechnungen und Aufgaben", 0, await count(sb, "activities", (q) => q.in("kind", ["rechnung", "aufgabe"])));
+    if (foreign) expectRows(who, "Verlauf eines fremden Projekts gezielt per ID", 0, await count(sb, "activities", (q) => q.eq("project_id", foreign.id)));
+    const ownHistory = await count(sb, "activities");
+    record(who, "Verlauf der zugewiesenen Projekte lesen", "lesbar", show(ownHistory), ownHistory.kind === "zeilen");
+    expectDenied(who, "Verlauf direkt schreiben", await attempt(sb.from("activities").insert({ project_id: NIL, kind: "projekt", text: "Rollenprüfung", actor: "x", actor_id: id }).select("id")));
+    expectDenied(who, "Verlauf über log_activity schreiben (nur Mitarbeiter)", await attempt(sb.rpc("log_activity", { p_project_id: NIL, p_kind: "projekt", p_text: "Rollenprüfung" })));
+    // fremdes Dokument: dieselbe Meldung wie "unbekannt", es entsteht kein Eintrag
+    const docEvent = await attempt(sb.rpc("log_document_event", { p_document_id: NIL, p_event: "geoeffnet" }));
+    record(who, "Öffnen eines unbekannten/fremden Dokuments protokollieren", "abgelehnt (Dokument nicht gefunden)", show(docEvent), docEvent.kind !== "zeilen" && /nicht gefunden/.test(docEvent.detail));
     expectRows(who, "sieht nur die eigene Rolle", 1, await count(sb, "user_roles"));
     // Entwürfe und Protokoll der Auslesungen: nichts lesen, nichts schreiben
     expectRows(who, "sieht keine Entwürfe (project_drafts)", 0, await count(sb, "project_drafts"));
