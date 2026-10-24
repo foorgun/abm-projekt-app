@@ -1102,16 +1102,15 @@ select test.expect('Verlauf: Entfernen der Zuweisung ist protokolliert (ohne Anm
   (select count(*) from public.activities where text = 'Zuweisung entfernt: Frank Frei' and actor = 'System'), 1);
 -- auch mit korrektem Namen und eigener Benutzer-ID: direkt geht es nicht, nur über Funktionen (abm.verlauf)
 select test.throws('Verlauf: Mitarbeiter schreibt nicht direkt in die Tabelle',
-  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', 'Mira Mitarbeiter', auth.uid())$$);
+  $$insert into public.activities (project_id, kind, text, actor, actor_id) values ('a0000000-0000-4000-8000-000000000001', 'projekt', 'x', public.current_user_name(), auth.uid())$$);
 select test.expect('Verlauf: die Kennung abm.verlauf gilt außerhalb der Funktionen nicht',
   (select count(*) from (select current_setting('abm.verlauf', true) v) x where v = 'an'), 0);
 select public.update_project('a0000000-0000-4000-8000-000000000003', p_project => '{"location": "Verlaufsort"}', p_activity => 'Projektdaten geändert: Bauort');
-do $$ begin raise notice 'ok   : DIAG %', (select string_agg(text || ' | ' || actor || ' | ' || coalesce(actor_id::text, '-'), ' ;; ') from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003'); end $$;
 select test.expect('Verlauf: update_project schreibt seinen Eintrag weiterhin selbst',
-  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projektdaten geändert: Bauort' and actor = 'Mira Mitarbeiter'), 1);
+  (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projektdaten geändert: Bauort' and actor = public.current_user_name()), 1);
 select public.log_activity('a0000000-0000-4000-8000-000000000001', 'schritt', 'Testschritt erledigt', '{"schritt": "test"}');
 select test.expect('Verlauf: log_activity setzt Name und Benutzer selbst',
-  (select count(*) from public.activities where text = 'Testschritt erledigt' and actor = 'Mira Mitarbeiter'
+  (select count(*) from public.activities where text = 'Testschritt erledigt' and actor = public.current_user_name()
      and actor_id = '00000000-0000-4000-8000-0000000000a2' and details->>'schritt' = 'test'), 1);
 select test.throws('Verlauf: log_activity schreibt keine Dokument-Einträge',
   $$select public.log_activity('a0000000-0000-4000-8000-000000000001', 'datei', 'gefälscht.pdf abgelegt')$$);
@@ -1120,7 +1119,7 @@ select test.throws('Verlauf: log_activity ohne Text wird abgelehnt',
 update public.projects set status = 'abgeschlossen' where id = 'a0000000-0000-4000-8000-000000000003';
 select test.expect('Verlauf: Statuswechsel wird protokolliert (Trigger)',
   (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003'
-     and text = 'Projekt abgeschlossen' and actor = 'Mira Mitarbeiter' and details->>'nach' = 'abgeschlossen'), 1);
+     and text = 'Projekt abgeschlossen' and actor = public.current_user_name() and details->>'nach' = 'abgeschlossen'), 1);
 update public.projects set status = 'abgeschlossen' where id = 'a0000000-0000-4000-8000-000000000003';
 select test.expect('Verlauf: gleicher Status ergibt keinen zweiten Eintrag',
   (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000003' and text = 'Projekt abgeschlossen'), 1);
