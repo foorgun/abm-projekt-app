@@ -1,5 +1,6 @@
 // Suche, Filter und Sortierung der Projektliste. Reine Funktionen (getestet), Zustand liegt in der URL.
 
+import { parseAbm } from "./abmNr";
 import { phaseOf, progressOf } from "./projects";
 import type { StepDefinition } from "./steps";
 import type { Company, Project, Task, TeamMember } from "./types";
@@ -62,18 +63,14 @@ export function filterProjects(
   );
 }
 
-/** ABM-Nummern numerisch vergleichen ("8161-99" vor "8161-101"); Bauvoranfragen/leer ans Ende. */
+/** ABM-Nummern numerisch vergleichen: erst Nummernkreis, dann Nummer ("8185-633" vor "8185-1588"); Bauvoranfragen/leer ans Ende. */
 export function compareAbm(a: string | null, b: string | null): number {
-  const key = (s: string | null) => {
-    const m = s?.match(/^(\d+)-(\d+)/);
-    return m ? [Number(m[1]), Number(m[2])] : null;
-  };
-  const ka = key(a);
-  const kb = key(b);
+  const ka = parseAbm(a);
+  const kb = parseAbm(b);
   if (!ka && !kb) return 0;
   if (!ka) return 1;
   if (!kb) return -1;
-  return ka[0] - kb[0] || ka[1] - kb[1];
+  return Number(ka.prefix) - Number(kb.prefix) || ka.num - kb.num;
 }
 
 export function sortProjects(projects: Project[], sort: ProjectSort, steps: StepDefinition[]): Project[] {

@@ -46,7 +46,7 @@ function escape(s: string) {
 
 /** "8161-101" → findet auch "8161 101", "8161_101", "8161101", "8161-0101". */
 export function abmPattern(abmNr: string): RegExp | null {
-  const m = abmNr.match(/^(\d{3,5})[-\s]?(\d{1,4})$/);
+  const m = abmNr.match(/^(\d{3,5})[-\s]?(\d{1,6})$/);
   if (!m) return null;
   return new RegExp(`(?<!\\d)${m[1]}[\\s\\-_./]{0,2}0*${Number(m[2])}(?!\\d)`);
 }

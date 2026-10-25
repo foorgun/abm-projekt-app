@@ -556,3 +556,28 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   keine Inline-Skripte erlaubt. Kontrast beider Farbsätze prüft `src/styles/contrast.test.ts`.
 - **Einstellungen im Pilot für alle Rollen:** Die Darstellung ist persönlich. Bürodaten sehen weiterhin nur Admin und
   Mitarbeiter, ändern nur Admins.
+
+
+## ABM-Nr. mit Nummernkreis, Spalten der Projektliste (Migration 0017)
+
+- **Format:** vier Ziffern (Nummernkreis der Hausbaufirma), Bindestrich, laufende Nummer ohne führende Nullen und mit
+  beliebiger Länge (8161-1588, 8185-633, 8260-321). Regeln in `src/lib/abmNr.ts`. Falsches Format und führende Nullen
+  sind im Formular ein Fehler, ein unbekannter Nummernkreis nur ein Hinweis.
+- **Keine Tabelle `hausbaufirmen`:** Den Nummernkreis gab es schon als `companies.number_prefix` (0001, bisher leer). Dieselbe
+  Firma steuert Verkäufer, Filter und Planungsprotokoll; eine zweite Tabelle hätte die Zuordnung doppelt gehalten. 0017
+  trägt 8161/8185/8260 ein, prüft vier Ziffern und Eindeutigkeit. Pflegen dürfen nur Admins (Einstellungen); Mitarbeiter
+  legen Firmen weiter nur mit Namen an. Eine Firma hat genau einen Nummernkreis.
+- **Eindeutig:** Index über Nummernkreis und Nummer als Zahl (8260-041 = 8260-41), nur für Werte im gültigen Format, auch
+  über stornierte Projekte hinweg. "Bauvoranfrage" (so speichert die App Bauvoranfragen) und Altwerte bleiben erlaubt.
+  Bestand vor 0017 geprüft: keine Dubletten; 38 Demo-Projekte haben noch führende Nullen (nicht geändert). Beim Bearbeiten
+  prüft die App die ABM-Nr. nur, wenn sie sich ändert, damit Altwerte andere Änderungen nicht blockieren.
+- **Vorschlag:** höchste Nummer des Nummernkreises + 1, als Zahl verglichen. Wird eine Firma gewählt und ist die ABM-Nr.
+  leer (oder noch der letzte Vorschlag), trägt die App den Vorschlag ein. Wird eine Nummer eingegeben und fehlt die Firma,
+  setzt sie die Firma des Nummernkreises. Passen beide nicht zusammen, steht das unter dem Feld (mit "übernehmen").
+  Auf der Projektseite steht die ABM-Nr. deshalb jetzt in der Kachel "Projektdaten" neben der Hausbaufirma.
+- **Spalten der Projektliste:** Alle Felder gab es schon (Verkäufer, Architekt, Planer als Teammitglied mit Kürzel,
+  Bauort, Baubetreuung als Freitext, die fünf Excel-Termine als Schritte in `project_steps`); keine neue Spalte in der
+  Datenbank. Auswahl und Reihenfolge pro Benutzer nur im Browser (`abm.projekte.spalten.v2.<Benutzer-ID>`), weil es kein
+  Nutzerprofil in der Datenbank gibt. Drag-and-drop mit nativem HTML5 (kein Paket), dazu Auf/Ab-Knöpfe für Tastatur und
+  Handy (Touch kennt kein HTML5-Drag). Pfeil links und "Projekt öffnen" rechts sind nicht wählbar und bleiben beim
+  horizontalen Scrollen stehen, ebenso die erste gewählte Spalte.

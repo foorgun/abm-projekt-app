@@ -5,10 +5,13 @@ export function Popover({
   trigger,
   children,
   label,
+  className,
 }: {
   trigger: (props: { onClick: () => void; "aria-expanded": boolean; "aria-haspopup": "dialog" }) => ReactNode;
   children: (close: () => void) => ReactNode;
   label: string;
+  /** Zusätzliche Klasse am Feld (z. B. eigene Position auf schmalen Bildschirmen) */
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
@@ -27,7 +30,7 @@ export function Popover({
     <span className="menu-wrap" ref={ref}>
       {trigger({ onClick: () => setOpen((o) => !o), "aria-expanded": open, "aria-haspopup": "dialog" })}
       {open && (
-        <div className="popover" role="dialog" aria-label={label}>
+        <div className={["popover", className].filter(Boolean).join(" ")} role="dialog" aria-label={label}>
           {children(() => setOpen(false))}
         </div>
       )}

@@ -190,6 +190,9 @@ const all = {
   vorlagen: await vorlagenAnzahl(ref.sb),
 };
 const allProjects = await read<{ id: string; bauherr_id: string | null }>("Bezugswerte (Admin)", "Projekte lesen", ref.sb.from("projects").select("id, bauherr_id").limit(5000));
+// Nummernkreise (Migration 0017): eine Firma mit Nummernkreis als Ziel der Schreibversuche (derselbe Wert wird zurückgeschrieben)
+const prefixCompany = (await read<{ id: string; number_prefix: string }>("Bezugswerte (Admin)", "Hausbaufirmen mit Nummernkreis lesen", ref.sb.from("companies").select("id, number_prefix").not("number_prefix", "is", null).limit(1)))[0];
+const prefixCount = await count(ref.sb, "companies", (q) => q.not("number_prefix", "is", null));
 const zero = (o: Outcome) => o.kind === "zeilen" && o.n === 0;
 if (zero(all.invoices) || zero(all.bauherren)) {
   console.warn("Hinweis: In der Datenbank gibt es keine Rechnungen oder keine Bauherren. Die Prüfungen \"sieht keine\" sind dann wenig aussagekräftig (vorher npm run seed:demo).\n");
@@ -317,6 +320,21 @@ for (const k of mitPasswort) {
     // unbekanntes Projekt: mit Berechtigung scheitert es erst daran, es entsteht kein Eintrag
     const la = await attempt(sb.rpc("log_activity", { p_project_id: NIL, p_kind: "projekt", p_text: "Rollenprüfung" }));
     record(who, "Verlauf über log_activity: Berechtigung vorhanden", "abgelehnt nur wegen unbekanntem Projekt", show(la), la.kind === "fehler" && /nicht gefunden/.test(la.detail));
+  }
+
+  // ---- Nummernkreise der Hausbaufirmen (Migration 0017): lesen Admin und Mitarbeiter, ändern nur Admins.
+  // Geschrieben wird derselbe Wert (ändert nichts) bzw. eine Firma mit leerem Namen (die Datenbank lehnt sie nach der
+  // Zeilenregel am Namen ab): in keinem Fall ändert sich etwas oder entsteht eine Zeile.
+  const samePrefix = prefixCompany ? await attempt(sb.from("companies").update({ number_prefix: prefixCompany.number_prefix }).eq("id", prefixCompany.id).select("id")) : null;
+  const newWithPrefix = await attempt(sb.from("companies").insert({ name: " ", number_prefix: "0000" }).select("id"));
+  if (!prefixCompany) rows.push([who, "Nummernkreis ändern", "–", "übersprungen: keine Hausbaufirma mit Nummernkreis (Migration 0017 eingespielt?)", "–"]);
+  if (k.rolle === "admin") {
+    if (samePrefix) expectRows(who, "Nummernkreis ändern: Berechtigung vorhanden (derselbe Wert)", 1, samePrefix);
+    record(who, "Firma mit Nummernkreis anlegen: Berechtigung vorhanden", "abgelehnt nur wegen leerem Namen", show(newWithPrefix), newWithPrefix.kind === "fehler" && /companies_name_clean|check constraint/i.test(newWithPrefix.detail));
+  } else {
+    if (k.rolle === "mitarbeiter") expectRows(who, "Nummernkreise lesen", prefixCount, await count(sb, "companies", (q) => q.not("number_prefix", "is", null)));
+    if (samePrefix) expectBlocked(who, "Nummernkreis ändern (nur Admin)", samePrefix);
+    expectDenied(who, "Firma mit Nummernkreis anlegen (nur Admin)", newWithPrefix);
   }
 
   // ---- Pilot-Modus (VITE_APP_MODE=pilot): Projekt anlegen, Dokument ablegen, Planungsprotokoll erzeugen.

@@ -1,8 +1,10 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
+import { AbmHinweise } from "../../components/AbmHinweise";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, Field, IconButton, Input, Select } from "../../components/ui";
+import { companyForAbm, suggestAbmNr } from "../../lib/abmNr";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
@@ -219,10 +221,11 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
             <>
             <dl className="dl">
               <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
+              {project.kind === "neubau" && <Row label="ABM-Nr.">{project.abmNr}</Row>}
               <Row label="Hausbaufirma">{company?.name}</Row>
               <Row label="Bauort">{project.location}</Row>
               <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
-              <Row label="Planer">{planer?.name}</Row>
+              <Row label="Planer">{planer ? `${planer.name}${planer.code ? ` (${planer.code})` : ""}` : null}</Row>
               <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
               <Row label="Baubetreuung">{project.baubetreuung}</Row>
             </dl>
@@ -248,7 +251,6 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
   const { save, busy, error, clearError } = useProjectSave(project, data);
   const current = data.parties.filter((p) => p.projectId === project.id);
   const [v, setV] = useState({
-    abmNr: project.abmNr ?? "",
     hausbauNr: project.hausbauNr ?? "",
     bauherrLabel: project.bauherrLabel,
     buildingAddress: contact?.buildingAddress ?? "",
@@ -262,7 +264,7 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
   function submit() {
     void save(
       {
-        project: { abmNr: v.abmNr, hausbauNr: v.hausbauNr, bauherrLabel: v.bauherrLabel, salespersonId: v.salespersonId || null },
+        project: { hausbauNr: v.hausbauNr, bauherrLabel: v.bauherrLabel, salespersonId: v.salespersonId || null },
         // Die Bauadresse gehört zu den Kontaktdaten: die übrigen Felder bleiben, wie sie sind
         bauherr: { ...contactOf(contact), buildingAddress: v.buildingAddress },
         parties: Object.fromEntries(ROLES.map((r) => [r, parties[r].name.trim() ? { name: parties[r].name, contact: parties[r].contact || null } : null])),
@@ -273,16 +275,9 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
 
   return (
     <EditForm onSubmit={submit} onCancel={onClose} onEdit={clearError} busy={busy} error={error}>
-      <div className="dialog-row">
-        {project.kind === "neubau" && (
-          <Field label="ABM-Nr." htmlFor={`${id}-abm`}>
-            <Input id={`${id}-abm`} value={v.abmNr} onChange={(e) => setV({ ...v, abmNr: e.target.value })} placeholder="z. B. 8161-123" autoFocus />
-          </Field>
-        )}
-        <Field label="Hausbau-Nr." htmlFor={`${id}-hb`}>
-          <Input id={`${id}-hb`} value={v.hausbauNr} onChange={(e) => setV({ ...v, hausbauNr: e.target.value })} placeholder="HB-26118" />
-        </Field>
-      </div>
+      <Field label="Hausbau-Nr." htmlFor={`${id}-hb`} hint={project.kind === "neubau" ? "Die ABM-Nr. steht unter „Projektdaten“ bei der Hausbaufirma." : undefined}>
+        <Input id={`${id}-hb`} value={v.hausbauNr} onChange={(e) => setV({ ...v, hausbauNr: e.target.value })} placeholder="HB-26118" autoFocus />
+      </Field>
       <Field label="Bauherr (Nachname) *" htmlFor={`${id}-bh`}>
         <Input id={`${id}-bh`} value={v.bauherrLabel} onChange={(e) => setV({ ...v, bauherrLabel: e.target.value })} />
       </Field>
@@ -344,6 +339,7 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
   const { mutate, today } = useData();
   const { save, busy, error, clearError } = useProjectSave(project, data);
   const [v, setV] = useState({
+    abmNr: project.abmNr ?? "",
     companyId: project.companyId ?? "",
     location: project.location ?? "",
     architectId: project.architectId ?? "",
@@ -356,6 +352,21 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
   const architects = data.team.filter((t) => t.role === "architekt");
   const planers = data.team.filter((t) => t.role === "planer");
   const id = `pd-${project.id}`;
+  const others = data.projects.filter((x) => x.id !== project.id);
+  const prefixOf = (companyId: string) => data.companies.find((c) => c.id === companyId)?.numberPrefix;
+  const suggestion = suggestAbmNr(prefixOf(v.companyId), others);
+  /** Firma gewählt: leere ABM-Nr. (oder der letzte Vorschlag) wird mit der nächsten Nummer der Firma vorbelegt */
+  const chooseCompany = (companyId: string) =>
+    setV((old) => {
+      const auto = !old.abmNr.trim() || old.abmNr === suggestAbmNr(prefixOf(old.companyId), others);
+      return { ...old, companyId, ...(auto ? { abmNr: suggestAbmNr(prefixOf(companyId), others) } : {}) };
+    });
+  /** ABM-Nr. eingegeben: fehlt die Firma, wird sie aus dem Nummernkreis vorgeschlagen */
+  const typeAbm = (abmNr: string) =>
+    setV((old) => {
+      const match = !old.companyId ? companyForAbm(abmNr, data.companies) : null;
+      return { ...old, abmNr, ...(match ? { companyId: match.id } : {}) };
+    });
   const create = async <T extends { id: string }>(fn: Parameters<typeof mutate<T>>[0]) => {
     const res = await mutate(fn);
     if (!res.ok) throw new Error(res.error);
@@ -366,7 +377,7 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
     void save(
       {
         project: {
-          ...(project.kind === "neubau" ? { companyId: v.companyId || null } : {}),
+          ...(project.kind === "neubau" ? { companyId: v.companyId || null, abmNr: v.abmNr } : {}),
           location: v.location,
           architectId: v.architectId || null,
           planerId: v.planerId || null,
@@ -389,11 +400,18 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
             value={v.companyId}
             emptyLabel="Noch offen"
             options={data.companies.map((c) => ({ value: c.id, label: c.name }))}
-            onChange={(x) => setV((old) => ({ ...old, companyId: x }))}
+            onChange={chooseCompany}
             onCreate={(name) => create((r) => r.createCompany(name))}
             canCreate
             createPlaceholder="Name der Hausbaufirma"
           />
+        </Field>
+      )}
+      {project.kind === "neubau" && (
+        <Field label="ABM-Nr." htmlFor={`${id}-abm`}>
+          <Input id={`${id}-abm`} value={v.abmNr} onChange={(e) => typeAbm(e.target.value)} placeholder="z. B. 8161-1588" inputMode="numeric" autoComplete="off" />
+          <AbmHinweise abmNr={v.abmNr} companyId={v.companyId} companies={data.companies} onUseCompany={(c) => chooseCompany(c.id)} />
+          {suggestion && v.abmNr === suggestion && v.abmNr !== project.abmNr && <span className="field-hint">Vorschlag: nächste freie Nummer dieser Hausbaufirma, änderbar.</span>}
         </Field>
       )}
       <div className="dialog-row">

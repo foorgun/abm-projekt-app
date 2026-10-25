@@ -17,10 +17,11 @@ const reinhardt = db.projects.find((p) => p.bauherrLabel === "Reinhardt")!;
 
 describe("Suche", () => {
   it("findet ABM-Nr. auch mit Leerzeichen oder ohne Bindestrich", () => {
-    expect(matchesQuery(reinhardt, "8161-101")).toBe(true);
-    expect(matchesQuery(reinhardt, "8161 101")).toBe(true);
-    expect(matchesQuery(reinhardt, "8161101")).toBe(true);
-    expect(matchesQuery(reinhardt, "8161-102")).toBe(false);
+    expect(reinhardt.abmNr).toBe("8161-1571");
+    expect(matchesQuery(reinhardt, "8161-1571")).toBe(true);
+    expect(matchesQuery(reinhardt, "8161 1571")).toBe(true);
+    expect(matchesQuery(reinhardt, "81611571")).toBe(true);
+    expect(matchesQuery(reinhardt, "8161-1572")).toBe(false);
   });
 
   it("findet Bauherr, Ort und Firma, Groß/Klein egal, mehrere Wörter UND-verknüpft", () => {

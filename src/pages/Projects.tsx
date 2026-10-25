@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, Check, ChevronDown, ChevronRight, Columns3, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, ChevronRight, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { ColumnPanel } from "../components/ColumnPanel";
 import { DraftsCard } from "../components/DraftsCard";
 import { ProjectHistory } from "../components/ProjectHistory";
 import { StatusPill, WarnIcon } from "../components/ProjectBits";
 import { PageHead } from "../components/layout/PageHead";
 import { useNewProject } from "../components/NewProjectDialog";
-import { Button, buttonClass, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Menu, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
+import { Button, buttonClass, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
+import { abmSortKey } from "../lib/abmNr";
 import type { Alert } from "../lib/alerts";
 import { isPilot } from "../lib/appMode";
 import { formatDate, formatDue, formatMonth } from "../lib/format";
@@ -23,6 +25,16 @@ import {
   type ProjectSort,
   type ProjectTab,
 } from "../lib/projectFilters";
+import {
+  COLUMN_DEFS,
+  columnsStorageKey,
+  loadColumns,
+  resetColumns,
+  saveColumns,
+  visibleColumns,
+  type ColumnKey,
+  type ColumnState,
+} from "../lib/projectColumns";
 import { allPhases, nextStep, phaseOf, progressOf } from "../lib/projects";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
@@ -31,25 +43,7 @@ import type { Project } from "../lib/types";
 const TAB_PATH: Record<ProjectTab, string> = { alle: "/projekte", aktiv: "/projekte/aktiv", abgeschlossen: "/projekte/abgeschlossen" };
 const TAB_TITLE: Record<ProjectTab, string> = { alle: "Alle Projekte", aktiv: "Aktive Projekte", abgeschlossen: "Abgeschlossene Projekte" };
 
-// Spalten, die selten gebraucht werden: über das Menü "Spalten" einblendbar, Auswahl bleibt im Browser gespeichert
-type OptionalColumn = "firma" | "architekt" | "fortschritt";
-const OPTIONAL_COLUMNS: { key: OptionalColumn; label: string }[] = [
-  { key: "firma", label: "Firma" },
-  { key: "architekt", label: "Architekt" },
-  { key: "fortschritt", label: "Fortschrittsbalken" },
-];
-const COLUMNS_KEY = "abm.projekte.spalten";
-
 const historyId = (projectId: string) => `verlauf-${projectId}`;
-
-function readColumns(): OptionalColumn[] {
-  try {
-    const saved = (localStorage.getItem(COLUMNS_KEY) ?? "").split(",");
-    return OPTIONAL_COLUMNS.map((c) => c.key).filter((k) => saved.includes(k));
-  } catch {
-    return [];
-  }
-}
 
 export function Projects({ tab }: { tab: ProjectTab }) {
   const { data, loading, error, reload, alerts, today } = useData();
@@ -61,7 +55,11 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const openNewProject = useNewProject();
   const staff = user.role !== "freiberufler";
   const pilot = isPilot();
-  const [extraColumns, setExtraColumns] = useState(readColumns);
+  // Im Pilot ohne Aufgaben: nur der nächste Prozessschritt
+  const columnLabel = { ...Object.fromEntries(COLUMN_DEFS.map((c) => [c.key, c.label])), next: pilot ? "Nächster Schritt" : "Nächste Aufgabe" } as Record<ColumnKey, string>;
+  // Spaltenauswahl und Reihenfolge: je Benutzer im Browser gespeichert (lib/projectColumns)
+  const columnsKey = columnsStorageKey(user);
+  const [columnState, setColumnState] = useState<ColumnState>(() => loadColumns(columnsKey));
   // Wer mit gesetztem Filter ankommt (z. B. vom Dashboard), sieht die Filterleiste gleich offen
   const moreFilters = [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.group, filters.storno].filter(Boolean).length;
   const [filtersOpen, setFiltersOpen] = useState(moreFilters > 0);
@@ -77,14 +75,9 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     [],
   );
 
-  function toggleColumn(key: OptionalColumn) {
-    const next = extraColumns.includes(key) ? extraColumns.filter((k) => k !== key) : [...extraColumns, key];
-    setExtraColumns(next);
-    try {
-      localStorage.setItem(COLUMNS_KEY, next.join(","));
-    } catch {
-      // ohne Speicher gilt die Auswahl nur für diesen Besuch
-    }
+  function changeColumns(next: ColumnState) {
+    setColumnState(next);
+    saveColumns(columnsKey, next);
   }
 
   const setFilters = useCallback(
@@ -128,55 +121,83 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     : null;
   const filtered = Boolean(filters.q || filters.company || filters.architect || filters.phase);
 
-  const allColumns: Column<Project>[] = [
-    {
-      key: "verlauf",
-      header: <span className="sr-only">Verlauf</span>,
-      className: "toggle-cell",
-      render: (p) => {
-        const open = openRows.has(p.id);
-        return (
-          <button
-            type="button"
-            className="row-toggle"
-            aria-expanded={open}
-            aria-controls={open ? historyId(p.id) : undefined}
-            aria-label={`Verlauf ${open ? "ausblenden" : "anzeigen"}: ${p.bauherrLabel}`}
-            title={open ? "Verlauf ausblenden" : "Verlauf anzeigen"}
-            onClick={(e) => {
-              // nur aufklappen, das Projekt nicht öffnen (der Zeilenklick bleibt für die Zeile selbst)
-              e.stopPropagation();
-              toggleRow(p.id);
-            }}
-          >
-            <ChevronRight size={15} aria-hidden />
-          </button>
-        );
-      },
+  const salesName = new Map((data?.salespeople ?? []).map((x) => [x.id, x.name]));
+  const toggleColumn: Column<Project> = {
+    key: "verlauf",
+    header: <span className="sr-only">Verlauf</span>,
+    className: "toggle-cell",
+    render: (p) => {
+      const open = openRows.has(p.id);
+      return (
+        <button
+          type="button"
+          className="row-toggle"
+          aria-expanded={open}
+          aria-controls={open ? historyId(p.id) : undefined}
+          aria-label={`Verlauf ${open ? "ausblenden" : "anzeigen"}: ${p.bauherrLabel}`}
+          title={open ? "Verlauf ausblenden" : "Verlauf anzeigen"}
+          onClick={(e) => {
+            // nur aufklappen, das Projekt nicht öffnen (der Zeilenklick bleibt für die Zeile selbst)
+            e.stopPropagation();
+            toggleRow(p.id);
+          }}
+        >
+          <ChevronRight size={15} aria-hidden />
+        </button>
+      );
     },
-    {
+  };
+  const openColumn: Column<Project> = {
+    key: "oeffnen",
+    header: <span className="sr-only">Aktion</span>,
+    className: "action-cell",
+    render: (p) => (
+      <Link
+        to={`/projekte/${p.id}`}
+        className={buttonClass("outline", "sm", "row-open")}
+        title={`Projekt öffnen: ${p.bauherrLabel}`}
+        // eigenes Klickziel: nicht zusätzlich den Zeilenklick auslösen
+        onClick={(e) => e.stopPropagation()}
+      >
+        <ArrowRight size={14} aria-hidden />
+        <span className="row-open-label">Projekt öffnen</span>
+      </Link>
+    ),
+  };
+  const dash = (v: string | null | undefined) => v || "–";
+  const stepColumn = (key: ColumnKey): Column<Project> => ({
+    key,
+    header: columnLabel[key],
+    className: "nowrap",
+    render: (p) => (p.steps[key] ? formatDate(p.steps[key]!) : "–"),
+    sortValue: (p) => p.steps[key] ?? null,
+  });
+  // Wählbare Spalten (Reihenfolge und Sichtbarkeit aus columnState). Leere Werte zeigen "–".
+  const selectable: Record<ColumnKey, Column<Project>> = {
+    abm: {
       key: "abm",
       header: "ABM-Nr.",
       strong: true,
-      render: (p) => (p.kind === "bauvoranfrage" ? <abbr title="Bauvoranfrage">BVA</abbr> : p.abmNr ?? "–"),
-      sortValue: (p) => p.abmNr ?? "",
+      className: "nowrap",
+      render: (p) => (p.kind === "bauvoranfrage" ? <abbr title="Bauvoranfrage">BVA</abbr> : dash(p.abmNr)),
+      // numerisch: erst Nummernkreis, dann Nummer (8185-633 vor 8185-1588)
+      sortValue: (p) => abmSortKey(p.abmNr),
     },
-    {
-      key: "bauherr",
-      header: "Bauherr · Ort",
-      render: (p) => (
-        <>
-          <span className="cell-main">{p.bauherrLabel}</span>
-          <span className="cell-sub">{p.location ?? "–"}</span>
-        </>
-      ),
-      sortValue: (p) => p.bauherrLabel,
-    },
-    { key: "firma", header: "Firma", render: (p) => (p.companyId ? companyName.get(p.companyId) ?? "–" : "–"), sortValue: (p) => (p.companyId ? companyName.get(p.companyId) ?? "" : "") },
-    { key: "architekt", header: <abbr title="Architekt">Arch.</abbr>, render: (p) => teamCode(p.architectId, team), sortValue: (p) => teamCode(p.architectId, team) },
-    {
-      key: "phase",
-      header: "Phase",
+    bauherr: { key: "bauherr", header: "Bauherr", render: (p) => p.bauherrLabel, sortValue: (p) => p.bauherrLabel },
+    firma: { key: "firma", header: "Hausbaufirma", render: (p) => dash(p.companyId && companyName.get(p.companyId)), sortValue: (p) => (p.companyId ? companyName.get(p.companyId) ?? null : null) },
+    ort: { key: "ort", header: "Bauort", render: (p) => dash(p.location), sortValue: (p) => p.location },
+    verkaeufer: { key: "verkaeufer", header: "Verkäufer", render: (p) => dash(p.salespersonId && salesName.get(p.salespersonId)), sortValue: (p) => (p.salespersonId ? salesName.get(p.salespersonId) ?? null : null) },
+    architekt: { key: "architekt", header: <abbr title="Architekt">Arch.</abbr>, render: (p) => teamCode(p.architectId, team), sortValue: (p) => (p.architectId ? teamCode(p.architectId, team) : null) },
+    planer: { key: "planer", header: "Planer", render: (p) => teamCode(p.planerId, team), sortValue: (p) => (p.planerId ? teamCode(p.planerId, team) : null) },
+    plangespraech: stepColumn("plangespraech"),
+    baugesuch_uebergabe: stepColumn("baugesuch_uebergabe"),
+    vertrag_versendet: stepColumn("vertrag_versendet"),
+    vertrag_zurueck: stepColumn("vertrag_zurueck"),
+    baugenehmigung: stepColumn("baugenehmigung"),
+    baubetreuung: { key: "baubetreuung", header: "Baubetreuung", render: (p) => dash(p.baubetreuung), sortValue: (p) => p.baubetreuung },
+    status: {
+      key: "status",
+      header: "Status",
       // Abgeschlossene und stornierte Projekte zeigen ihren Status statt der letzten Phase
       render: (p) => {
         if (p.status !== "aktiv") return <StatusPill status={p.status} />;
@@ -192,7 +213,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
       },
       sortValue: (p) => (p.status === "aktiv" ? phaseOf(p, steps).index : p.status === "abgeschlossen" ? 100 : 101),
     },
-    {
+    fortschritt: {
       key: "fortschritt",
       header: "Schritte",
       render: (p) => {
@@ -201,10 +222,9 @@ export function Projects({ tab }: { tab: ProjectTab }) {
       },
       sortValue: (p) => progressOf(p, steps).done,
     },
-    {
+    next: {
       key: "next",
-      // Im Pilot ohne Aufgaben: nur der nächste Prozessschritt
-      header: pilot ? "Nächster Schritt" : "Nächste Aufgabe",
+      header: columnLabel.next,
       render: (p) => {
         const t = data && !pilot ? nextTaskFor(p.id, data.tasks) : null;
         if (t) {
@@ -231,26 +251,10 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         );
       },
     },
-    { key: "warn", header: <span className="sr-only">Warnung</span>, className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
-    {
-      key: "oeffnen",
-      header: <span className="sr-only">Aktion</span>,
-      className: "action-cell",
-      render: (p) => (
-        <Link
-          to={`/projekte/${p.id}`}
-          className={buttonClass("outline", "sm", "row-open")}
-          title={`Projekt öffnen: ${p.bauherrLabel}`}
-          // eigenes Klickziel: nicht zusätzlich den Zeilenklick auslösen
-          onClick={(e) => e.stopPropagation()}
-        >
-          <ArrowRight size={14} aria-hidden />
-          <span className="row-open-label">Projekt öffnen</span>
-        </Link>
-      ),
-    },
-  ];
-  const columns = allColumns.filter((c) => !OPTIONAL_COLUMNS.some((o) => o.key === c.key) || extraColumns.includes(c.key as OptionalColumn));
+    warn: { key: "warn", header: <span className="sr-only">Warnung</span>, className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
+  };
+  // Pfeil links und "Projekt öffnen" rechts stehen immer da; dazwischen die gewählten Spalten
+  const columns = [toggleColumn, ...visibleColumns(columnState).map((k) => selectable[k]), openColumn];
 
   const phaseOptions = [{ value: "", label: "Alle Phasen" }, ...allPhases(steps).map((ph) => ({ value: ph.key, label: ph.label }))];
 
@@ -285,18 +289,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
             <Button icon={<SlidersHorizontal size={15} />} aria-expanded={filtersOpen} aria-controls="projekt-filter" onClick={() => setFiltersOpen((o) => !o)}>
               Filter{moreFilters > 0 && ` · ${moreFilters}`}
             </Button>
-            <Menu
-              items={OPTIONAL_COLUMNS.map((c) => ({
-                label: c.label,
-                icon: <Check size={14} className={extraColumns.includes(c.key) ? undefined : "invisible"} aria-hidden />,
-                onSelect: () => toggleColumn(c.key),
-              }))}
-              trigger={(t) => (
-                <Button icon={<Columns3 size={15} />} aria-label="Spalten ein- und ausblenden" {...t}>
-                  Spalten <ChevronDown size={14} />
-                </Button>
-              )}
-            />
+            <ColumnPanel state={columnState} labels={columnLabel} onChange={changeColumns} onReset={() => setColumnState(resetColumns(columnsKey))} />
           </div>
           {filtersOpen && (
             <div className="filters filters-more" id="projekt-filter">
@@ -343,7 +336,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
             </span>
           </div>
           {loading || !data ? (
-            <TableSkeleton rows={8} cols={9} />
+            <TableSkeleton rows={8} cols={columns.length} />
           ) : list.length ? (
             <DataTable
               compact

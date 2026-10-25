@@ -18,18 +18,19 @@ import {
   type Sicherheit,
   type Vertragsart,
 } from "../lib/extract";
+import { companyForAbm, suggestAbmNr } from "../lib/abmNr";
 import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
 import { folgeAnschrift } from "../lib/projectEdit";
-import { compareAbm } from "../lib/projectFilters";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
 import type { NewProject } from "../lib/repo";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { ContractMeta, Project } from "../lib/types";
+import { AbmHinweise } from "./AbmHinweise";
 import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
@@ -53,18 +54,6 @@ export function NewProjectProvider({ children }: { children: ReactNode }) {
 
 export function useNewProject() {
   return useContext(NewProjectContext);
-}
-
-/** Vorschlag für die nächste freie ABM-Nr. einer Firma (Präfix + höchste Nummer + 1). */
-export function suggestAbmNr(prefix: string | null, projects: Project[]): string {
-  if (!prefix) return "";
-  const nums = projects
-    .map((p) => p.abmNr)
-    .filter((n): n is string => Boolean(n?.startsWith(`${prefix}-`)))
-    .sort(compareAbm);
-  const last = nums[nums.length - 1];
-  const next = last ? Number(last.split("-")[1]) + 1 : 1;
-  return `${prefix}-${String(next).padStart(3, "0")}`;
 }
 
 const SICHERHEIT_TONE: Record<Sicherheit, Tone> = { hoch: "ok", mittel: "neutral", niedrig: "warn" };
@@ -173,6 +162,17 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const surveyors = [...new Set([...(data?.parties ?? []).filter((p) => p.role === "vermesser").map((p) => p.name), ...newSurveyors])].sort((a, b) => a.localeCompare(b, "de"));
   const company = companies.find((c) => c.id === v.companyId);
   const suggestion = v.kind === "neubau" ? suggestAbmNr(company?.numberPrefix ?? null, projects) : "";
+  /** Firma gewählt: ist die ABM-Nr. leer (oder noch der letzte Vorschlag), wird die nächste Nummer der Firma eingetragen */
+  const chooseCompany = (id: string) => {
+    const next = companies.find((c) => c.id === id);
+    const auto = !v.abmNr || v.abmNr === suggestion;
+    set({ companyId: id || null, salespersonId: null, ...(auto ? { abmNr: suggestAbmNr(next?.numberPrefix, projects) || null } : {}) });
+  };
+  /** ABM-Nr. eingegeben: ist noch keine Firma gewählt, wird die Firma des Nummernkreises vorgeschlagen (änderbar) */
+  const typeAbm = (value: string) => {
+    const match = !v.companyId ? companyForAbm(value, companies) : null;
+    set({ abmNr: value || null, ...(match ? { companyId: match.id, salespersonId: null } : {}) });
+  };
   // Bauvoranfrage: weder ABM-Nr. noch Firma
   const effective: NewProject = v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v;
   const missing = missingProjectInfo(infoStateOfNew(effective));
@@ -621,8 +621,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
                   value={v.companyId ?? ""}
                   emptyLabel="Noch offen"
                   options={companies.map((c) => ({ value: c.id, label: c.name }))}
-                  // Firma gewechselt: der Verkäufer passt sonst nicht mehr
-                  onChange={(id) => set({ companyId: id || null, salespersonId: null })}
+                  // Firma gewechselt: der Verkäufer passt sonst nicht mehr; die ABM-Nr. folgt dem Nummernkreis
+                  onChange={chooseCompany}
                   onCreate={(name) => createVia((r) => r.createCompany(name))}
                   canCreate={canCreate}
                   createPlaceholder="Name der Hausbaufirma"
@@ -648,11 +648,12 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
           <div className="dialog-row">
             {v.kind === "neubau" && (
               <Field label="ABM-Nr." htmlFor="np-abm">
-                <Input id="np-abm" value={v.abmNr ?? ""} onChange={(e) => set({ abmNr: e.target.value || null })} placeholder="z. B. 8161-123" {...invalid("abmNr")} />
+                <Input id="np-abm" value={v.abmNr ?? ""} onChange={(e) => typeAbm(e.target.value)} placeholder="z. B. 8161-1588" inputMode="numeric" autoComplete="off" {...invalid("abmNr")} />
                 <Err k="abmNr" />
-                {!show("abmNr") && (
+                <AbmHinweise abmNr={v.abmNr} companyId={v.companyId} companies={companies} onUseCompany={(c) => chooseCompany(c.id)} />
+                {!show("abmNr") && (!v.abmNr || v.abmNr === suggestion) && (
                   <span className="field-hint">
-                    Optional, lässt sich nachtragen.
+                    {v.abmNr ? "Vorschlag: nächste freie Nummer dieser Hausbaufirma, änderbar." : "Optional, lässt sich nachtragen."}
                     {suggestion && !v.abmNr && (
                       <>
                         {" "}

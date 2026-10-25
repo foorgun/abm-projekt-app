@@ -13,6 +13,7 @@ import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
+import { cleanPrefix } from "./abmNr";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewProject } from "./projectForm";
 import {
@@ -358,13 +359,31 @@ export function createSupabaseRepo(): Repo {
       if (error) fail(error, "Projektdaten konnten nicht gespeichert werden");
     },
 
-    async createCompany(name) {
+    async createCompany(name, numberPrefix = null) {
       requireStaff();
+      // Nummernkreis nur durch Admins; die Datenbank prüft das ebenfalls (companies_prefix_insert_admin, 0017)
+      if (numberPrefix && user.role !== "admin") throw new PermissionError();
       const c = cleanMasterName(name, (last?.companies ?? []).map((x) => x.name));
       if (!c.ok) throw new Error(c.reason);
-      const { data, error } = await sb.from("companies").insert({ name: c.name }).select(COLS.companies).single();
+      const p = cleanPrefix(numberPrefix ?? "", null, last?.companies ?? []);
+      if (!p.ok) throw new Error(p.reason);
+      const { data, error } = await sb
+        .from("companies")
+        .insert(p.prefix ? { name: c.name, number_prefix: p.prefix } : { name: c.name })
+        .select(COLS.companies)
+        .single();
       if (error) fail(error, "Hausbaufirma konnte nicht angelegt werden");
       return toCompany(data as unknown as Row);
+    },
+
+    async setCompanyPrefix(companyId, numberPrefix) {
+      if (user.role !== "admin") throw new PermissionError();
+      const p = cleanPrefix(numberPrefix ?? "", companyId, last?.companies ?? []);
+      if (!p.ok) throw new Error(p.reason);
+      // Die Zeilenregel companies_update_admin lässt nur Admins ändern; trifft das Update keine Zeile, fehlt die Berechtigung
+      const { data, error } = await sb.from("companies").update({ number_prefix: p.prefix }).eq("id", companyId).select("id");
+      if (error) fail(error, "Nummernkreis konnte nicht gespeichert werden");
+      if (!data?.length) throw new PermissionError();
     },
 
     async createSalesperson(companyId, name) {

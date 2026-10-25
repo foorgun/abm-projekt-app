@@ -154,3 +154,69 @@ describe("Projektliste: Projekt öffnen", () => {
     expect(ort()).toMatch(/^\/projekte\/[^/?]+$/);
   });
 });
+
+describe("Projektliste: Spalten wählen und sortieren", () => {
+  const KEY = "abm.projekte.spalten.v2.demo-admin";
+  const headers = () => [...host.querySelectorAll("thead th")].map((th) => th.textContent?.trim() ?? "");
+  const item = (label: string) => [...host.querySelectorAll<HTMLLIElement>(".col-item")].find((li) => li.querySelector("label")?.textContent === label)!;
+  async function openPanel() {
+    const btn = [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Spalten"))!;
+    await click(btn);
+  }
+
+  beforeEach(() => localStorage.removeItem(KEY));
+
+  it("zeigt die Standardspalten; Pfeil links und Projekt öffnen rechts bleiben", async () => {
+    await render();
+    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Hausbaufirma", "Bauort", "Planer", "Status", "Aktion"]);
+    expect(toggles().length).toBeGreaterThan(0);
+    expect(openLinks()).toHaveLength(toggles().length);
+  });
+
+  it("blendet ein und aus, sortiert um, speichert und lädt die Auswahl; Zurücksetzen stellt den Standard her", async () => {
+    await render();
+    await openPanel();
+    await click(item("Verkäufer").querySelector("input")!);
+    await click(item("Hausbaufirma").querySelector("input")!);
+    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Bauort", "Verkäufer", "Planer", "Status", "Aktion"]);
+    await click(item("Status").querySelector('button[aria-label="Status nach oben"]')!);
+    for (let i = 0; i < 12; i++) await click(item("Status").querySelector('button[aria-label="Status nach oben"]')!);
+    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Status", "ABM-Nr."]);
+    expect(item("Status").querySelector<HTMLButtonElement>('button[aria-label="Status nach oben"]')!.disabled).toBe(true);
+    expect(JSON.parse(localStorage.getItem(KEY)!)[0]).toEqual({ key: "status", visible: true });
+
+    // neu laden: die Auswahl bleibt
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render();
+    expect(headers()).toEqual(["Verlauf", "Status", "ABM-Nr.", "Bauherr", "Bauort", "Verkäufer", "Planer", "Aktion"]);
+
+    await openPanel();
+    await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Zurücksetzen")!);
+    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Hausbaufirma", "Bauort", "Planer", "Status", "Aktion"]);
+    expect(localStorage.getItem(KEY)).toBeNull();
+  });
+
+  it("Drag-and-drop verschiebt eine Spalte an die Stelle der Zielzeile", async () => {
+    await render();
+    await openPanel();
+    const fire = (el: Element, type: string) => {
+      const e = new Event(type, { bubbles: true, cancelable: true }) as Event & { dataTransfer: unknown };
+      e.dataTransfer = { setData() {}, effectAllowed: "", dropEffect: "" };
+      el.dispatchEvent(e);
+    };
+    await act(async () => fire(item("Planer"), "dragstart"));
+    await act(async () => fire(item("ABM-Nr."), "dragover"));
+    await act(async () => fire(item("ABM-Nr."), "drop"));
+    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Planer", "ABM-Nr."]);
+  });
+
+  it("Schritt-Spalten zeigen das Datum oder –", async () => {
+    localStorage.setItem(KEY, JSON.stringify([{ key: "bauherr", visible: true }, { key: "plangespraech", visible: true }, { key: "baubetreuung", visible: true }]));
+    await render();
+    expect(headers()).toEqual(["Verlauf", "Bauherr", "Plan-Gespräch", "Baubetreuung", "Aktion"]);
+    const cells = [...host.querySelectorAll("tbody tr td:nth-child(3)")].map((td) => td.textContent);
+    expect(cells.every((t) => t === "–" || /^\d{2}\.\d{2}\.\d{4}$/.test(t ?? ""))).toBe(true);
+    expect(cells.some((t) => t !== "–")).toBe(true);
+  });
+});

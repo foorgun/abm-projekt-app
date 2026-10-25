@@ -260,7 +260,8 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const projects: Project[] = [];
   const parties: ProjectParty[] = [];
   const bauherren: BauherrContact[] = [];
-  const numberCounters: Record<string, number> = { "8161": 101, "8260": 41, "8185": 23 };
+  // Laufende Nummern ohne führende Nullen, unterschiedlich lang (wie im Büro: 8161-1588, 8185-633, 8260-321)
+  const numberCounters: Record<string, number> = { "8161": 1571, "8260": 305, "8185": 617 };
 
   specs.forEach((spec, idx) => {
     const id = `p-${pad(idx + 1)}`;
@@ -304,7 +305,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       kind === "bauvoranfrage"
         ? "Bauvoranfrage"
         : company?.numberPrefix
-          ? `${company.numberPrefix}-${pad(numberCounters[company.numberPrefix]++)}`
+          ? `${company.numberPrefix}-${numberCounters[company.numberPrefix]++}`
           : null;
 
     projects.push({
