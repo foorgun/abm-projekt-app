@@ -8,6 +8,29 @@ const admin = { name: "Mehmet Cetin", role: "admin" as const };
 const freelancer = { name: "Frei", role: "freiberufler" as const };
 const repo = () => createDemoRepo(TODAY, { delayMs: 0 });
 
+describe("demoRepo: Projektverlauf (wie RLS, Migration 0016)", () => {
+  it("neueste zuerst, höchstens so viele wie verlangt, nur dieses Projekt", async () => {
+    const r = repo();
+    const d = await r.load(admin);
+    const p = d.projects.find((x) => d.activities.filter((a) => a.projectId === x.id).length > 2)!;
+    const h = await r.projectHistory(p.id, 2);
+    expect(h).toHaveLength(2);
+    expect(h.every((a) => a.projectId === p.id)).toBe(true);
+    expect(h[0].at >= h[1].at).toBe(true);
+  });
+
+  it("Freiberufler: nur zugewiesene Projekte, ohne Rechnungen und Aufgaben", async () => {
+    const r = repo();
+    const all = await r.load(admin);
+    const d = await r.load(freelancer);
+    const mine = new Set(d.projects.map((p) => p.id));
+    expect(d.activities.length).toBeGreaterThan(0);
+    expect(d.activities.every((a) => a.projectId && mine.has(a.projectId) && a.kind !== "rechnung" && a.kind !== "aufgabe")).toBe(true);
+    const foreign = all.projects.find((p) => !mine.has(p.id) && all.activities.some((a) => a.projectId === p.id))!;
+    expect(await r.projectHistory(foreign.id, 10)).toEqual([]);
+  });
+});
+
 describe("demoRepo: Sichtbarkeit wie RLS", () => {
   it("Admin sieht alles", async () => {
     const d = await repo().load(admin);

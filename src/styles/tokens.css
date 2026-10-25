@@ -1,7 +1,8 @@
 /*
  * Design-Tokens, Design v2 (Beschreibung: docs/design-v2.md).
  * Komponenten verwenden ausschließlich diese Variablen, keine Hex-Werte.
- * Dark ist Standard. Light-Werte sind vorbereitet ([data-theme="light"]), werden aber nicht ausgeliefert.
+ * Dark ist Standard. Hell über [data-theme="light"] am <html>-Element (Einstellungen → Darstellung, src/lib/theme.ts).
+ * Kontrast beider Sätze prüft src/styles/contrast.test.ts.
  *
  * Grundregel: neutrale Flächen, keine farbig getönten Flächen.
  * Teal (--accent) nur für Diagramme, aktive Zustände und den Fokusring.
@@ -117,9 +118,13 @@
   --ctl-h-lg: 42px;
   /* keine Schatten in v2: Trennung über Ränder und das Abdunkeln dahinter */
   --shadow-pop: none;
+
+  /* Logo (Bild, weiß auf Schwarz): Schwarz verschwindet über "screen" auf der dunklen Fläche */
+  --logo-filter: none;
+  --logo-blend: screen;
 }
 
-/* Vorbereitet, nicht ausgeliefert. */
+/* Hell: nur, was sich gegenüber Dunkel ändert. Weiße Tönungen (rgba 255) brauchen hier immer einen eigenen Wert. */
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #fafafa;
@@ -133,18 +138,29 @@
   --text: #0a0a0b;
   --text-2: #3f3f46;
   --muted: #63636b;
-  --faint: #71717a;
-  --accent: #1d8f82;
-  --accent-hover: #187a6f;
+  --faint: #6b6b73;
+  /* Teal eine Stufe dunkler: weiße Schrift (Schritt erledigt, heute) erreicht 4,5:1 */
+  --accent: #17796e;
+  --accent-hover: #136a60;
   --accent-soft: rgba(0, 0, 0, 0.05);
   --accent-text: var(--text);
+  --on-accent: #ffffff;
   --primary-bg: #18181b;
   --primary-bg-hover: #27272a;
   --on-primary: #ffffff;
-  --ok: #23955f;
-  --warn: #b7791f;
-  --danger: #d1453b;
-  --info: #2f6fd6;
+  /* Status dunkler als im Dunkelmodus, damit Text auf Weiß und auf der Tönung 4,5:1 erreicht */
+  --ok: #166b43;
+  --ok-soft: rgba(22, 107, 67, 0.1);
+  --warn: #8f5d0c;
+  --warn-soft: rgba(143, 93, 12, 0.1);
+  --danger: #c0352b;
+  --danger-soft: rgba(192, 53, 43, 0.1);
+  --info: #2160c4;
+  --info-soft: rgba(33, 96, 196, 0.1);
+  --neutral-soft: rgba(0, 0, 0, 0.05);
+  --chart-1: #1d8f82;
+  --chart-1-line: #1d8f82;
+  --chart-1-muted: #4f8f88;
   --chart-grid: #f0f0f2;
   --chart-neutral: #52525b;
   --termin-baustelle-text: #7a4d09;
@@ -152,6 +168,9 @@
   --termin-behoerde-text: #4a3aa8;
   --termin-intern: #64748b;
   --termin-intern-text: #3d4a5c;
-  --focus: #1d8f82;
-  --focus-ring: rgba(29, 143, 130, 0.3);
+  --focus: #17796e;
+  --focus-ring: rgba(23, 121, 110, 0.3);
+  /* Logo umkehren (schwarz auf weiß), Weiß verschwindet über "multiply" */
+  --logo-filter: invert(1);
+  --logo-blend: multiply;
 }

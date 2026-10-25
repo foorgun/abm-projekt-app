@@ -67,6 +67,13 @@ export function monthStart(iso: string): string {
   return `${iso.slice(0, 7)}-01`;
 }
 
+/** Datum und Uhrzeit in der Zeitzone des Browsers: "24.10.2026, 14:05". Reines Datum ohne Uhrzeit: nur das Datum. */
+export function formatDateTime(atIso: string): string {
+  if (atIso.length <= 10) return formatDate(atIso);
+  const at = new Date(atIso);
+  return `${formatDate(todayIso(at))}, ${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+}
+
 /** Relative Zeitangabe: "gerade eben", "vor 12 Min.", "vor 3 Std.", "gestern, 14:05", "vor 4 Tagen", sonst Datum. */
 export function formatRelative(atIso: string, now: Date = new Date()): string {
   const at = new Date(atIso.length <= 10 ? `${atIso}T12:00:00` : atIso);

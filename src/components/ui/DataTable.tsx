@@ -22,6 +22,7 @@ export function DataTable<T>({
   rowKey,
   onRowClick,
   expand,
+  isExpanded,
   label,
   initialSort,
   groupBy,
@@ -35,6 +36,11 @@ export function DataTable<T>({
   onRowClick?: (row: T) => void;
   /** Inhalt der aufgeklappten Zeile; macht Zeilen aufklappbar. */
   expand?: (row: T) => ReactNode;
+  /**
+   * Aufklappen von außen steuern (eigener Knopf in einer Spalte): welche Zeilen offen sind. Dann bleibt der Klick auf die
+   * Zeile bei onRowClick, und `expand` liefert nur den Inhalt der offenen Zeilen.
+   */
+  isExpanded?: (row: T) => boolean;
   label: string;
   initialSort?: { key: string; dir: "asc" | "desc" };
   /** Gruppiert Zeilen (z. B. nach Eingangsmonat). Reihenfolge der Gruppen = Reihenfolge des ersten Auftretens. */
@@ -72,7 +78,8 @@ export function DataTable<T>({
     setSort((s) => (s?.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null));
   }
 
-  const clickable = Boolean(onRowClick || expand);
+  const controlled = Boolean(isExpanded);
+  const clickable = Boolean(onRowClick || (expand && !controlled));
 
   // Gruppen: stabil nach erstem Auftreten, innerhalb der Gruppe bleibt die Sortierung erhalten
   const grouped = useMemo(() => {
@@ -89,14 +96,14 @@ export function DataTable<T>({
 
   function renderRow(row: T) {
     const k = rowKey(row);
-    const isOpen = open === k;
-    const toggle = () => (expand ? setOpen(isOpen ? null : k) : onRowClick?.(row));
+    const isOpen = isExpanded ? isExpanded(row) : open === k;
+    const toggle = () => (expand && !controlled ? setOpen(isOpen ? null : k) : onRowClick?.(row));
     return (
       <Fragment key={k}>
         <tr
           data-clickable={clickable}
           tabIndex={clickable ? 0 : undefined}
-          aria-expanded={expand ? isOpen : undefined}
+          aria-expanded={expand && !controlled ? isOpen : undefined}
           onClick={toggle}
           onKeyDown={(e) => {
             if (!clickable || (e.key !== "Enter" && e.key !== " ") || e.target !== e.currentTarget) return;

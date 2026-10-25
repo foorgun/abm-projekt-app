@@ -1,11 +1,12 @@
-import { useState, type FormEvent } from "react";
-import { Building2, Hammer, Lock, Pencil } from "lucide-react";
+import { useId, useState, type FormEvent } from "react";
+import { Building2, Hammer, Lock, Pencil, SunMoon } from "lucide-react";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
-import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Skeleton } from "../components/ui";
+import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Select, SettingRow, Skeleton } from "../components/ui";
 import { isPilot } from "../lib/appMode";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
+import { readThemePref, setThemePref, THEME_OPTIONS, type ThemePref } from "../lib/theme";
 import type { BueroDaten } from "../lib/types";
 
 const FELDER: { key: keyof BueroDaten; label: string; type?: string; placeholder?: string }[] = [
@@ -16,7 +17,10 @@ const FELDER: { key: keyof BueroDaten; label: string; type?: string; placeholder
   { key: "email", label: "E-Mail", type: "email" },
 ];
 
-/** Einstellungen. Bisher: Bürodaten für das Planungsprotokoll (lesen Admin und Mitarbeiter, ändern nur Admins). */
+/**
+ * Einstellungen: Darstellung (jede Rolle, gilt für diesen Browser) und Bürodaten für das Planungsprotokoll
+ * (lesen Admin und Mitarbeiter, ändern nur Admins).
+ */
 export function Einstellungen() {
   const { user } = useSession();
   const { data, loading } = useData();
@@ -24,16 +28,20 @@ export function Einstellungen() {
     return (
       <>
         <PageHead title="Einstellungen" />
-        <Card>
-          <EmptyState icon={<Lock size={18} />} title="Nur für Mitarbeiter" text="Die Einstellungen des Büros sind für Freiberufler nicht freigegeben." />
-        </Card>
+        <div className="stack settings-page">
+          <DarstellungKarte />
+          <Card>
+            <EmptyState icon={<Lock size={18} />} title="Bürodaten nur für Mitarbeiter" text="Die Einstellungen des Büros sind für Freiberufler nicht freigegeben." />
+          </Card>
+        </div>
       </>
     );
   }
   return (
     <>
-      <PageHead title="Einstellungen" sub="Daten des Büros. Weitere Einstellungen folgen." />
+      <PageHead title="Einstellungen" sub="Darstellung und Daten des Büros. Weitere Einstellungen folgen." />
       <div className="stack settings-page">
+        <DarstellungKarte />
         {loading || !data ? (
           <Card>
             <CardBody>
@@ -50,6 +58,33 @@ export function Einstellungen() {
         )}
       </div>
     </>
+  );
+}
+
+/** Hell, Dunkel oder wie das System. Wird sofort angewendet und im Browser gespeichert (kein Profil in der Datenbank). */
+export function DarstellungKarte() {
+  const [pref, setPref] = useState<ThemePref>(readThemePref);
+  const id = useId();
+  return (
+    <Card>
+      <SettingRow
+        icon={<SunMoon size={16} />}
+        title={<label htmlFor={id}>Darstellung</label>}
+        description="Gilt für diesen Browser. „System“ folgt der Einstellung des Geräts."
+        action={
+          <Select
+            id={id}
+            value={pref}
+            options={THEME_OPTIONS}
+            onChange={(e) => {
+              const next = e.target.value as ThemePref;
+              setPref(next);
+              setThemePref(next);
+            }}
+          />
+        }
+      />
+    </Card>
   );
 }
 

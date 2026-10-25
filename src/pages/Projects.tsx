@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from "react";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { Check, ChevronDown, Columns3, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowRight, Check, ChevronDown, ChevronRight, Columns3, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
 import { DraftsCard } from "../components/DraftsCard";
+import { ProjectHistory } from "../components/ProjectHistory";
 import { StatusPill, WarnIcon } from "../components/ProjectBits";
 import { PageHead } from "../components/layout/PageHead";
 import { useNewProject } from "../components/NewProjectDialog";
-import { Button, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Menu, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
+import { Button, buttonClass, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Menu, Progress, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import type { Alert } from "../lib/alerts";
 import { isPilot } from "../lib/appMode";
 import { formatDate, formatDue, formatMonth } from "../lib/format";
@@ -39,6 +40,8 @@ const OPTIONAL_COLUMNS: { key: OptionalColumn; label: string }[] = [
 ];
 const COLUMNS_KEY = "abm.projekte.spalten";
 
+const historyId = (projectId: string) => `verlauf-${projectId}`;
+
 function readColumns(): OptionalColumn[] {
   try {
     const saved = (localStorage.getItem(COLUMNS_KEY) ?? "").split(",");
@@ -62,6 +65,17 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   // Wer mit gesetztem Filter ankommt (z. B. vom Dashboard), sieht die Filterleiste gleich offen
   const moreFilters = [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.group, filters.storno].filter(Boolean).length;
   const [filtersOpen, setFiltersOpen] = useState(moreFilters > 0);
+  // Aufgeklappte Zeilen (Verlauf). Bleibt beim Filtern und Sortieren erhalten; die Seite selbst bleibt stehen.
+  const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleRow = useCallback(
+    (id: string) =>
+      setOpenRows((cur) => {
+        const next = new Set(cur);
+        if (!next.delete(id)) next.add(id);
+        return next;
+      }),
+    [],
+  );
 
   function toggleColumn(key: OptionalColumn) {
     const next = extraColumns.includes(key) ? extraColumns.filter((k) => k !== key) : [...extraColumns, key];
@@ -115,6 +129,31 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const filtered = Boolean(filters.q || filters.company || filters.architect || filters.phase);
 
   const allColumns: Column<Project>[] = [
+    {
+      key: "verlauf",
+      header: <span className="sr-only">Verlauf</span>,
+      className: "toggle-cell",
+      render: (p) => {
+        const open = openRows.has(p.id);
+        return (
+          <button
+            type="button"
+            className="row-toggle"
+            aria-expanded={open}
+            aria-controls={open ? historyId(p.id) : undefined}
+            aria-label={`Verlauf ${open ? "ausblenden" : "anzeigen"}: ${p.bauherrLabel}`}
+            title={open ? "Verlauf ausblenden" : "Verlauf anzeigen"}
+            onClick={(e) => {
+              // nur aufklappen, das Projekt nicht öffnen (der Zeilenklick bleibt für die Zeile selbst)
+              e.stopPropagation();
+              toggleRow(p.id);
+            }}
+          >
+            <ChevronRight size={15} aria-hidden />
+          </button>
+        );
+      },
+    },
     {
       key: "abm",
       header: "ABM-Nr.",
@@ -193,6 +232,23 @@ export function Projects({ tab }: { tab: ProjectTab }) {
       },
     },
     { key: "warn", header: <span className="sr-only">Warnung</span>, className: "warn-cell", render: (p) => <WarnIcon alerts={alertsByProject.get(p.id) ?? []} /> },
+    {
+      key: "oeffnen",
+      header: <span className="sr-only">Aktion</span>,
+      className: "action-cell",
+      render: (p) => (
+        <Link
+          to={`/projekte/${p.id}`}
+          className={buttonClass("outline", "sm", "row-open")}
+          title={`Projekt öffnen: ${p.bauherrLabel}`}
+          // eigenes Klickziel: nicht zusätzlich den Zeilenklick auslösen
+          onClick={(e) => e.stopPropagation()}
+        >
+          <ArrowRight size={14} aria-hidden />
+          <span className="row-open-label">Projekt öffnen</span>
+        </Link>
+      ),
+    },
   ];
   const columns = allColumns.filter((c) => !OPTIONAL_COLUMNS.some((o) => o.key === c.key) || extraColumns.includes(c.key as OptionalColumn));
 
@@ -287,7 +343,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
             </span>
           </div>
           {loading || !data ? (
-            <TableSkeleton rows={8} cols={7} />
+            <TableSkeleton rows={8} cols={9} />
           ) : list.length ? (
             <DataTable
               compact
@@ -296,6 +352,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
               columns={columns}
               rowKey={(p) => p.id}
               onRowClick={(p) => navigate(`/projekte/${p.id}`)}
+              expand={(p) => <ProjectHistory projectId={p.id} id={historyId(p.id)} allHref={`/projekte/${p.id}?tab=aktivitaet`} />}
+              isExpanded={(p) => openRows.has(p.id)}
               groupBy={filters.group ? (p) => formatMonth(p.intakeMonth) : undefined}
               stickyFirst
             />

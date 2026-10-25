@@ -81,7 +81,7 @@ export function ProjectDetail() {
 
   const pilot = isPilot();
   const visibleTabs = TABS.filter(
-    (t) => (staff || (t !== "rechnungen" && t !== "aktivitaet" && t !== "aufgaben" && t !== "planungsprotokoll")) && (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)),
+    (t) => (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll")) && (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)),
   );
   const requested = params.get("tab") as TabKey | null;
   const tab: TabKey = requested && visibleTabs.includes(requested) ? requested : "uebersicht";

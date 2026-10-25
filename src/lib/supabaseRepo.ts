@@ -166,10 +166,18 @@ export function createSupabaseRepo(): Repo {
   const templates = () => last?.folderTemplates ?? [];
   const stepLabel = (key: string) => last?.stepDefinitions.find((s) => s.key === key)?.label ?? key;
 
-  /** Protokolleintrag. Schlägt er fehl, bleibt die eigentliche Änderung trotzdem gültig. */
+  /**
+   * Protokolleintrag über die Funktion log_activity (Migration 0016; Name und Benutzer setzt die Datenbank).
+   * Schlägt er fehl, bleibt die eigentliche Änderung trotzdem gültig.
+   */
   async function log(projectId: string | null, kind: ActivityKind, text: string) {
-    if (!isStaff()) return; // Aktivitäten schreiben nur Mitarbeiter (RLS)
-    const { error } = await sb.from("activities").insert({ project_id: projectId, kind, text, actor: user.name, actor_id: await userId() });
+    if (!isStaff()) return; // log_activity dürfen nur Mitarbeiter aufrufen
+    const { error } = await sb.rpc("log_activity", { p_project_id: projectId, p_kind: kind, p_text: text });
+    if (error) console.warn("Aktivität nicht protokolliert:", error.message);
+  }
+  /** Öffnen oder Herunterladen eines Dokuments im Verlauf vermerken (jede Rolle mit Zugriff aufs Projekt). */
+  async function logDocument(documentId: string, event: "geoeffnet" | "heruntergeladen") {
+    const { error } = await sb.rpc("log_document_event", { p_document_id: documentId, p_event: event });
     if (error) console.warn("Aktivität nicht protokolliert:", error.message);
   }
 
@@ -382,8 +390,7 @@ export function createSupabaseRepo(): Repo {
       const { data, error } = await sb.from("projects").update({ status }).eq("id", projectId).neq("status", status).select("id");
       if (error) fail(error);
       if (!data?.length) return; // schon in diesem Status (oder nicht sichtbar)
-      const text = { aktiv: "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
-      await log(projectId, "projekt", text);
+      // Den Verlaufseintrag schreibt ein Trigger in der Datenbank (Migration 0016)
     },
 
     async deleteProject(projectId) {
@@ -453,7 +460,7 @@ export function createSupabaseRepo(): Repo {
         await sb.storage.from(BUCKET).remove([storagePath]);
         fail(error, "Datei konnte nicht eingetragen werden");
       }
-      await log(projectId, "datei", `${file.name} abgelegt`);
+      // "… abgelegt" im Verlauf schreibt ein Trigger auf documents (Migration 0016)
       return toDocument(data as unknown as Row, new Map([[me, user.name]]));
     },
 
@@ -506,6 +513,7 @@ export function createSupabaseRepo(): Repo {
       if (!path) throw new Error("Das Dokument zu dieser Fassung ist nicht mehr vorhanden.");
       const { data, error } = await sb.storage.from(BUCKET).download(path);
       if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
+      await logDocument(protokoll.dokumentId, "heruntergeladen");
       return data;
     },
 
@@ -513,7 +521,15 @@ export function createSupabaseRepo(): Repo {
       // Kurzlebiger Link (60 Sekunden); die Zugriffsregel des Speichers prüft das Projekt
       const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(doc.storagePath, 60);
       if (error || !data?.signedUrl) throw new Error("Zu diesem Eintrag liegt keine Datei im Speicher.");
+      await logDocument(doc.id, "geoeffnet");
       return data.signedUrl;
+    },
+
+    async projectHistory(projectId, limit) {
+      // Sichtbarkeit regelt die Datenbank (Migration 0016): Freiberufler nur zugewiesene Projekte, ohne Rechnungen und Aufgaben
+      const { data, error } = await sb.from("activities").select(COLS.activities).eq("project_id", projectId).order("at", { ascending: false }).limit(limit);
+      if (error) fail(error, "Verlauf konnte nicht geladen werden");
+      return ((data ?? []) as unknown as Row[]).map(toActivity);
     },
 
     async listDocuments(filter: DocumentFilter) {

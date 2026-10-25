@@ -41,13 +41,10 @@ describe("Menü", () => {
     expect(labels("freiberufler", false).meta).toEqual(["Einstellungen", "Hilfe"]);
   });
 
-  it("Pilot, Admin: Projekte, Einstellungen, Hilfe", () => {
-    expect(labels("admin", true)).toEqual({ groups: ["Projekte"], meta: ["Einstellungen", "Hilfe"] });
-  });
-
-  it("Pilot, Mitarbeiter und Freiberufler: Projekte und Hilfe, keine Einstellungen", () => {
-    expect(labels("mitarbeiter", true)).toEqual({ groups: ["Projekte"], meta: ["Hilfe"] });
-    expect(labels("freiberufler", true)).toEqual({ groups: ["Projekte"], meta: ["Hilfe"] });
+  it("Pilot, jede Rolle: Projekte, Einstellungen (Darstellung), Hilfe", () => {
+    for (const role of ["admin", "mitarbeiter", "freiberufler"] as const) {
+      expect(labels(role, true), role).toEqual({ groups: ["Projekte"], meta: ["Einstellungen", "Hilfe"] });
+    }
   });
 
   it("Pilot: der Eintrag Projekte zeigt auf die Projektliste", () => {
@@ -100,16 +97,16 @@ describe("Umleitungen im Pilot", () => {
     });
   }
 
-  it("Einstellungen nur für Admin", () => {
+  it("Einstellungen für jede Rolle erreichbar (Darstellung)", () => {
     expect(pilotRedirect("/einstellungen", "admin", true)).toBeNull();
-    expect(pilotRedirect("/einstellungen", "mitarbeiter", true)).toBe(PILOT_HOME);
-    expect(pilotRedirect("/einstellungen", "freiberufler", true)).toBe(PILOT_HOME);
+    expect(pilotRedirect("/einstellungen", "mitarbeiter", true)).toBeNull();
+    expect(pilotRedirect("/einstellungen", "freiberufler", true)).toBeNull();
   });
 });
 
 describe("Projekt-Detail und Warnungen im Pilot", () => {
-  it("Reiter: Übersicht, Dokumente, Planungsprotokoll", () => {
-    expect([...PILOT_PROJECT_TABS]).toEqual(["uebersicht", "dokumente", "planungsprotokoll"]);
+  it("Reiter: Übersicht, Dokumente, Planungsprotokoll, Verlauf", () => {
+    expect([...PILOT_PROJECT_TABS]).toEqual(["uebersicht", "dokumente", "planungsprotokoll", "aktivitaet"]);
   });
 
   it("keine Warnungen zu Rechnungen", () => {

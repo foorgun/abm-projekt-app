@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, formatDue, formatMoney, formatRelative } from "./format";
+import { addDays, formatDateTime, formatDue, formatMoney, formatRelative } from "./format";
 
 const NOW = new Date(2026, 9, 9, 15, 30);
 
@@ -11,6 +11,14 @@ describe("formatRelative", () => {
     expect(formatRelative("2026-10-08T14:05:00", NOW)).toBe("gestern, 14:05");
     expect(formatRelative("2026-10-05T09:00:00", NOW)).toBe("vor 4 Tagen");
     expect(formatRelative("2026-09-01T09:00:00", NOW)).toBe("01.09.2026");
+  });
+});
+
+describe("formatDateTime", () => {
+  it("zeigt Datum und Uhrzeit, ein reines Datum ohne Uhrzeit", () => {
+    expect(formatDateTime("2026-10-08T14:05:00")).toBe("08.10.2026, 14:05");
+    expect(formatDateTime("2026-01-03T07:09:00")).toBe("03.01.2026, 07:09");
+    expect(formatDateTime("2026-10-08")).toBe("08.10.2026");
   });
 });
 
