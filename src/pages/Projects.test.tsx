@@ -155,46 +155,83 @@ describe("Projektliste: Projekt öffnen", () => {
   });
 });
 
+const EXCEL_HEADERS = [
+  "Anzahl Projekte",
+  "Fertighausfirma",
+  "ABM-Nr.",
+  "Bauherrschaft",
+  "Bundesland - Bauort",
+  "Verkäufer",
+  "Architekt",
+  "Planer",
+  "Plan-Gespräch",
+  "Übergabe Baugesuch",
+  "ABM-Vertrag – versendet",
+  "ABM-Vertrag – zurück",
+  "Baugenehmigung",
+  "Baubetreuung",
+  "Fertighausfirma-Nr.",
+];
+const COLS_KEY = "abm.projekte.spalten.v3.demo-admin";
+const GROUP_KEY = "abm.projekte.gruppierung.v1.demo-admin";
+const headers = () => [...host.querySelectorAll("thead th")].map((th) => th.textContent?.trim() ?? "");
+const buttonStartingWith = (text: string) => [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith(text))!;
+
 describe("Projektliste: Spalten wählen und sortieren", () => {
-  const KEY = "abm.projekte.spalten.v2.demo-admin";
-  const headers = () => [...host.querySelectorAll("thead th")].map((th) => th.textContent?.trim() ?? "");
   const item = (label: string) => [...host.querySelectorAll<HTMLLIElement>(".col-item")].find((li) => li.querySelector("label")?.textContent === label)!;
-  async function openPanel() {
-    const btn = [...host.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Spalten"))!;
-    await click(btn);
-  }
+  const openPanel = () => click(buttonStartingWith("Spalten"));
 
-  beforeEach(() => localStorage.removeItem(KEY));
+  beforeEach(() => {
+    localStorage.removeItem(COLS_KEY);
+    localStorage.removeItem(GROUP_KEY);
+  });
 
-  it("zeigt die Standardspalten; Pfeil links und Projekt öffnen rechts bleiben", async () => {
+  it("zeigt die Excel-Spalten in Excel-Reihenfolge; Pfeil links und Projekt öffnen rechts bleiben", async () => {
     await render();
-    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Hausbaufirma", "Bauort", "Planer", "Status", "Aktion"]);
+    expect(headers()).toEqual(["Verlauf", ...EXCEL_HEADERS, "Aktion"]);
+    for (const old of ["Status", "Schritte", "Nächste Aufgabe", "Nächster Schritt", "Warnung", "Phase"]) expect(headers()).not.toContain(old);
     expect(toggles().length).toBeGreaterThan(0);
     expect(openLinks()).toHaveLength(toggles().length);
+  });
+
+  it("Anzahl Projekte zählt die angezeigten Zeilen 1, 2, 3 …; leere Werte zeigen –", async () => {
+    await render();
+    const nr = [...host.querySelectorAll("tbody tr:not(.row-group):not(.row-detail) td:nth-child(2)")].map((td) => td.textContent);
+    expect(nr.slice(0, 3)).toEqual(["1", "2", "3"]);
+    expect(nr.at(-1)).toBe(String(nr.length));
+    const all = [...host.querySelectorAll("tbody td:not(.toggle-cell):not(.action-cell)")].map((td) => td.textContent);
+    expect(all).not.toContain("");
+  });
+
+  it("Bundesland - Bauort zeigt Kürzel und Ort, z. B. 'BW - Ulm'", async () => {
+    await render();
+    const col = EXCEL_HEADERS.indexOf("Bundesland - Bauort") + 2;
+    const cells = [...host.querySelectorAll(`tbody tr td:nth-child(${col})`)].map((td) => td.textContent ?? "");
+    expect(cells.some((t) => /^(BW|BY) - \S/.test(t))).toBe(true);
   });
 
   it("blendet ein und aus, sortiert um, speichert und lädt die Auswahl; Zurücksetzen stellt den Standard her", async () => {
     await render();
     await openPanel();
+    await click(item("Bauort").querySelector("input")!);
     await click(item("Verkäufer").querySelector("input")!);
-    await click(item("Hausbaufirma").querySelector("input")!);
-    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Bauort", "Verkäufer", "Planer", "Status", "Aktion"]);
-    await click(item("Status").querySelector('button[aria-label="Status nach oben"]')!);
-    for (let i = 0; i < 12; i++) await click(item("Status").querySelector('button[aria-label="Status nach oben"]')!);
-    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Status", "ABM-Nr."]);
-    expect(item("Status").querySelector<HTMLButtonElement>('button[aria-label="Status nach oben"]')!.disabled).toBe(true);
-    expect(JSON.parse(localStorage.getItem(KEY)!)[0]).toEqual({ key: "status", visible: true });
+    expect(headers()).toEqual(["Verlauf", ...EXCEL_HEADERS.filter((h) => h !== "Verkäufer"), "Bauort", "Aktion"]);
+    for (let i = 0; i < 20; i++) await click(item("Bauort").querySelector('button[aria-label="Bauort nach oben"]')!);
+    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Bauort", "Anzahl Projekte"]);
+    expect(item("Bauort").querySelector<HTMLButtonElement>('button[aria-label="Bauort nach oben"]')!.disabled).toBe(true);
+    expect(JSON.parse(localStorage.getItem(COLS_KEY)!)[0]).toEqual({ key: "ort", visible: true });
 
     // neu laden: die Auswahl bleibt
     act(() => root.unmount());
     root = createRoot(host);
     await render();
-    expect(headers()).toEqual(["Verlauf", "Status", "ABM-Nr.", "Bauherr", "Bauort", "Verkäufer", "Planer", "Aktion"]);
+    expect(headers().slice(0, 4)).toEqual(["Verlauf", "Bauort", "Anzahl Projekte", "Fertighausfirma"]);
+    expect(headers()).not.toContain("Verkäufer");
 
     await openPanel();
     await click([...host.querySelectorAll("button")].find((b) => b.textContent === "Zurücksetzen")!);
-    expect(headers()).toEqual(["Verlauf", "ABM-Nr.", "Bauherr", "Hausbaufirma", "Bauort", "Planer", "Status", "Aktion"]);
-    expect(localStorage.getItem(KEY)).toBeNull();
+    expect(headers()).toEqual(["Verlauf", ...EXCEL_HEADERS, "Aktion"]);
+    expect(localStorage.getItem(COLS_KEY)).toBeNull();
   });
 
   it("Drag-and-drop verschiebt eine Spalte an die Stelle der Zielzeile", async () => {
@@ -206,17 +243,89 @@ describe("Projektliste: Spalten wählen und sortieren", () => {
       el.dispatchEvent(e);
     };
     await act(async () => fire(item("Planer"), "dragstart"));
-    await act(async () => fire(item("ABM-Nr."), "dragover"));
-    await act(async () => fire(item("ABM-Nr."), "drop"));
-    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Planer", "ABM-Nr."]);
+    await act(async () => fire(item("Anzahl Projekte"), "dragover"));
+    await act(async () => fire(item("Anzahl Projekte"), "drop"));
+    expect(headers().slice(0, 3)).toEqual(["Verlauf", "Planer", "Anzahl Projekte"]);
   });
 
-  it("Schritt-Spalten zeigen das Datum oder –", async () => {
-    localStorage.setItem(KEY, JSON.stringify([{ key: "bauherr", visible: true }, { key: "plangespraech", visible: true }, { key: "baubetreuung", visible: true }]));
+  it("Termin-Spalten zeigen das Datum oder –", async () => {
+    localStorage.setItem(COLS_KEY, JSON.stringify([{ key: "bauherr", visible: true }, { key: "plangespraech", visible: true }, { key: "baubetreuung", visible: true }]));
     await render();
-    expect(headers()).toEqual(["Verlauf", "Bauherr", "Plan-Gespräch", "Baubetreuung", "Aktion"]);
+    expect(headers()).toEqual(["Verlauf", "Bauherrschaft", "Plan-Gespräch", "Baubetreuung", "Aktion"]);
     const cells = [...host.querySelectorAll("tbody tr td:nth-child(3)")].map((td) => td.textContent);
     expect(cells.every((t) => t === "–" || /^\d{2}\.\d{2}\.\d{4}$/.test(t ?? ""))).toBe(true);
     expect(cells.some((t) => t !== "–")).toBe(true);
+  });
+});
+
+describe("Projektliste: Gruppierung", () => {
+  const groupHeads = () => [...host.querySelectorAll<HTMLButtonElement>("tr.row-group button.group-toggle")];
+  const dataRows = () => host.querySelectorAll("tbody tr:not(.row-group):not(.row-detail)").length;
+  async function choose(mode: string) {
+    await click(buttonStartingWith("Gruppierung"));
+    const radio = [...host.querySelectorAll<HTMLLabelElement>(".group-mode")].find((l) => l.textContent === mode)!.querySelector("input")!;
+    await click(radio);
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem(COLS_KEY);
+    localStorage.removeItem(GROUP_KEY);
+  });
+
+  it("Standard ohne Gruppen; nach Monat (Plan-Gespräch): Köpfe mit Anzahl, neueste zuerst, 'Ohne Datum' am Ende", async () => {
+    await render();
+    expect(groupHeads()).toHaveLength(0);
+    const total = dataRows();
+    await choose("Monat");
+    const select = host.querySelector<HTMLSelectElement>("#gruppierung-datum")!;
+    expect(select.value).toBe("plangespraech");
+    const heads = groupHeads().map((b) => b.textContent!);
+    expect(heads.length).toBeGreaterThan(1);
+    for (const h of heads) expect(h).toMatch(/^(\S+ \d{4}|Ohne Datum) \(\d+\)$/);
+    const counts = heads.map((h) => Number(h.match(/\((\d+)\)$/)![1]));
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(total);
+    if (heads.some((h) => h.startsWith("Ohne Datum"))) expect(heads.at(-1)).toMatch(/^Ohne Datum/);
+    expect(JSON.parse(localStorage.getItem(GROUP_KEY)!)).toEqual({ mode: "monat", date: "plangespraech" });
+    // innerhalb der Gruppe: ABM-Nr. numerisch (Standardsortierung), BVA/leer zuletzt
+    const firstGroup: string[] = [];
+    for (let tr = host.querySelector("tr.row-group")!.nextElementSibling; tr && !tr.classList.contains("row-group"); tr = tr.nextElementSibling) {
+      firstGroup.push(tr.querySelector(`td:nth-child(${EXCEL_HEADERS.indexOf("ABM-Nr.") + 2})`)!.textContent!);
+    }
+    const keys = firstGroup.filter((a) => /^\d{4}-\d+$/.test(a)).map((a) => a.split("-").map(Number));
+    expect(keys.length).toBeGreaterThan(1);
+    expect(keys).toEqual([...keys].sort((a, b) => a[0] - b[0] || a[1] - b[1]));
+    // Nummerierung läuft über die Gruppen weiter
+    const nr = [...host.querySelectorAll("tbody tr:not(.row-group):not(.row-detail) td:nth-child(2)")].map((td) => td.textContent);
+    expect(nr).toEqual(nr.map((_, i) => String(i + 1)));
+  });
+
+  it("Gruppe einklappen und wieder aufklappen; Verlauf und Projekt öffnen gehen weiter", async () => {
+    await render();
+    await choose("Fertighausfirma");
+    const head = groupHeads()[0];
+    const n = Number(head.textContent!.match(/\((\d+)\)$/)![1]);
+    const before = dataRows();
+    expect(head.getAttribute("aria-expanded")).toBe("true");
+    await click(head);
+    expect(head.getAttribute("aria-expanded")).toBe("false");
+    expect(dataRows()).toBe(before - n);
+    await click(head);
+    expect(dataRows()).toBe(before);
+    expect(openLinks()).toHaveLength(toggles().length);
+    await click(toggles()[0]);
+    expect(toggles()[0].getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("Gruppierung bleibt nach dem Neuladen; 'Keine' setzt zurück", async () => {
+    await render();
+    await choose("Jahr");
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render();
+    expect(buttonStartingWith("Gruppierung").textContent).toContain("Jahr");
+    expect(groupHeads().length).toBeGreaterThan(0);
+    await choose("Keine");
+    expect(groupHeads()).toHaveLength(0);
+    expect(localStorage.getItem(GROUP_KEY)).toBeNull();
   });
 });

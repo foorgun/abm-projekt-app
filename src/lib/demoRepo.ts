@@ -274,6 +274,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         salespersonId: input.salespersonId,
         bauherrLabel: input.bauherrLabel.trim(),
         location: input.location?.trim() || null,
+        bundesland: input.bundesland?.trim() || null,
         architectId: input.architectId,
         planerId: input.planerId,
         baubetreuung: null,

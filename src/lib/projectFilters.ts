@@ -15,10 +15,9 @@ export interface ProjectFilters {
   phase: string;
   sort: ProjectSort;
   storno: boolean;
-  group: boolean;
 }
 
-export const DEFAULT_FILTERS: ProjectFilters = { q: "", company: "", architect: "", phase: "", sort: "eingang", storno: false, group: false };
+export const DEFAULT_FILTERS: ProjectFilters = { q: "", company: "", architect: "", phase: "", sort: "eingang", storno: false };
 
 /** Kleinbuchstaben, Umlaute vereinheitlicht, Leerzeichen/Bindestriche/Punkte entfernt (für Nummern). */
 export function compactText(s: string): string {
@@ -112,7 +111,6 @@ export function filtersFromParams(sp: URLSearchParams): ProjectFilters {
     phase: sp.get("phase") ?? "",
     sort: sort === "abm" || sort === "bauherr" || sort === "fortschritt" ? sort : "eingang",
     storno: sp.get("storno") === "1",
-    group: sp.get("gruppe") === "monat",
   };
 }
 
@@ -124,6 +122,5 @@ export function filtersToParams(f: ProjectFilters): URLSearchParams {
   if (f.phase) sp.set("phase", f.phase);
   if (f.sort !== "eingang") sp.set("sort", f.sort);
   if (f.storno) sp.set("storno", "1");
-  if (f.group) sp.set("gruppe", "monat");
   return sp;
 }

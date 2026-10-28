@@ -19,6 +19,7 @@ import {
   type Vertragsart,
 } from "../lib/extract";
 import { companyForAbm, suggestAbmNr } from "../lib/abmNr";
+import { suggestBundesland } from "../lib/bundesland";
 import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
@@ -31,6 +32,7 @@ import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { ContractMeta, Project } from "../lib/types";
 import { AbmHinweise } from "./AbmHinweise";
+import { BundeslandSelect } from "./BundeslandSelect";
 import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
@@ -174,7 +176,10 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     set({ abmNr: value || null, ...(match ? { companyId: match.id, salespersonId: null } : {}) });
   };
   // Bauvoranfrage: weder ABM-Nr. noch Firma
-  const effective: NewProject = v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v;
+  // Bundesland: solange nicht selbst gewählt, Vorschlag aus dem Bauort (Land oder PLZ beim Bauherrn, sonst PLZ im Bauort)
+  const blSuggestion = suggestBundesland({ siteState: v.bauherr?.siteState, sitePostalCode: v.bauherr?.sitePostalCode, location: v.location });
+  const bundesland = v.bundesland === undefined ? blSuggestion : v.bundesland;
+  const effective: NewProject = { ...(v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v), bundesland: bundesland || null };
   const missing = missingProjectInfo(infoStateOfNew(effective));
   const setContact = (patch: Partial<NonNullable<NewProject["bauherr"]>>) => {
     markEdited(Object.keys(patch).map((k) => (k === "name" ? "bauherrName" : k)));
@@ -677,6 +682,12 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
               <Input id="np-ort" value={v.location ?? ""} onChange={(e) => set({ location: e.target.value || null })} placeholder="z. B. Ulm" />
               <Src k="location" />
             </Field>
+            <Field label="Bundesland" htmlFor="np-bl" hint={v.bundesland === undefined && blSuggestion ? "Vorschlag aus der PLZ bzw. dem Land des Bauorts, änderbar." : "Optional."}>
+              <BundeslandSelect id="np-bl" value={bundesland ?? ""} onChange={(x) => set({ bundesland: x })} />
+            </Field>
+          </div>
+
+          <div className="dialog-row">
             <Field label="Eingangsmonat" htmlFor="np-month">
               <Input
                 id="np-month"

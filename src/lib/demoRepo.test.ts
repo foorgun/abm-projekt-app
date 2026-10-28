@@ -366,3 +366,23 @@ describe("Projekt löschen (nur Admin)", () => {
     await expect(r.deleteProject("gibt-es-nicht")).rejects.toThrow(/nicht gefunden/);
   });
 });
+
+describe("Bundesland am Projekt (Migration 0018)", () => {
+  const base = { kind: "neubau" as const, abmNr: null, hausbauNr: null, companyId: null, salespersonId: null, location: null, architectId: null, planerId: null, intakeMonth: null, createFolders: false };
+  it("Demo-Daten: aus der PLZ vorbelegt; anlegen und bearbeiten speichert das Kürzel und protokolliert", async () => {
+    const r = createDemoRepo("2026-10-10", { delayMs: 0 });
+    let d = await r.load({ name: "Mira", role: "mitarbeiter" });
+    expect(d.projects.some((p) => p.bundesland === "BW")).toBe(true);
+    expect(d.projects.some((p) => p.bundesland === "BY")).toBe(true); // Neu-Ulm, Senden
+    const created = await r.createProject({ ...base, bauherrLabel: "Landtest", bundesland: "BY" });
+    const p = d.projects.find((x) => x.id !== created.id && x.status === "aktiv")!;
+    await r.updateProject(p.id, { project: { bundesland: "HE" } });
+    d = await r.load({ name: "Mira", role: "mitarbeiter" });
+    expect(d.projects.find((x) => x.id === created.id)?.bundesland).toBe("BY");
+    expect(d.projects.find((x) => x.id === p.id)?.bundesland).toBe("HE");
+    expect(d.activities.some((a) => a.projectId === p.id && a.text.includes("Bundesland"))).toBe(true);
+    // Freiberufler sieht das Feld bei zugewiesenen Projekten (keine Kontaktdaten nötig)
+    const f = await r.load({ name: "Frei", role: "freiberufler" });
+    expect(f.projects.every((x) => "bundesland" in x)).toBe(true);
+  });
+});

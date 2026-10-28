@@ -2438,6 +2438,12 @@ a.list-item:hover {
   background: var(--surface);
 }
 
+/* feine Kante, an der die übrigen Spalten beim Scrollen unter der festen Spalte verschwinden */
+.table-sticky-first:has(td.toggle-cell) td.toggle-cell + td,
+.table-sticky-first:has(td.toggle-cell) th:nth-child(2) {
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
 .table-sticky-first:has(td.toggle-cell) tbody tr:hover td.toggle-cell + td {
   background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
 }
@@ -6221,4 +6227,86 @@ li:first-child > .doc-card {
 
 .table-sticky-first:has(td.action-cell) thead th:last-child {
   z-index: 2;
+}
+
+/* Projektliste: Gruppenkopf (einklappbar) und Auswahl der Gruppierung */
+.table .row-group .group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.table .row-group .group-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.group-chevron {
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.group-toggle[aria-expanded="false"] .group-chevron {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-chevron {
+    transition: none;
+  }
+}
+
+.table td.num-cell {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.group-modes {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+}
+
+.group-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 30px;
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+.group-mode input {
+  accent-color: var(--accent);
+}
+
+.group-date {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.group-btn-label {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .group-btn-label {
+    max-width: 120px;
+  }
 }

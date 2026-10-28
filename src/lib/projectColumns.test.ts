@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   COLUMN_DEFS,
+  COLUMN_LABEL,
   columnsStorageKey,
   defaultColumns,
   loadColumns,
@@ -35,29 +36,61 @@ const broken = {
 };
 
 describe("Spalten der Projektliste", () => {
-  it("Standard: ABM-Nr., Bauherr, Hausbaufirma, Bauort, Planer, Status; alle anderen wählbar", () => {
-    expect(visibleColumns(defaultColumns())).toEqual(["abm", "bauherr", "firma", "ort", "planer", "status"]);
-    const labels = COLUMN_DEFS.map((c) => c.label);
-    for (const l of ["Verkäufer", "Architekt", "Plan-Gespräch", "Übergabe Baugesuch", "ABM-Vertrag versendet", "ABM-Vertrag zurück", "Baugenehmigung", "Baubetreuung"]) {
-      expect(labels).toContain(l);
-    }
+  const EXCEL = ["nr", "firma", "abm", "bauherr", "bl_ort", "verkaeufer", "architekt", "planer", "plangespraech", "baugesuch_uebergabe", "vertrag_versendet", "vertrag_zurueck", "baugenehmigung", "baubetreuung", "hausbau_nr"];
+
+  it("Standard: die 14 Excel-Spalten in Excel-Reihenfolge, dahinter Fertighausfirma-Nr.", () => {
+    expect(visibleColumns(defaultColumns())).toEqual(EXCEL);
+    expect(visibleColumns(defaultColumns()).map((k) => COLUMN_LABEL[k])).toEqual([
+      "Anzahl Projekte",
+      "Fertighausfirma",
+      "ABM-Nr.",
+      "Bauherrschaft",
+      "Bundesland - Bauort",
+      "Verkäufer",
+      "Architekt",
+      "Planer",
+      "Plan-Gespräch",
+      "Übergabe Baugesuch",
+      "ABM-Vertrag – versendet",
+      "ABM-Vertrag – zurück",
+      "Baugenehmigung",
+      "Baubetreuung",
+      "Fertighausfirma-Nr.",
+    ]);
+    // Normale Schreibweise, nicht wie in der Excel in Großbuchstaben
+    for (const c of COLUMN_DEFS) expect(c.label).not.toBe(c.label.toUpperCase());
+  });
+
+  it("Bundesland und Bauort einzeln sind wählbar, aber standardmäßig aus", () => {
+    const d = defaultColumns();
+    expect(d.find((c) => c.key === "bundesland")).toEqual({ key: "bundesland", visible: false });
+    expect(d.find((c) => c.key === "ort")).toEqual({ key: "ort", visible: false });
+    expect(COLUMN_DEFS.map((c) => c.key)).toEqual([...EXCEL, "bundesland", "ort"]);
+  });
+
+  it("entfernte Spalten (Phase, Schritte, Status, Nächste Aufgabe, Warnung) gibt es nicht mehr", () => {
+    const labels = COLUMN_DEFS.map((c) => c.label.toLowerCase());
+    for (const l of ["status", "phase", "schritte", "schritte (balken)", "nächste aufgabe", "warnung"]) expect(labels).not.toContain(l);
+    // auch nicht aus einem alten gespeicherten Stand
+    const s = normalizeColumns([{ key: "status", visible: true }, { key: "warn", visible: true }, { key: "abm", visible: true }]);
+    expect(visibleColumns(s)).toEqual(["abm"]);
+    expect(s.map((c) => c.key)).not.toContain("status");
   });
 
   it("ein- und ausblenden; die letzte sichtbare Spalte bleibt", () => {
-    let s = toggleColumn(defaultColumns(), "verkaeufer");
-    expect(visibleColumns(s)).toEqual(["abm", "bauherr", "firma", "ort", "verkaeufer", "planer", "status"]);
+    let s = toggleColumn(defaultColumns(), "ort");
+    expect(visibleColumns(s)).toEqual([...EXCEL, "ort"]);
     s = toggleColumn(s, "firma");
     expect(visibleColumns(s)).not.toContain("firma");
     for (const k of visibleColumns(s)) s = toggleColumn(s, k);
-    expect(visibleColumns(s)).toEqual(["status"]);
+    expect(visibleColumns(s)).toEqual(["ort"]);
   });
 
   it("umsortieren mit Auf/Ab und per Ziehen; an den Rändern passiert nichts", () => {
-    let s = moveColumn(defaultColumns(), "status", -1);
-    s = moveColumn(s, "status", -1);
-    expect(visibleColumns(s)).toEqual(["abm", "bauherr", "firma", "ort", "planer", "status"]); // nur über unsichtbare hinweg
+    let s = moveColumn(defaultColumns(), "abm", -1);
+    expect(visibleColumns(s).slice(0, 3)).toEqual(["nr", "abm", "firma"]);
     s = moveColumnTo(defaultColumns(), "planer", 0);
-    expect(visibleColumns(s)).toEqual(["planer", "abm", "bauherr", "firma", "ort", "status"]);
+    expect(visibleColumns(s).slice(0, 3)).toEqual(["planer", "nr", "firma"]);
     expect(moveColumn(s, "planer", -1)).toBe(s);
     const last = s[s.length - 1].key;
     expect(moveColumn(s, last, 1)).toBe(s);
@@ -87,7 +120,7 @@ describe("Spalten der Projektliste", () => {
     const a = columnsStorageKey({ id: "user-a", role: "mitarbeiter" });
     const b = columnsStorageKey({ id: "user-b", role: "mitarbeiter" });
     expect(a).not.toBe(b);
-    expect(columnsStorageKey({ role: "admin" })).toBe("abm.projekte.spalten.v2.demo-admin");
+    expect(columnsStorageKey({ role: "admin" })).toBe("abm.projekte.spalten.v3.demo-admin");
 
     const mine = moveColumnTo(toggleColumn(defaultColumns(), "baugenehmigung"), "baugenehmigung", 0);
     saveColumns(a, mine, store);

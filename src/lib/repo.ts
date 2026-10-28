@@ -39,6 +39,8 @@ export interface NewProject {
   companyId: string | null;
   salespersonId: string | null;
   location: string | null;
+  /** Bundesland als Kürzel, optional */
+  bundesland?: string | null;
   architectId: string | null;
   planerId: string | null;
   /** Erster Tag des Eingangsmonats */
@@ -100,7 +102,7 @@ export interface ProtokollAblage {
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
   Project,
-  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "bundesland" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
 >;
 
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */

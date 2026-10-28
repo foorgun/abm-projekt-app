@@ -1193,6 +1193,47 @@ select test.expect('0017: Freiberufler ohne Zuweisung sieht kein Projekt', (sele
 select test.expect('0017: … und keine Schrittdaten (Plan-Gespräch, Baugenehmigung …)', (select count(*) from public.project_steps), 0);
 rollback;
 
+-- ===========================================================================
+-- Migration 0018: Bundesland am Projekt (Spalte "Bundesland - Bauort" der Projektliste)
+-- ===========================================================================
+begin;
+set local role authenticated;
+-- Mitarbeiter: setzt das Bundesland über update_project und direkt; nur die 16 Kürzel sind erlaubt
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"bundesland": "bw"}', p_activity => 'Geändert: Bundesland');
+select test.expect('0018: update_project setzt das Bundesland (als Kürzel in Großbuchstaben)',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and bundesland = 'BW'), 1);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"location": "Ulm"}');
+select test.expect('0018: update_project ohne "bundesland" lässt es stehen',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and bundesland = 'BW'), 1);
+select test.throws('0018: unbekanntes Kürzel wird abgelehnt',
+  $$update public.projects set bundesland = 'XX' where id = 'a0000000-0000-4000-8000-000000000002'$$);
+select test.expect('0018: Mitarbeiter leert das Bundesland',
+  test.affected($$update public.projects set bundesland = null where id = 'a0000000-0000-4000-8000-000000000002'$$), 1);
+select public.create_project('{"bauherr_label": "Landtest", "bundesland": "BY"}');
+select test.expect('0018: create_project übernimmt das Bundesland',
+  (select count(*) from public.projects where bauherr_label = 'Landtest' and bundesland = 'BY'), 1);
+
+-- Freiberufler: sieht das Bundesland seines zugewiesenen Projekts, ändert es nicht
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0018: Freiberufler sieht das Bundesland seines Projekts',
+  (select count(*) from public.projects where bundesland = 'BW'), 1);
+select test.expect('0018: Freiberufler sieht kein fremdes Projekt (auch nicht das neue)', (select count(*) from public.projects), 1);
+select test.expect('0018: Freiberufler ändert das Bundesland nicht (0 Zeilen)',
+  test.affected($$update public.projects set bundesland = 'HE'$$), 0);
+select test.throws('0018: Freiberufler auch nicht über update_project',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"bundesland": "HE"}')$$);
+select test.expect('0018: Freiberufler ändert keine Hausbaufirma/Nummernkreis',
+  test.affected($$update public.companies set number_prefix = '8999'$$), 0);
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+set local role authenticated;
+select test.expect('0018: Freiberufler ohne Zuweisung sieht kein Projekt und kein Bundesland',
+  (select count(*) from public.projects), 0);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',

@@ -1,12 +1,14 @@
 // Spalten der Projektliste: Auswahl (sichtbar/unsichtbar) und Reihenfolge, je Benutzer im Browser gespeichert.
 // Reine Funktionen (getestet). Pfeil links (Verlauf) und "Projekt öffnen" rechts gehören nicht dazu: sie stehen immer da.
 // Gespeichert wird nur lokal: ein Nutzerprofil in der Datenbank gibt es nicht (Anzeigename steht bei der Rolle, 0005).
+// Standard = die Spalten der Excel-Projektliste in Excel-Reihenfolge, dahinter die Fertighausfirma-Nr. (Hausbau-Nr.).
 
 export type ColumnKey =
+  | "nr"
+  | "firma"
   | "abm"
   | "bauherr"
-  | "firma"
-  | "ort"
+  | "bl_ort"
   | "verkaeufer"
   | "architekt"
   | "planer"
@@ -16,34 +18,37 @@ export type ColumnKey =
   | "vertrag_zurueck"
   | "baugenehmigung"
   | "baubetreuung"
-  | "status"
-  | "fortschritt"
-  | "next"
-  | "warn";
+  | "hausbau_nr"
+  | "bundesland"
+  | "ort";
 
-/** Alle wählbaren Spalten in der Grundreihenfolge. Die Schritt-Spalten tragen den Schlüssel aus step_definitions. */
-export const COLUMN_DEFS: readonly { key: ColumnKey; label: string }[] = [
-  { key: "abm", label: "ABM-Nr." },
-  { key: "bauherr", label: "Bauherr" },
-  { key: "firma", label: "Hausbaufirma" },
-  { key: "ort", label: "Bauort" },
-  { key: "verkaeufer", label: "Verkäufer" },
-  { key: "architekt", label: "Architekt" },
-  { key: "planer", label: "Planer" },
-  { key: "plangespraech", label: "Plan-Gespräch" },
-  { key: "baugesuch_uebergabe", label: "Übergabe Baugesuch" },
-  { key: "vertrag_versendet", label: "ABM-Vertrag versendet" },
-  { key: "vertrag_zurueck", label: "ABM-Vertrag zurück" },
-  { key: "baugenehmigung", label: "Baugenehmigung" },
-  { key: "baubetreuung", label: "Baubetreuung" },
-  { key: "status", label: "Status" },
-  { key: "fortschritt", label: "Schritte (Balken)" },
-  { key: "next", label: "Nächste Aufgabe" },
-  { key: "warn", label: "Warnung" },
+/**
+ * Alle wählbaren Spalten in der Grundreihenfolge (= Excel), Beschriftung wie in der Excel, aber in normaler Schreibweise.
+ * Die Termin-Spalten tragen den Schlüssel aus step_definitions. "Bundesland" und "Bauort" einzeln sind zum Sortieren da.
+ */
+export const COLUMN_DEFS: readonly { key: ColumnKey; label: string; byDefault: boolean }[] = [
+  { key: "nr", label: "Anzahl Projekte", byDefault: true },
+  { key: "firma", label: "Fertighausfirma", byDefault: true },
+  { key: "abm", label: "ABM-Nr.", byDefault: true },
+  { key: "bauherr", label: "Bauherrschaft", byDefault: true },
+  { key: "bl_ort", label: "Bundesland - Bauort", byDefault: true },
+  { key: "verkaeufer", label: "Verkäufer", byDefault: true },
+  { key: "architekt", label: "Architekt", byDefault: true },
+  { key: "planer", label: "Planer", byDefault: true },
+  { key: "plangespraech", label: "Plan-Gespräch", byDefault: true },
+  { key: "baugesuch_uebergabe", label: "Übergabe Baugesuch", byDefault: true },
+  { key: "vertrag_versendet", label: "ABM-Vertrag – versendet", byDefault: true },
+  { key: "vertrag_zurueck", label: "ABM-Vertrag – zurück", byDefault: true },
+  { key: "baugenehmigung", label: "Baugenehmigung", byDefault: true },
+  { key: "baubetreuung", label: "Baubetreuung", byDefault: true },
+  { key: "hausbau_nr", label: "Fertighausfirma-Nr.", byDefault: true },
+  { key: "bundesland", label: "Bundesland", byDefault: false },
+  { key: "ort", label: "Bauort", byDefault: false },
 ];
 
+export const DEFAULT_VISIBLE: readonly ColumnKey[] = COLUMN_DEFS.filter((c) => c.byDefault).map((c) => c.key);
 
-export const DEFAULT_VISIBLE: readonly ColumnKey[] = ["abm", "bauherr", "firma", "ort", "planer", "status"];
+export const COLUMN_LABEL = Object.fromEntries(COLUMN_DEFS.map((c) => [c.key, c.label])) as Record<ColumnKey, string>;
 
 export type ColumnState = { key: ColumnKey; visible: boolean }[];
 
@@ -100,14 +105,14 @@ export function visibleColumns(state: ColumnState): ColumnKey[] {
   return state.filter((c) => c.visible).map((c) => c.key);
 }
 
-/** Speicherschlüssel je Benutzer. Im Demo-Modus gibt es keine Benutzer-ID: dann je Rolle. */
+/** Speicherschlüssel je Benutzer. Im Demo-Modus gibt es keine Benutzer-ID: dann je Rolle. v3: Spalten nach der Excel. */
 export function columnsStorageKey(user: { id?: string; role: string }): string {
-  return `abm.projekte.spalten.v2.${user.id ?? `demo-${user.role}`}`;
+  return `abm.projekte.spalten.v3.${user.id ?? `demo-${user.role}`}`;
 }
 
-type KeyValueStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type KeyValueStore = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
-const browserStore = (): KeyValueStore | null => {
+export const browserStore = (): KeyValueStore | null => {
   try {
     return globalThis.localStorage ?? null;
   } catch {

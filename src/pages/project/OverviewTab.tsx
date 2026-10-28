@@ -1,10 +1,12 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
 import { AbmHinweise } from "../../components/AbmHinweise";
+import { BundeslandSelect } from "../../components/BundeslandSelect";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, Field, IconButton, Input, Select } from "../../components/ui";
 import { companyForAbm, suggestAbmNr } from "../../lib/abmNr";
+import { bundeslandName, suggestBundesland } from "../../lib/bundesland";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
@@ -216,7 +218,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
         <EditableCard
           title="Projektdaten"
           canEdit={staff}
-          form={(close) => <ProjectDataForm project={project} data={data} onClose={close} />}
+          form={(close) => <ProjectDataForm project={project} data={data} contact={contact} onClose={close} />}
           view={
             <>
             <dl className="dl">
@@ -224,6 +226,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
               {project.kind === "neubau" && <Row label="ABM-Nr.">{project.abmNr}</Row>}
               <Row label="Hausbaufirma">{company?.name}</Row>
               <Row label="Bauort">{project.location}</Row>
+              <Row label="Bundesland">{project.bundesland ? `${project.bundesland} · ${bundeslandName(project.bundesland) ?? ""}` : null}</Row>
               <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
               <Row label="Planer">{planer ? `${planer.name}${planer.code ? ` (${planer.code})` : ""}` : null}</Row>
               <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
@@ -335,13 +338,14 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
   );
 }
 
-function ProjectDataForm({ project, data, onClose }: { project: Project; data: Dataset; onClose: () => void }) {
+function ProjectDataForm({ project, data, contact, onClose }: { project: Project; data: Dataset; contact: BauherrContact | null; onClose: () => void }) {
   const { mutate, today } = useData();
   const { save, busy, error, clearError } = useProjectSave(project, data);
   const [v, setV] = useState({
     abmNr: project.abmNr ?? "",
     companyId: project.companyId ?? "",
     location: project.location ?? "",
+    bundesland: project.bundesland ?? "",
     architectId: project.architectId ?? "",
     planerId: project.planerId ?? "",
     intakeMonth: project.intakeMonth?.slice(0, 7) ?? "",
@@ -352,6 +356,10 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
   const architects = data.team.filter((t) => t.role === "architekt");
   const planers = data.team.filter((t) => t.role === "planer");
   const id = `pd-${project.id}`;
+  // Bundesland leer: Vorschlag aus dem Bauort (Landesname oder PLZ beim Bauherrn, sonst PLZ im Feld Bauort), änderbar
+  const [blTouched, setBlTouched] = useState(Boolean(project.bundesland));
+  const blSuggestion = suggestBundesland({ siteState: contact?.siteState, sitePostalCode: contact?.sitePostalCode, location: v.location });
+  const bundesland = blTouched ? v.bundesland : (blSuggestion ?? "");
   const others = data.projects.filter((x) => x.id !== project.id);
   const prefixOf = (companyId: string) => data.companies.find((c) => c.id === companyId)?.numberPrefix;
   const suggestion = suggestAbmNr(prefixOf(v.companyId), others);
@@ -379,6 +387,7 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
         project: {
           ...(project.kind === "neubau" ? { companyId: v.companyId || null, abmNr: v.abmNr } : {}),
           location: v.location,
+          bundesland: bundesland || null,
           architectId: v.architectId || null,
           planerId: v.planerId || null,
           intakeMonth: v.intakeMonth ? `${v.intakeMonth}-01` : null,
@@ -418,6 +427,18 @@ function ProjectDataForm({ project, data, onClose }: { project: Project; data: D
         <Field label="Bauort" htmlFor={`${id}-ort`}>
           <Input id={`${id}-ort`} value={v.location} onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="z. B. Ulm" />
         </Field>
+        <Field label="Bundesland" htmlFor={`${id}-bl`} hint={!blTouched && blSuggestion ? "Vorschlag aus der PLZ bzw. dem Land des Bauorts, änderbar." : undefined}>
+          <BundeslandSelect
+            id={`${id}-bl`}
+            value={bundesland}
+            onChange={(x) => {
+              setBlTouched(true);
+              setV((old) => ({ ...old, bundesland: x }));
+            }}
+          />
+        </Field>
+      </div>
+      <div className="dialog-row">
         <Field label="Eingangsmonat" htmlFor={`${id}-month`}>
           <Input id={`${id}-month`} type="month" value={v.intakeMonth} max={today.slice(0, 7)} onChange={(e) => setV({ ...v, intakeMonth: e.target.value })} />
         </Field>

@@ -42,6 +42,8 @@ export interface Project {
   salespersonId: string | null;
   bauherrLabel: string;
   location: string | null;
+  /** Bundesland des Bauorts als Kürzel (BW, BY, …), optional (Migration 0018). */
+  bundesland?: string | null;
   architectId: string | null;
   planerId: string | null;
   baubetreuung: string | null;

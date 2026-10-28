@@ -193,6 +193,8 @@ const allProjects = await read<{ id: string; bauherr_id: string | null }>("Bezug
 // Nummernkreise (Migration 0017): eine Firma mit Nummernkreis als Ziel der Schreibversuche (derselbe Wert wird zurückgeschrieben)
 const prefixCompany = (await read<{ id: string; number_prefix: string }>("Bezugswerte (Admin)", "Hausbaufirmen mit Nummernkreis lesen", ref.sb.from("companies").select("id, number_prefix").not("number_prefix", "is", null).limit(1)))[0];
 const prefixCount = await count(ref.sb, "companies", (q) => q.not("number_prefix", "is", null));
+// Bundesland am Projekt (Migration 0018): ein Projekt als Ziel des Schreibversuchs (derselbe Wert wird zurückgeschrieben)
+const blProject = (await read<{ id: string; bundesland: string | null }>("Bezugswerte (Admin)", "Bundesland der Projekte lesen", ref.sb.from("projects").select("id, bundesland").limit(1)))[0];
 const zero = (o: Outcome) => o.kind === "zeilen" && o.n === 0;
 if (zero(all.invoices) || zero(all.bauherren)) {
   console.warn("Hinweis: In der Datenbank gibt es keine Rechnungen oder keine Bauherren. Die Prüfungen \"sieht keine\" sind dann wenig aussagekräftig (vorher npm run seed:demo).\n");
@@ -336,6 +338,15 @@ for (const k of mitPasswort) {
     if (samePrefix) expectBlocked(who, "Nummernkreis ändern (nur Admin)", samePrefix);
     expectDenied(who, "Firma mit Nummernkreis anlegen (nur Admin)", newWithPrefix);
   }
+
+  // ---- Bundesland am Projekt (Migration 0018): lesen alle Rollen bei den Projekten, die sie sehen (Freiberufler nur
+  // zugewiesene), ändern nur Admin und Mitarbeiter. Geschrieben wird derselbe Wert: es ändert sich nichts.
+  expectRows(who, "Bundesland lesen (bei allen sichtbaren Projekten)", await count(sb, "projects"), await count(sb, "projects", undefined, "bundesland"));
+  if (blProject) {
+    const sameBl = await attempt(sb.from("projects").update({ bundesland: blProject.bundesland }).eq("id", blProject.id).select("id"));
+    if (k.rolle === "freiberufler") expectBlocked(who, "Bundesland ändern (nur Admin und Mitarbeiter)", sameBl);
+    else expectRows(who, "Bundesland ändern: Berechtigung vorhanden (derselbe Wert)", 1, sameBl);
+  } else rows.push([who, "Bundesland ändern", "–", "übersprungen: kein Projekt in der Datenbank", "–"]);
 
   // ---- Pilot-Modus (VITE_APP_MODE=pilot): Projekt anlegen, Dokument ablegen, Planungsprotokoll erzeugen.
   // Es bleibt nichts zurück: das Projekt scheitert am leeren Bauherrn, die Testdatei wird sofort wieder entfernt,

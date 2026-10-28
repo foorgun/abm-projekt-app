@@ -64,7 +64,7 @@ describe("Filter", () => {
   });
 
   it("Filter überleben den Weg über die URL", () => {
-    const f = { ...DEFAULT_FILTERS, q: "ulm", company: "c-lh", sort: "abm" as const, storno: true, group: true };
+    const f = { ...DEFAULT_FILTERS, q: "ulm", company: "c-lh", sort: "abm" as const, storno: true };
     expect(filtersFromParams(filtersToParams(f))).toEqual(f);
     expect(filtersToParams(DEFAULT_FILTERS).toString()).toBe("");
   });

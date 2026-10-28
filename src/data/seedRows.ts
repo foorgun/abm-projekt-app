@@ -90,6 +90,7 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
         bauherr_id: bauherrOf.has(p.id) ? demoUuid("bauherr", p.id) : null,
         bauherr_label: p.bauherrLabel,
         location: p.location,
+        bundesland: p.bundesland ?? null,
         architect_id: team(p.architectId),
         planer_id: team(p.planerId),
         baubetreuung: p.baubetreuung,
