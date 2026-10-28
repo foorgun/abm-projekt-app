@@ -1,48 +1,20 @@
 // Sicherung: alle Tabellen als JSON in einen lokalen Ordner mit Datum (backups/ steht in .gitignore).
 // Braucht den Secret key (.env.server), weil nur er alle Zeilen unabhängig von Rollen lesen darf. Liest nur.
-// Enthalten: alle Tabellen der App, die Liste der Benutzerkonten (ohne Passwörter) und die Liste der Dateien im Speicher.
+// Enthalten: alle Tabellen der App (Liste in scripts/lib/backupTables.ts, ein Test prüft sie gegen die Migrationen), die
+// Liste der Benutzerkonten (ohne Passwörter) und die Liste der Dateien im Speicher.
 // NICHT enthalten: die Dateien selbst (Pläne, PDFs). Die müssen getrennt gesichert werden.
 // Aufruf: npm run export:backup
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { BACKUP_TABLES } from "./lib/backupTables";
 import { adminClient, die, fetchAll, stamp, table } from "./lib/server";
-
-/** Tabelle → eindeutige Sortierung (nötig, damit seitenweises Lesen keine Zeile doppelt oder gar nicht liefert). */
-const TABLES: Record<string, string[]> = {
-  companies: ["id"],
-  salespeople: ["id"],
-  team_members: ["id"],
-  step_definitions: ["key"],
-  folder_templates: ["id"],
-  bauherren: ["id"],
-  projects: ["id"],
-  project_steps: ["project_id", "step_key"],
-  project_parties: ["project_id", "role"],
-  project_members: ["project_id", "user_id"],
-  invoices: ["id"],
-  documents: ["id"],
-  tasks: ["id"],
-  activities: ["id"],
-  mailboxes: ["id"],
-  inbox_items: ["id"],
-  inbox_attachments: ["id"],
-  agent_runs: ["id"],
-  agent_rules: ["id"],
-  agent_settings: ["id"],
-  agent_feedback: ["id"],
-  project_drafts: ["id"],
-  extraction_log: ["id"],
-  urlaubs_anspruch: ["user_id", "jahr"],
-  abwesenheiten: ["id"],
-  user_roles: ["user_id"],
-};
 
 const sb = adminClient();
 const dir = join("backups", `abm-backup-${stamp()}`);
 mkdirSync(dir, { recursive: true });
 const counts: [string, number][] = [];
 
-for (const [name, order] of Object.entries(TABLES)) {
+for (const [name, order] of Object.entries(BACKUP_TABLES)) {
   try {
     const rows = await fetchAll(sb, name, order);
     writeFileSync(join(dir, `${name}.json`), JSON.stringify(rows, null, 1));
