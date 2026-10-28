@@ -7,7 +7,7 @@ import { filterDocuments, type DocumentFilter, type DocumentRow } from "./docume
 import { cleanMeta } from "./extract/applyDraft";
 import { checkContractFile } from "./extract/contractFile";
 import { contractFolder } from "./extract/filing";
-import type { ExtractResponse } from "./extract/types";
+import { emptyDraft, type ExtractRequest, type ExtractResponse } from "./extract/types";
 import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
@@ -37,6 +37,7 @@ import type { SessionUser } from "./session";
 import { getSupabase } from "./supabase/client";
 import {
   COLS,
+  toDraftFile,
   dbErrorMessage,
   groupSteps,
   storageSafeName,
@@ -161,9 +162,32 @@ export function createSupabaseRepo(): Repo {
   async function userId(): Promise<string> {
     if (uid) return uid;
     const { data } = await sb.auth.getSession();
-    uid = data.session?.user.id ?? null;
+    uid = data.session?.user.id ?? (await sb.auth.refreshSession()).data.session?.user.id ?? null;
     if (!uid) throw new Error("Nicht angemeldet. Bitte neu anmelden.");
     return uid;
+  }
+
+  /**
+   * Sitzung vor einem Aufruf der Edge Function sicherstellen. Fehlt sie oder läuft sie in der nächsten Minute ab, einmal
+   * auffrischen. Ohne Sitzung schickt supabase-js mit dem Publishable key gar kein Token mit, und die Funktion meldet
+   * "Nicht angemeldet" (so entstand der Fehler in der Prüfmaske nach längerer Pause).
+   */
+  async function freshSession(force = false): Promise<boolean> {
+    if (!force) {
+      const { data } = await sb.auth.getSession();
+      const s = data.session;
+      if (s && (s.expires_at ?? 0) * 1000 > Date.now() + 60_000) return true;
+    }
+    const { data, error } = await sb.auth.refreshSession();
+    return Boolean(data.session && !error);
+  }
+  const SESSION_EXPIRED: ExtractResponse = { ok: false, code: "forbidden", message: "Deine Anmeldung ist abgelaufen. Bitte neu anmelden; die Dateien bleiben im Entwurf gespeichert." };
+
+  async function draftFileRow(id: string): Promise<Row> {
+    const { data, error } = await sb.from("project_draft_files").select(COLS.project_draft_files).eq("id", id).maybeSingle();
+    if (error) fail(error, "Datei des Entwurfs konnte nicht geladen werden");
+    if (!data) throw new Error("Die Datei gehört zu keinem offenen Entwurf.");
+    return data as unknown as Row;
   }
   const templates = () => last?.folderTemplates ?? [];
   const stepLabel = (key: string) => last?.stepDefinitions.find((s) => s.key === key)?.label ?? key;
@@ -823,6 +847,11 @@ export function createSupabaseRepo(): Repo {
       requireStaff();
       const row = await draftRow(id);
       if (row.storage_path) await sb.storage.from(BUCKET).remove([row.storage_path]);
+      const files = ((row.project_draft_files ?? []) as Row[]).filter((f) => f.storage_path);
+      if (files.length) {
+        await sb.storage.from(BUCKET).remove(files.map((f) => f.storage_path as string));
+        await sb.from("project_draft_files").update({ storage_path: null }).eq("draft_id", id);
+      }
       const { error } = await sb.from("project_drafts").update({ status: "verworfen", storage_path: null }).eq("id", id).eq("status", "offen");
       if (error) fail(error, "Entwurf konnte nicht verworfen werden");
     },
@@ -836,13 +865,15 @@ export function createSupabaseRepo(): Repo {
       return data;
     },
 
-    async fileContract({ projectId, docType, meta, file, blob, draftId }: ContractFiling) {
+    async fileContract({ projectId, docType, meta, file, blob, draftId, draftFileId }: ContractFiling) {
       requireStaff();
       const check = checkContractFile(file);
       if (!check.ok) throw new Error(check.reason);
       const draft = draftId ? await draftRow(draftId) : null;
+      const draftFile = draftFileId ? await draftFileRow(draftFileId) : null;
       let content = blob ?? null;
       if (!content && draft?.storage_path) content = (await sb.storage.from(BUCKET).download(draft.storage_path)).data;
+      if (!content && draftFile?.storage_path) content = (await sb.storage.from(BUCKET).download(draftFile.storage_path)).data;
       if (!content) throw new Error("Die Datei zum Vertrag fehlt. Bitte das Dokument noch einmal auswählen.");
       // Der Typ bestimmt den Ordner; abgelegt wird unter der Projekt-ID (Zugriffsregel des Speichers)
       const doc = await repo.uploadDocument({ projectId, folderPath: contractFolder(docType, templates()), file, blob: content, docType, meta });
@@ -851,13 +882,121 @@ export function createSupabaseRepo(): Repo {
         if (error) console.warn("Entwurf nicht abgeschlossen:", error.message);
         else if (draft.storage_path) await sb.storage.from(BUCKET).remove([draft.storage_path]);
       }
+      if (draftFile) {
+        const { error } = await sb.from("project_draft_files").update({ status: "abgelegt", document_id: doc.id, storage_path: null }).eq("id", draftFile.id);
+        if (error) console.warn("Datei des Entwurfs nicht abgeschlossen:", error.message);
+        else if (draftFile.storage_path) await sb.storage.from(BUCKET).remove([draftFile.storage_path]);
+      }
       return doc;
     },
 
-    async extractProject(request): Promise<ExtractResponse> {
+    async addDraftFile(input) {
+      requireStaff();
+      const check = checkContractFile(input.file);
+      if (!check.ok) throw new Error(check.reason);
+      const names = new Map([[await userId(), user.name]]);
+      let draftId = input.draftId ?? null;
+      if (!draftId) {
+        const created = await sb
+          .from("project_drafts")
+          .insert({ fields: emptyDraft(input.file, "edge", []), form: input.form ?? {}, doc_type: input.docType ?? "sonstiges", file_name: input.file.name, file_size: input.file.size, file_mime: input.file.type || null })
+          .select("id")
+          .single();
+        if (created.error) fail(created.error, "Entwurf konnte nicht gespeichert werden");
+        draftId = (created.data as Row).id as string;
+      }
+      const { count } = await sb.from("project_draft_files").select("id", { count: "exact", head: true }).eq("draft_id", draftId);
+      const inserted = await sb
+        .from("project_draft_files")
+        .insert({ draft_id: draftId, sort: count ?? 0, file_name: input.file.name, file_size: input.file.size, file_mime: input.file.type || null, doc_type: input.docType ?? "sonstiges" })
+        .select("id")
+        .single();
+      if (inserted.error) fail(inserted.error, "Datei konnte nicht gespeichert werden");
+      const fileId = (inserted.data as Row).id as string;
+      const path = `drafts/${draftId}/${fileId}-${storageSafeName(input.file.name)}`;
+      const up = await sb.storage.from(BUCKET).upload(path, input.blob, { contentType: input.file.type || "application/octet-stream", upsert: false });
+      if (up.error) {
+        // ohne Datei bleibt nichts zum Ablegen: Zeile gleich wieder herausnehmen
+        await sb.from("project_draft_files").update({ status: "entfernt", error: "Hochladen fehlgeschlagen" }).eq("id", fileId);
+        fail({ message: up.error.message }, `${input.file.name} konnte nicht hochgeladen werden`);
+      }
+      const { data, error } = await sb.from("project_draft_files").update({ storage_path: path }).eq("id", fileId).select(COLS.project_draft_files).single();
+      if (error) fail(error, "Datei konnte nicht gespeichert werden");
+      return { draft: toProjectDraft(await draftRow(draftId), names), file: toDraftFile(data as unknown as Row) };
+    },
+
+    async updateDraftFile(id, patch) {
+      requireStaff();
+      const row: Record<string, unknown> = {};
+      if (patch.docType !== undefined) row.doc_type = patch.docType;
+      if (patch.status !== undefined) row.status = patch.status;
+      if (patch.error !== undefined) row.error = patch.error?.slice(0, 500) ?? null;
+      if (patch.draft !== undefined) row.fields = patch.draft ?? {};
+      if (patch.meta !== undefined) row.meta = cleanMeta(patch.meta);
+      const { data, error } = await sb.from("project_draft_files").update(row).eq("id", id).select(COLS.project_draft_files).maybeSingle();
+      if (error) fail(error, "Datei des Entwurfs konnte nicht gespeichert werden");
+      if (!data) throw new Error("Die Datei gehört zu keinem offenen Entwurf.");
+      return toDraftFile(data as unknown as Row);
+    },
+
+    async removeDraftFile(id) {
+      requireStaff();
+      const row = await draftFileRow(id);
+      if (row.storage_path) await sb.storage.from(BUCKET).remove([row.storage_path as string]);
+      const { error } = await sb.from("project_draft_files").update({ status: "entfernt", storage_path: null }).eq("id", id);
+      if (error) fail(error, "Datei konnte nicht entfernt werden");
+    },
+
+    async draftFileBlob(id) {
+      requireStaff();
+      const row = await draftFileRow(id);
+      if (!row.storage_path) return null;
+      const { data, error } = await sb.storage.from(BUCKET).download(row.storage_path as string);
+      return error || !data ? null : data;
+    },
+
+    async completeProjectDraft(draftId, projectId) {
+      requireStaff();
+      const { error } = await sb.from("project_drafts").update({ status: "uebernommen", project_id: projectId, storage_path: null }).eq("id", draftId).eq("status", "offen");
+      if (error) fail(error, "Entwurf konnte nicht abgeschlossen werden");
+    },
+
+    async extractionCosts() {
+      if (user.role !== "admin") throw new PermissionError();
+      const [monate, projekte] = await Promise.all([
+        sb.from("extraction_costs_by_month").select("*").order("monat", { ascending: false }).limit(24),
+        sb.from("extraction_costs_by_project").select("*").order("kosten_eur", { ascending: false }).limit(200),
+      ]);
+      if (monate.error) fail(monate.error, "Kosten konnten nicht geladen werden");
+      if (projekte.error) fail(projekte.error, "Kosten konnten nicht geladen werden");
+      const row = (r: Row, key: string, label: string) => ({
+        key,
+        label,
+        auslesungen: Number(r.auslesungen ?? 0),
+        fehlgeschlagen: Number(r.fehlgeschlagen ?? 0),
+        inputTokens: Number(r.input_tokens ?? 0),
+        outputTokens: Number(r.output_tokens ?? 0),
+        kostenEur: Number(r.kosten_eur ?? 0),
+      });
+      const proj = (projekte.data ?? []) as Row[];
+      const ohne = proj.find((r) => !r.project_id);
+      return {
+        monate: ((monate.data ?? []) as Row[]).map((r) => row(r, r.monat, r.monat)),
+        projekte: proj.filter((r) => r.project_id).map((r) => row(r, r.project_id, [r.abm_nr, r.bauherr_label].filter(Boolean).join(" · ") || "Projekt")),
+        ohneProjekt: ohne ? row(ohne, "ohne", "Ohne Projekt (Entwurf offen oder verworfen)") : null,
+      };
+    },
+
+    async extractProject(request: ExtractRequest): Promise<ExtractResponse> {
       requireStaff();
       // Die Funktion prüft Anmeldung, Rolle, Freischaltung und Limits selbst; der Schlüssel zum KI-Dienst liegt nur dort.
-      const { data, error } = await sb.functions.invoke("extract-project", { body: request });
+      if (!(await freshSession())) return SESSION_EXPIRED;
+      let { data, error } = await sb.functions.invoke("extract-project", { body: request });
+      // Abgelehnt wegen Sitzung (z. B. Token kurz vorher abgelaufen): einmal auffrischen und erneut senden
+      if (error && (error as { context?: Response }).context?.status === 401) {
+        if (!(await freshSession(true))) return SESSION_EXPIRED;
+        ({ data, error } = await sb.functions.invoke("extract-project", { body: request }));
+      }
       if (error) {
         // Fehlerantwort der Funktion (z. B. 403, 429): die Meldung steht im Antworttext
         const body = await (error as { context?: Response }).context?.json?.().catch(() => null);

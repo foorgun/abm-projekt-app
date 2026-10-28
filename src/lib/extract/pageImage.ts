@@ -30,6 +30,16 @@ export function fitInside(width: number, height: number, max: number): { width: 
   return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
 }
 
+/** Kleinere Kante für den zweiten Versuch, wenn ein Seitenbild über der Grenze der Funktion liegt (sehr dichte Scans). */
+export const SMALL_IMAGE_EDGE = 1024;
+/** Grenze je Bild in der Edge Function (Bilddatei, nicht Base64); der KI-Dienst selbst nimmt bis 10 MB Base64. */
+export const MAX_SEND_BYTES = 5 * 1024 * 1024;
+
+/** Größe der Bilddatei aus einem Base64-Text. */
+export function base64Size(data: string): number {
+  return Math.floor((data.length * 3) / 4) - (data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0);
+}
+
 /** data:-URL → Bild für die Edge Function (Base64 ohne Präfix). */
 export function toExtractImage(dataUrl: string): ExtractImage {
   const m = dataUrl.match(/^data:(image\/(?:jpeg|png));base64,(.+)$/);
@@ -111,12 +121,12 @@ export async function openPages(file: Blob, kind: "pdf" | "docx" | "bild"): Prom
  * Rendert die gewünschten Seiten (ab 1) in der Größe für die Auslesung (höchstens MAX_IMAGE_EDGE). Bilder haben genau
  * eine Seite. DOCX hat keine Seitenbilder. Liefert null, wenn sich nichts darstellen lässt.
  */
-export async function renderPages(file: Blob & { name?: string; type: string }, kind: "pdf" | "docx" | "bild", wanted: number[] = [1]): Promise<DocumentPages | null> {
+export async function renderPages(file: Blob & { name?: string; type: string }, kind: "pdf" | "docx" | "bild", wanted: number[] = [1], maxEdge = MAX_IMAGE_EDGE): Promise<DocumentPages | null> {
   const source = await openPages(file, kind);
   if (!source) return null;
   try {
     const pages: PageImage[] = [];
-    for (const n of [...new Set(wanted)].filter((p) => p >= 1 && p <= source.pageCount)) pages.push(await source.render(n, MAX_IMAGE_EDGE));
+    for (const n of [...new Set(wanted)].filter((p) => p >= 1 && p <= source.pageCount)) pages.push(await source.render(n, maxEdge));
     return { pageCount: source.pageCount, pages };
   } catch {
     return null;

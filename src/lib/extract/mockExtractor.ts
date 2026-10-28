@@ -39,8 +39,10 @@ export function isoDate(german: string): string | null {
   return `${y}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
-function vertragsartOf(text: string): Vertragsart | null {
+export function vertragsartOf(text: string): Vertragsart | null {
   if (/vermessungs(vertrag|auftrag|leistung)|vermesser(vertrag|auftrag)/i.test(text)) return "vermessungsvertrag";
+  if (/baugrund(gutachten|auftrag|untersuchung)|bodengutachten/i.test(text)) return "baugrundauftrag";
+  if (/honorar(vereinbarung|vertrag)|architektenvertrag/i.test(text)) return "honorarvereinbarung";
   if (/werkvertrag|hausvertrag|bauvertrag/i.test(text)) return "werkvertrag";
   return null;
 }
@@ -55,7 +57,7 @@ export function splitName(raw: string): { label: string; name: string } {
 }
 
 /** Wörter im Dateinamen, die kein Name sind. */
-const FILE_WORDS = /^(werkvertrag|vertrag|vermessungsvertrag|vermessungsauftrag|vermessung|bauvertrag|hausvertrag|scan|kopie|final|unterschrieben|signed|entwurf|vorlage|beispiel|neu|pdf|docx|img|foto|bild|dokument|familie|herr|frau|und|abm)$/i;
+const FILE_WORDS = /^(werkvertrag|vertrag|vermessungsvertrag|vermessungsauftrag|vermesservertrag|vermessung|baugrundauftrag|baugrund|bodengutachten|honorarvereinbarung|honorar|bauvertrag|hausvertrag|scan|kopie|final|unterschrieben|signed|entwurf|vorlage|beispiel|neu|pdf|docx|img|foto|bild|dokument|familie|herr|frau|und|abm)$/i;
 
 /**
  * Felder aus dem Text (eine Zeichenkette je Seite) und dem Dateinamen.
@@ -63,7 +65,7 @@ const FILE_WORDS = /^(werkvertrag|vertrag|vermessungsvertrag|vermessungsauftrag|
  * Beschriftung, "niedrig" bei allem, was nur aus dem Dateinamen geraten ist. Leere Formularfelder ("Bauherr: ____")
  * ergeben keinen Wert.
  */
-export function draftFromText(datei: ProjectDraft["datei"], pages: string[], textquelle: ProjectDraft["textquelle"]): ProjectDraft {
+export function draftFromText(datei: ProjectDraft["datei"], pages: string[], textquelle: ProjectDraft["textquelle"], fixedArt?: Vertragsart): ProjectDraft {
   const felder = emptyFields();
   const hinweise: string[] = [];
   const pageKnown = textquelle === "pdf";
@@ -111,7 +113,7 @@ export function draftFromText(datei: ProjectDraft["datei"], pages: string[], tex
   // --- Vertrag (Metadaten) -------------------------------------------------------------------------------
   const whole = pages.join("\n");
   const art = vertragsartOf(whole.slice(0, 600)) ?? vertragsartOf(whole);
-  const artHit = art ? find(pages, /((?:Werk|Haus|Bau|Vermessungs|Vermesser)(?:vertrag|auftrag|leistung))/i) : null;
+  const artHit = art ? find(pages, /((?:Werk|Haus|Bau|Vermessungs|Vermesser|Baugrund|Honorar)(?:vertrag|auftrag|leistung|vereinbarung|gutachten))/i) : null;
   put("vertragsart", artHit, "hoch", art);
   const datum = find(pages, /(?:Vertragsdatum|Datum|, *den) *:? *(\d{1,2}\.\d{1,2}\.\d{4})/);
   put("vertragsdatum", datum, datum && /Vertragsdatum/.test(datum.zeile) ? "hoch" : "mittel", datum ? isoDate(datum.wert) : null);
@@ -134,7 +136,8 @@ export function draftFromText(datei: ProjectDraft["datei"], pages: string[], tex
   const blanks = (whole.match(/: *_{4,}/g) ?? []).length;
   if (blanks >= 3) hinweise.push("Das sieht nach einer leeren Vorlage aus: die Formularfelder sind nicht ausgefüllt. Bitte die Angaben von Hand eintragen.");
   if (textquelle === "dateiname") hinweise.push("In dieser Datei wurde kein lesbarer Text gefunden. Vorschläge stammen nur aus dem Dateinamen.");
-  return { datei, textquelle, extractor: "mock", gescannt: false, felder: normalizeFields(felder, false), hinweise };
+  const seiten = textquelle === "pdf" ? { gelesen: pages.map((_, i) => i + 1), gesamt: pages.length } : undefined;
+  return { datei, seiten, textquelle, extractor: "mock", gescannt: false, felder: normalizeFields(felder, false, fixedArt), hinweise };
 }
 
 /**
@@ -144,7 +147,7 @@ export function draftFromText(datei: ProjectDraft["datei"], pages: string[], tex
 export function createMockExtractor(opts: { demo: boolean }): ProjectExtractor {
   return {
     name: "mock",
-    async extract(file: File): Promise<ProjectDraft> {
+    async extract(file: File, options): Promise<ProjectDraft> {
       const datei = { name: file.name, size: file.size, type: file.type };
       const check = checkContractFile(datei);
       if (!check.ok) throw new Error(check.reason);
@@ -155,7 +158,7 @@ export function createMockExtractor(opts: { demo: boolean }): ProjectExtractor {
       } catch {
         pages = []; // nicht lesbar: weiter wie bei einem Scan
       }
-      if (pages.length) return draftFromText(datei, pages, check.kind === "pdf" ? "pdf" : "docx");
+      if (pages.length) return draftFromText(datei, pages, check.kind === "pdf" ? "pdf" : "docx", options?.art);
 
       // Kein Text: Scan oder Foto
       if (opts.demo && check.kind !== "docx") {
@@ -164,12 +167,12 @@ export function createMockExtractor(opts: { demo: boolean }): ProjectExtractor {
           textquelle: "bild",
           extractor: "mock",
           gescannt: true,
-          felder: normalizeFields(SCAN_WERKVERTRAG_FELDER, true),
+          felder: normalizeFields(SCAN_WERKVERTRAG_FELDER, true, options?.art),
           hinweise: ["Demo: Der Testbetrieb kann Scans nicht lesen. Die Vorschläge sind erfundene Beispielwerte und stammen nicht aus dieser Datei."],
         };
       }
-      const draft = draftFromText(datei, [], "dateiname");
-      return { ...draft, gescannt: check.kind !== "docx", felder: normalizeFields(draft.felder, true) };
+      const draft = draftFromText(datei, [], "dateiname", options?.art);
+      return { ...draft, gescannt: check.kind !== "docx", felder: normalizeFields(draft.felder, true, options?.art) };
     },
   };
 }

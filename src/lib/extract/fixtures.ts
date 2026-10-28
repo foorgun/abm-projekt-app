@@ -1,6 +1,8 @@
-// Zwei erfundene Beispieldokumente, die die Struktur der echten nachbilden (keine echten Personen oder Daten):
+// Erfundene Beispieldokumente, die die Struktur der echten nachbilden (keine echten Personen oder Daten):
 //   a) gescannter Werkvertrag einer Hausbaufirma: Bild ohne Textebene, handschriftliche Eintragungen
 //   b) leerer Vermessungsauftrag: Vorlage mit Formularfeldern, die ABM selbst ausfüllt
+//   c) ausgefüllter Vermesservertrag zum selben Bauvorhaben: Bauort und Grundstück; die Telefonnummer weicht absichtlich
+//      vom Werkvertrag ab, damit sich das Zusammenführen mit Auswahl zeigen lässt
 // Der Demo-Modus bietet sie im Dialog "Neues Projekt" an; die Tests nutzen dieselben Daten.
 
 import type { DraftField, DraftFieldKey, Sicherheit } from "./types";
@@ -115,3 +117,23 @@ export async function scanWerkvertragFile(): Promise<File> {
   if (!blob) throw new Error("Beispiel konnte nicht erzeugt werden.");
   return new File([blob], "Scan_Werkvertrag_Beispiel.jpg", { type: "image/jpeg" });
 }
+
+/** c) Text des ausgefüllten Vermesservertrags (Text-PDF, eine Seite). */
+export const VERMESSERVERTRAG_ZEILEN: string[] = [
+  "Vermessungsbüro Beispiel · Musterstraße 1 · 89073 Ulm",
+  "Vermessungsvertrag",
+  "Auftraggeber: Hoffmann, Jonas",
+  "Anschrift: Lindenweg 12, 89073 Ulm",
+  "Telefon: 0731 000119",
+  "Baugrundstück: Am Hölzle 12, 89134 Blaustein",
+  "Flurstück: 1234/5   Gemarkung: Bermaringen",
+  "Leistungen: [x] Lageplan zum Bauantrag   [x] Absteckung",
+  "Honorar: 2.380,00 EUR",
+  "Ulm, den 05.10.2026",
+  "ERFUNDENES BEISPIEL - keine echten Daten",
+];
+
+export function vermesservertragFile(): File {
+  return new File([textPdf(VERMESSERVERTRAG_ZEILEN) as BlobPart], "Vermesservertrag_Hoffmann_Beispiel.pdf", { type: "application/pdf" });
+}
+

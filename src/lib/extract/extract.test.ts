@@ -10,7 +10,7 @@ import { createEdgeExtractor, extractorKind, getExtractor } from "./index";
 import { createMockExtractor, draftFromText, isoDate, mockExtractor, splitName } from "./mockExtractor";
 import { fitInside, toExtractImage } from "./pageImage";
 import { docxText, pdfPages, textFromContentStream, textFromDocumentXml } from "./readText";
-import { DRAFT_FIELDS, emptyDraft, emptyFields, ExtractUnavailable, foerderFrist, normalizeFields, type ExtractResponse } from "./types";
+import { DRAFT_FIELDS, emptyDraft, emptyFields, ExtractUnavailable, foerderFrist, normalizeFields, type ExtractRequest, type ExtractResponse } from "./types";
 
 const TODAY = "2026-10-09";
 const db = buildDemoDataset(TODAY);
@@ -97,7 +97,9 @@ describe("Vertragsdatei prüfen", () => {
   });
 
   it("lehnt zu große, leere, fremde und falsch benannte Dateien ab", () => {
-    expect(checkContractFile({ ...file, size: MAX_CONTRACT_BYTES + 1 })).toMatchObject({ ok: false, reason: expect.stringContaining("10 MB") });
+    expect(MAX_CONTRACT_BYTES).toBe(30 * 1024 * 1024);
+    expect(checkContractFile({ ...file, size: MAX_CONTRACT_BYTES + 1 })).toMatchObject({ ok: false, reason: expect.stringContaining("größer als 30 MB") });
+    expect(checkContractFile({ ...file, size: MAX_CONTRACT_BYTES })).toMatchObject({ ok: true });
     expect(checkContractFile({ ...file, size: 0 })).toMatchObject({ ok: false });
     expect(checkContractFile({ name: "plan.dwg", size: 5, type: "" })).toMatchObject({ ok: false });
     expect(checkContractFile({ name: "vertrag.exe", size: 5, type: "" })).toMatchObject({ ok: false });
@@ -291,22 +293,41 @@ describe("Schalter und Edge-Extractor", () => {
     expect(getExtractor({ demo: false, kind: "edge" }).name).toBe("mock");
   });
 
-  it("sendet nur Seite 1, auf Wunsch zusätzlich die Plan-Seite, nie mehr als zwei Bilder", async () => {
-    const sent: number[] = [];
-    const edge = createEdgeExtractor({ call: async (r) => (sent.push(r.images.length), { ok: true, felder, hinweise: [] }), render, fallback: mockExtractor });
+  it("sendet die ersten zwei Seiten, auf Wunsch eine weitere, höchstens vier Bilder; Art, Datei-ID und Seiten gehen mit", async () => {
+    const sent: ExtractRequest[] = [];
+    const edge = createEdgeExtractor({ call: async (r) => (sent.push(r), { ok: true, felder, hinweise: [] }), render, fallback: mockExtractor });
     const d = await edge.extract(scan());
     await edge.extract(scan(), { planPage: 7 });
-    expect(sent).toEqual([1, 2]);
+    await edge.extract(scan(), { pages: [5], art: "vermessungsvertrag", draftFileId: "f1" });
+    await edge.extract(scan(), { pages: [1, 2, 3, 4, 5, 6] });
+    expect(sent.map((r) => r.images.length)).toEqual([2, 3, 1, 4]);
+    expect(sent.map((r) => r.pages)).toEqual([[1, 2], [1, 2, 7], [5], [1, 2, 3, 4]]);
+    expect(sent[2]).toMatchObject({ art: "vermessungsvertrag", draftFileId: "f1" });
+    // keine stille Kürzung: der Entwurf nennt gelesene und vorhandene Seiten
+    expect(d.seiten).toEqual({ gelesen: [1, 2], gesamt: 12 });
     expect(d).toMatchObject({ extractor: "edge", textquelle: "bild", gescannt: true });
     // Scan: höchstens mittel
     expect(d.felder.bauherrLabel.sicherheit).toBe("mittel");
   });
 
   it("rechnet die Bildnummer der Quelle auf die Seite im Dokument um", async () => {
-    const edge = createEdgeExtractor({ call: async () => ({ ok: true, felder, hinweise: [] }), render, fallback: mockExtractor });
+    const plan = { ...felder, haustyp: { ...felder.haustyp, quelle: { text: "Haustyp", seite: 3 } } };
+    const edge = createEdgeExtractor({ call: async () => ({ ok: true, felder: plan, hinweise: [] }), render, fallback: mockExtractor });
     const d = await edge.extract(scan(), { planPage: 7 });
     expect(d.felder.bauherrLabel.quelle?.seite).toBe(1);
     expect(d.felder.haustyp.quelle?.seite).toBe(7);
+  });
+
+  it("zu große Seitenbilder: erst kleiner rendern, sonst verständlich melden (nie still kürzen)", async () => {
+    const big = "A".repeat(8 * 1024 * 1024);
+    const edges: number[] = [];
+    const shrinkable = async (_f: File, _k: string, pages: number[], maxEdge?: number) => (edges.push(maxEdge ?? 1568), { pageCount: 2, pages: pages.map((page) => ({ page, dataUrl: `data:image/jpeg;base64,${maxEdge ? "A".repeat(200) : big}`, width: 10, height: 10 })) });
+    const ok = createEdgeExtractor({ call: async () => ({ ok: true, felder, hinweise: [] }), render: shrinkable, fallback: mockExtractor });
+    await expect(ok.extract(scan())).resolves.toMatchObject({ extractor: "edge" });
+    expect(edges).toEqual([1568, 1024]);
+    const tooBig = async (_f: File, _k: string, pages: number[]) => ({ pageCount: 2, pages: pages.map((page) => ({ page, dataUrl: `data:image/jpeg;base64,${big}`, width: 10, height: 10 })) });
+    const fails = createEdgeExtractor({ call: async () => ({ ok: true, felder, hinweise: [] }), render: tooBig, fallback: mockExtractor });
+    await expect(fails.extract(scan())).rejects.toMatchObject({ name: "ExtractUnavailable", message: expect.stringContaining("auch verkleinert noch zu groß") });
   });
 
   it("meldet 'nicht freigeschaltet', Limits und Ausfälle so, dass die manuelle Anlage angeboten werden kann", async () => {
@@ -375,9 +396,11 @@ describe("Entwurf ins Formular", () => {
 });
 
 describe("Zielordner je Dokumenttyp", () => {
-  it("Werkvertrag nach 00 Verträge, Vermessungsvertrag nach 04 Vermesser", () => {
+  it("Werkvertrag nach 00 Verträge, Vermessungsvertrag nach 04 Vermesser, Baugrundauftrag nach 10 Bodengutachten", () => {
     expect(contractFolder("werkvertrag", db.folderTemplates)).toBe("00 Verträge");
     expect(contractFolder("vermessungsvertrag", db.folderTemplates)).toBe("04 Vermesser");
+    expect(contractFolder("baugrundauftrag", db.folderTemplates)).toBe("10 Bodengutachten");
+    expect(contractFolder("honorarvereinbarung", db.folderTemplates)).toBe("00 Verträge");
     expect(contractFolder("sonstiges", db.folderTemplates)).toBe(CONTRACT_FOLDER.sonstiges);
   });
 

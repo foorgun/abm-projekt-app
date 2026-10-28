@@ -1,14 +1,14 @@
 // Einstieg: wählt den Extractor über den Schalter VITE_PROJECT_EXTRACTOR ("mock" | "edge").
 //   mock (Standard): liest im Browser, nichts verlässt den Rechner. Für den Demo-Modus.
-//   edge: sendet Seite 1 (und auf Wunsch die Plan-Seite) als Bild an die Edge Function extract-project.
+//   edge: sendet je Dokument die ersten Seiten (auf Wunsch eine weitere) als Bild an die Edge Function extract-project.
 //         Der API-Schlüssel liegt nur dort. Solange die Funktion nicht freigeschaltet ist (EXTRACTOR_ENABLED),
 //         meldet sie das, und die Oberfläche bietet die manuelle Anlage an. Siehe docs/vertrag-extraktion.md.
 
 import { checkContractFile } from "./contractFile";
 import { createMockExtractor } from "./mockExtractor";
-import { renderPages, toExtractImage, type DocumentPages } from "./pageImage";
+import { base64Size, MAX_SEND_BYTES, renderPages, SMALL_IMAGE_EDGE, toExtractImage, type DocumentPages } from "./pageImage";
 import { pdfPages } from "./readText";
-import { ExtractUnavailable, normalizeFields, type ExtractRequest, type ExtractResponse, type ProjectDraft, type ProjectExtractor } from "./types";
+import { ExtractUnavailable, isVertragsart, normalizeFields, type ExtractOptions, type ExtractRequest, type ExtractResponse, type ProjectDraft, type ProjectExtractor } from "./types";
 
 export type ExtractorKind = "mock" | "edge";
 
@@ -16,8 +16,20 @@ export function extractorKind(env: { VITE_PROJECT_EXTRACTOR?: string } = import.
   return env.VITE_PROJECT_EXTRACTOR === "edge" ? "edge" : "mock";
 }
 
-/** Höchstens zwei Bilder je Auslesung: Seite 1 und optional die Plan-Seite. */
-export const MAX_EXTRACT_IMAGES = 2;
+/** Seiten, die je Dokument gelesen werden: die ersten zwei (Vertragsdaten und Beteiligte stehen dort fast immer). */
+export const PAGES_PER_DOCUMENT = 2;
+/** Höchstens so viele Bilder je Aufruf (Grenze der Edge Function). */
+export const MAX_EXTRACT_IMAGES = 4;
+
+type Render = (file: File, kind: "pdf" | "docx" | "bild", pages: number[], maxEdge?: number) => Promise<DocumentPages | null>;
+
+/** Welche Seiten gelesen werden: ausdrücklich gewünschte, sonst die ersten Seiten plus ggf. die Plan-Seite. */
+export function pagesToRead(options: ExtractOptions | undefined, perDocument = PAGES_PER_DOCUMENT): number[] {
+  if (options?.pages?.length) return [...new Set(options.pages)].filter((p) => p >= 1).slice(0, MAX_EXTRACT_IMAGES);
+  const first = Array.from({ length: perDocument }, (_, i) => i + 1);
+  const plan = options?.planPage && options.planPage > perDocument ? [options.planPage] : [];
+  return [...first, ...plan].slice(0, MAX_EXTRACT_IMAGES);
+}
 
 /**
  * Extractor über die Edge Function. `call` ist der Aufruf über das Repo (die Oberfläche spricht nie direkt mit Supabase),
@@ -25,26 +37,33 @@ export const MAX_EXTRACT_IMAGES = 2;
  */
 export function createEdgeExtractor(deps: {
   call: (request: ExtractRequest) => Promise<ExtractResponse>;
-  render?: (file: File, kind: "pdf" | "docx" | "bild", pages: number[]) => Promise<DocumentPages | null>;
+  render?: Render;
   /** Für DOCX gibt es kein Seitenbild: dort liest der Mock den Text lokal. */
   fallback: ProjectExtractor;
 }): ProjectExtractor {
-  const render = deps.render ?? renderPages;
+  const render: Render = deps.render ?? renderPages;
   return {
     name: "edge",
     async extract(file, options): Promise<ProjectDraft> {
       const datei = { name: file.name, size: file.size, type: file.type };
       const check = checkContractFile(datei);
       if (!check.ok) throw new Error(check.reason);
-      if (check.kind === "docx") return deps.fallback.extract(file);
+      if (check.kind === "docx") return deps.fallback.extract(file, options);
 
-      const wanted = [1, ...(options?.planPage && options.planPage > 1 ? [options.planPage] : [])].slice(0, MAX_EXTRACT_IMAGES);
-      const rendered = await render(file, check.kind, wanted);
-      if (!rendered?.pages.length) throw new ExtractUnavailable("Die erste Seite ließ sich nicht als Bild lesen.", "error");
+      const wanted = pagesToRead(options);
+      let rendered = await render(file, check.kind, wanted);
+      if (!rendered?.pages.length) throw new ExtractUnavailable("Die Datei ließ sich nicht als Bild darstellen (beschädigt oder mit Passwort geschützt?).", "error");
+      let images = rendered.pages.map((p) => toExtractImage(p.dataUrl));
+      // Sehr dichte Scans: erst verkleinern statt abzuschneiden; klappt auch das nicht, verständlich melden
+      if (images.some((i) => base64Size(i.data) > MAX_SEND_BYTES)) {
+        rendered = (await render(file, check.kind, wanted, SMALL_IMAGE_EDGE)) ?? rendered;
+        images = rendered.pages.map((p) => toExtractImage(p.dataUrl));
+        if (images.some((i) => base64Size(i.data) > MAX_SEND_BYTES)) throw new ExtractUnavailable("Die Seiten sind auch verkleinert noch zu groß zum Auslesen (über 5 MB je Seite).", "error");
+      }
 
       let response: ExtractResponse;
       try {
-        response = await deps.call({ images: rendered.pages.slice(0, MAX_EXTRACT_IMAGES).map((p) => toExtractImage(p.dataUrl)) });
+        response = await deps.call({ images, art: options?.art, draftFileId: options?.draftFileId, pages: rendered.pages.map((p) => p.page) });
       } catch (e) {
         throw new ExtractUnavailable(e instanceof Error ? e.message : "Die Auslesung ist gerade nicht erreichbar.", "error");
       }
@@ -59,10 +78,19 @@ export function createEdgeExtractor(deps: {
           gescannt = true;
         }
       }
-      const felder = normalizeFields(response.felder, gescannt);
+      const art = options?.art ?? (isVertragsart(response.dokumentart) ? response.dokumentart : undefined);
+      const felder = normalizeFields(response.felder, gescannt, art);
       // Seitenzahl der Quelle: das Modell zählt die gesendeten Bilder, die Prüfmaske zeigt die Seite im Dokument
       for (const f of Object.values(felder)) if (f.quelle?.seite) f.quelle.seite = rendered.pages[f.quelle.seite - 1]?.page ?? null;
-      return { datei, textquelle: "bild", extractor: "edge", gescannt, felder, hinweise: response.hinweise.slice(0, 5).map((h) => String(h).slice(0, 200)) };
+      return {
+        datei,
+        seiten: { gelesen: rendered.pages.map((p) => p.page), gesamt: rendered.pageCount },
+        textquelle: "bild",
+        extractor: "edge",
+        gescannt,
+        felder,
+        hinweise: response.hinweise.slice(0, 5).map((h) => String(h).slice(0, 200)),
+      };
     },
   };
 }

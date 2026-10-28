@@ -9,6 +9,9 @@ import type { DocumentType, FolderTemplate } from "../types";
 export const CONTRACT_FOLDER: Record<DocumentType, string> = {
   werkvertrag: "00 Verträge",
   vermessungsvertrag: "04 Vermesser",
+  baugrundauftrag: "10 Bodengutachten",
+  // eigener Ordner fehlt in der Vorlage: vorläufig bei den Verträgen
+  honorarvereinbarung: "00 Verträge",
   sonstiges: "00 Verträge",
 };
 

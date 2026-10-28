@@ -1,19 +1,23 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, FileUp } from "lucide-react";
-import { ALWAYS_CHECK, applyDraft, cleanMeta, FORM_SOURCE, SIMILAR_LABEL, similarProjects, type AppliedDraft, type FormKey } from "../lib/extract/applyDraft";
+import { ALWAYS_CHECK, applyDraft, cleanMeta, FORM_SOURCE, formPatchFor, preserveEdited, SIMILAR_LABEL, similarProjects, type AppliedDraft, type FormKey } from "../lib/extract/applyDraft";
+import { initialJob, metaOf, readDocuments } from "../lib/extract/batch";
+import { mergeDrafts, sourceLabel, type ConflictOption, type MergedDraft } from "../lib/extract/merge";
 import {
   checkContractFile,
   CONTRACT_ACCEPT,
+  DRAFT_FIELDS,
   emptyDraft,
   ExtractUnavailable,
   extractorKind,
   extractProjectFromDocument,
-  FOERDER_FRIST_MONATE,
-  foerderFrist,
   NO_SITE_HINT,
+  restrictToType,
   SICHERHEIT_LABEL,
   VERTRAGSART_LABEL,
+  type DraftFieldKey,
+  type DraftFormState,
   type ProjectDraft,
   type Sicherheit,
   type Vertragsart,
@@ -21,18 +25,19 @@ import {
 import { companyForAbm, suggestAbmNr } from "../lib/abmNr";
 import { suggestBundesland } from "../lib/bundesland";
 import { isPilot } from "../lib/appMode";
-import { scanWerkvertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
+import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
-import { formatBytes, formatDate, monthStart } from "../lib/format";
+import { formatBytes, monthStart } from "../lib/format";
 import { folgeAnschrift } from "../lib/projectEdit";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
 import type { NewProject } from "../lib/repo";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
-import type { ContractMeta, Project } from "../lib/types";
+import type { ContractMeta, DraftFileRecord, Project, ProjectDraftRecord } from "../lib/types";
 import { AbmHinweise } from "./AbmHinweise";
 import { BundeslandSelect } from "./BundeslandSelect";
+import { DocumentCards, pagesText, UploadList, type DocEntry } from "./DraftDocuments";
 import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
@@ -64,11 +69,95 @@ const KIND_OF = (name: string, type: string) => {
   return c.ok ? c.kind : null;
 };
 
-/** Schritte im Dialog: Ablagefläche, Lesen des Dokuments, Formular (manuell oder als Prüfmaske), Duplikate. */
-type Step = "start" | "loading" | "form" | "duplicates";
+/** Schritte im Dialog: Dateien (hinzufügen, speichern, auslesen), Formular (manuell oder als Prüfmaske), Duplikate. */
+type Step = "start" | "form" | "duplicates";
+
+/** Formularfelder, die ein Entwurfsfeld speisen (für "von Hand geändert" bei abweichenden Werten). */
+const FORM_KEYS_OF = Object.fromEntries(DRAFT_FIELDS.map((k) => [k, (Object.keys(FORM_SOURCE) as FormKey[]).filter((f) => FORM_SOURCE[f] === k)])) as Record<DraftFieldKey, FormKey[]>;
+
+/** Feldnamen für Hinweise zu abweichenden Werten */
+const CONFLICT_LABEL: Partial<Record<DraftFieldKey, string>> & Record<string, string> = {
+  bauherrLabel: "Bauherr (Nachname)",
+  bauherrName: "Name des Bauherrn",
+  phone: "Telefon",
+  email: "E-Mail",
+  address: "Anschrift",
+  bauherr2Name: "Zweiter Bauherr",
+  bauherr2Phone: "Telefon (zweiter Bauherr)",
+  bauherr2Email: "E-Mail (zweiter Bauherr)",
+  company: "Hausbaufirma",
+  buildingAddress: "Bauadresse",
+  location: "Bauort",
+  flurstueck: "Flurstück",
+  gemarkung: "Gemarkung",
+  vermesser: "Vermesser",
+  rechtsform: "Rechtsform",
+  foerderung: "Förderung",
+};
+
+const PHASE_OF: Record<DraftFileRecord["status"], DocEntry["phase"]> = { offen: "fehler", ausgelesen: "fertig", fehler: "fehler", entfernt: "abgelehnt", abgelegt: "fertig" };
+
+/** Dokumente eines gespeicherten Entwurfs; ältere Entwürfe haben genau eine Datei direkt am Entwurf. */
+function docsOfDraft(rec: ProjectDraftRecord | null): DocEntry[] {
+  if (!rec) return [];
+  if (!rec.files.length) {
+    return [
+      {
+        key: "legacy",
+        legacy: true,
+        name: rec.file.name,
+        size: rec.file.size,
+        type: rec.file.type,
+        phase: rec.draft.textquelle === "ohne" ? "fehler" : "fertig",
+        error: rec.draft.textquelle === "ohne" ? (rec.draft.hinweise[0] ?? null) : null,
+        errorCode: null,
+        fileId: null,
+        art: rec.docType,
+        artTouched: true,
+        draft: rec.draft.textquelle === "ohne" ? null : rec.draft,
+        meta: rec.form.meta ?? {},
+        blob: null,
+      },
+    ];
+  }
+  return rec.files.map((f) => ({
+    key: f.id,
+    name: f.file.name,
+    size: f.file.size,
+    type: f.file.type,
+    phase: PHASE_OF[f.status],
+    error: f.status === "offen" ? "Noch nicht ausgelesen (Auslesung wurde unterbrochen)." : f.error,
+    errorCode: null,
+    fileId: f.id,
+    art: f.docType,
+    artTouched: true,
+    draft: f.draft,
+    meta: f.meta,
+    blob: null,
+  }));
+}
+
+const mergeOf = (docs: DocEntry[]) => mergeDrafts(docs.filter((d) => d.phase === "fertig" && d.draft).map((d) => ({ id: d.fileId ?? d.key, art: d.art, draft: d.draft! })));
+
+/** Entwurf für die Prüfmaske aus dem Zusammengeführten; nicht ausgelesene Dateien stehen in den Hinweisen. */
+function displayDraft(docs: DocEntry[], merged: MergedDraft): ProjectDraft {
+  const read = docs.filter((d) => d.phase === "fertig" && d.draft);
+  const first = docs.find((d) => d.phase !== "abgelehnt");
+  const datei = first ? { name: first.name, size: first.size, type: first.type } : { name: "ohne Dokument", size: 0, type: "" };
+  const failed = docs.filter((d) => d.phase === "fehler").map((d) => `${d.name}: nicht ausgelesen (${d.error ?? "unbekannter Grund"}). Die Datei wird trotzdem im Projekt abgelegt.`);
+  if (!read.length) return emptyDraft(datei, "edge", [...failed, "Bitte die Felder von Hand ausfüllen."]);
+  return {
+    datei,
+    textquelle: read.some((d) => d.draft!.textquelle === "bild") ? "bild" : read[0].draft!.textquelle,
+    extractor: read[0].draft!.extractor,
+    gescannt: merged.gescannt,
+    felder: merged.felder,
+    hinweise: [...failed, ...merged.hinweise],
+  };
+}
 
 function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: string | null }) {
-  const { data, mutate, today, repo } = useData();
+  const { data, mutate, today, repo, reload } = useData();
   const { user } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
@@ -109,44 +198,55 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
   const [newSurveyors, setNewSurveyors] = useState<string[]>(resumed?.form.project.vermesser ? [resumed.form.project.vermesser] : []);
   const [touched, setTouched] = useState(Boolean(resumed));
   const [busy, setBusy] = useState(false);
-  /** KI liest gerade die Plan-Seite nach (eigene Anzeige neben dem Knopf) */
-  const [readingPlan, setReadingPlan] = useState(false);
+  /** Dokument, das gerade (erneut) gelesen wird: eigene Anzeige an seiner Kachel */
+  const [readingKey, setReadingKey] = useState<string | null>(null);
   const [serverError, setServerError] = useState<string | null>(null);
   // Vertrag ablegen dürfen nur Admin und Mitarbeiter; alle anderen sehen direkt das Formular
   const [step, setStep] = useState<Step>(resumed || !canCreate ? "form" : "start");
+  /** Zusammengeführter Entwurf aller ausgelesenen Dokumente (speist die Prüfmaske) */
   const [draft, setDraft] = useState<ProjectDraft | null>(resumed?.draft ?? null);
-  /** ID des gespeicherten Entwurfs (zum Fortsetzen und Abschließen) */
-  const [savedId, setSavedId] = useState<string | null>(resumed?.id ?? null);
-  /** Inhalt des Dokuments: für die Vorschau und die Ablage im Projekt */
-  const [blob, setBlob] = useState<Blob | null>(null);
+  /** ID des gespeicherten Entwurfs (zum Fortsetzen und Abschließen); als Ref, damit mehrere Dateien denselben Entwurf nutzen */
+  const [savedId, setSavedIdState] = useState<string | null>(resumed?.id ?? null);
+  const savedRef = useRef<string | null>(resumed?.id ?? null);
+  const setSavedId = (id: string | null) => {
+    savedRef.current = id;
+    setSavedIdState(id);
+  };
+  /** Dokumente des Entwurfs mit Zustand, Ergebnis und Inhalt */
+  const [docs, setDocs] = useState<DocEntry[]>(() => (resumed ? docsOfDraft(resumed) : []));
+  const docsRef = useRef(docs);
+  docsRef.current = docs;
+  const [activeKey, setActiveKey] = useState<string | null>(() => docsOfDraft(resumed)[0]?.key ?? null);
   /** Vorschau: angezeigte Seite und Seitenzahl des Dokuments (die Vorschau rendert Seiten erst beim Anzeigen) */
   const [viewPage, setViewPage] = useState(1);
   const [pageCount, setPageCount] = useState(1);
   const [unmatched, setUnmatched] = useState<AppliedDraft["unmatched"]>({});
-  const [docType, setDocType] = useState<Vertragsart>(resumed?.docType ?? "sonstiges");
-  const [meta, setMeta] = useState<ContractMeta>(resumed?.form.meta ?? {});
+  /** Abweichende Werte aus mehreren Dokumenten und die Felder, für die schon gewählt wurde */
+  const [conflicts, setConflicts] = useState<MergedDraft["conflicts"]>(() => (resumed ? mergeOf(docsOfDraft(resumed)).conflicts : {}));
+  const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set(resumed?.form.resolved ?? []));
   /** Felder, die der Mensch nach dem Vorbefüllen selbst geändert hat (gelten als geprüft) */
   const [edited, setEdited] = useState<ReadonlySet<string>>(new Set(resumed?.form.edited ?? []));
   const [showSecond, setShowSecond] = useState(false);
   const [dropActive, setDropActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const active = docs.find((d) => d.key === activeKey) ?? docs.find((d) => d.phase !== "abgelehnt") ?? null;
+  const updateDoc = (key: string, patch: Partial<DocEntry>) => setDocs((old) => old.map((d) => (d.key === key ? { ...d, ...patch } : d)));
 
-  // Fortgesetzter Entwurf: Datei für Vorschau und spätere Ablage nachladen
+  // Fortgesetzter Entwurf bzw. Wechsel des Dokuments: Inhalt für Vorschau und Ablage erst bei Bedarf nachladen
   useEffect(() => {
-    if (!resumed) return;
+    if (!active || active.blob || (!active.fileId && !active.legacy)) return;
     let alive = true;
     void (async () => {
-      const file = await repo.draftFile(resumed.id).catch(() => null);
-      if (!alive || !file) return;
-      setBlob(file);
+      const file = await (active.legacy ? repo.draftFile(savedRef.current ?? "") : repo.draftFileBlob(active.fileId!)).catch(() => null);
+      if (alive && file) updateDoc(active.key, { blob: file });
     })();
     return () => {
       alive = false;
     };
-    // nur beim Öffnen
+    // nur beim Wechsel des angezeigten Dokuments
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [active?.key, active?.blob]);
 
   // Prüfmaske von oben zeigen: der Dialog setzt den Fokus ins erste Feld, auf dem Handy läge die Vorschau sonst außer Sicht
   useEffect(() => {
@@ -190,17 +290,20 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
       return { ...old, bauherr: { ...after, ...folgeAnschrift(before, after) } };
     });
   };
-  const setMetaField = (k: keyof ContractMeta, value: string) => {
-    markEdited([k]);
-    setMeta((old) => ({ ...old, [k]: value }));
-  };
   const second = showSecond || Boolean(v.bauherr?.name2 || v.bauherr?.phone2 || v.bauherr?.email2);
   const similar = draft
     ? similarProjects({ bauherrLabel: v.bauherrLabel, buildingAddress: v.bauherr?.buildingAddress ?? null, flurstueck: v.flurstueck, gemarkung: v.gemarkung }, projects, data?.bauherren ?? [])
     : [];
-  const formState = () => ({ project: v, meta, edited: [...edited] });
+  const formState = (): DraftFormState => ({ project: v, meta: {}, edited: [...edited], resolved: [...resolved] });
   const extractorEnv = { demo: repo.mode === "demo", call: repo.extractProject ? (r: Parameters<NonNullable<typeof repo.extractProject>>[0]) => repo.extractProject!(r) : undefined };
-  const canReadPlan = Boolean(draft && draft.extractor === "edge" && draft.textquelle === "bild" && pageCount > 1 && !meta.haustyp);
+  const edge = extractorKind() === "edge" && repo.mode !== "demo";
+  const running = docs.some((d) => d.phase === "wartet" || d.phase === "speichert" || d.phase === "liest");
+  const stored = docs.filter((d) => d.fileId || d.legacy);
+  /** Konflikte, für die noch niemand gewählt hat (und deren Feld nicht von Hand geändert wurde) */
+  const openConflicts = (Object.keys(conflicts) as DraftFieldKey[]).filter((k) => !resolved.has(k) && !FORM_KEYS_OF[k].some((f) => edited.has(f)));
+  // Weitere Seite des angezeigten Dokuments lesen: nur über den KI-Dienst und wenn das Dokument mehr Seiten hat als gelesen
+  const canReadMore = Boolean(active?.draft && active.draft.extractor === "edge" && active.draft.textquelle === "bild" && pageCount > (active.draft.seiten?.gelesen.length ?? 1));
+  const pageRead = Boolean(active?.draft?.seiten?.gelesen.includes(viewPage));
 
   async function createVia<T extends { id: string }>(fn: Parameters<typeof mutate<T>>[0]): Promise<string> {
     const res = await mutate(fn);
@@ -208,78 +311,134 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     return res.value.id;
   }
 
-  /** Vertrag lesen, das Formular vorbefüllen und den Entwurf speichern. */
-  async function readContract(file: File | undefined) {
-    if (!file) return;
-    const check = checkContractFile(file);
-    if (!check.ok) return setFileError(check.reason);
+  /** Datei einer Kachel als File (für erneutes Auslesen). */
+  const fileOf = (d: DocEntry) => (d.blob ? new File([d.blob], d.name, { type: d.type }) : null);
+
+  /** Dateien hinzufügen: prüfen, speichern (legt den Entwurf an), je Datei auslesen. */
+  async function addFiles(list: FileList | File[] | null | undefined) {
+    const files = [...(list ?? [])];
+    if (!files.length) return;
     setFileError(null);
-    setStep("loading");
-    const datei = { name: file.name, size: file.size, type: file.type };
-    let d: ProjectDraft;
-    try {
-      d = await extractProjectFromDocument(file, extractorEnv);
-    } catch (e) {
-      if (!(e instanceof ExtractUnavailable)) {
-        setFileError(e instanceof Error ? e.message : "Das Dokument ließ sich nicht lesen.");
-        return setStep("start");
-      }
-      // Auslesung nicht möglich (nicht freigeschaltet, Limit, Fehler): von Hand weiter, das Dokument bleibt dabei
-      d = emptyDraft(datei, "edge", [`${e.message} Bitte die Felder von Hand ausfüllen; das Dokument wird trotzdem im Projekt abgelegt.`]);
-    }
-    const applied = applyDraft(d, blank.current, { companies });
-    const type = (d.felder.vertragsart.wert as Vertragsart | null) ?? "sonstiges";
-    setDraft(d);
-    setBlob(file);
-    setViewPage(1);
-    setPageCount(1);
+    const jobs = files.map((f, i) => ({ ...initialJob(f, `${Date.now()}-${docs.length + i}`), blob: f as Blob }) as DocEntry);
+    setDocs((old) => [...old, ...jobs]);
+    if (!activeKey) setActiveKey(jobs.find((j) => j.phase !== "abgelehnt")?.key ?? null);
+    const readable = jobs.filter((j) => j.phase !== "abgelehnt");
+    if (!readable.length) return;
+    const datei = (f: File) => ({ name: f.name, size: f.size, type: f.type });
+    await readDocuments(
+      readable.map((j) => files[jobs.indexOf(j)]),
+      readable,
+      {
+        // die erste Datei legt den Entwurf an; die Oberfläche lädt erst am Ende neu (nicht nach jeder Datei)
+        save: async (file) => {
+          const res = await repo.addDraftFile({ draftId: savedRef.current, file: datei(file), blob: file, form: formState() });
+          setSavedId(res.draft.id);
+          return { fileId: res.file.id };
+        },
+        extract: (file, opts) => extractProjectFromDocument(file, extractorEnv, opts),
+        record: (fileId, patch) => repo.updateDraftFile(fileId, patch),
+        onUpdate: (state) => updateDoc(state.key, state),
+      },
+    );
+    await reload();
+  }
+
+  /** Alle ausgelesenen Dokumente zusammenführen und die Prüfmaske füllen; selbst Geändertes bleibt stehen. */
+  function toReview(list: DocEntry[] = docsRef.current) {
+    const merged = mergeOf(list);
+    const display = displayDraft(list, merged);
+    const applied = applyDraft(display, blank.current, { companies });
+    const form = draft ? preserveEdited(v, applied.form, edited) : applied.form;
+    setDraft(display);
     setUnmatched(applied.unmatched);
-    setV(applied.form);
-    setMeta(applied.meta);
-    setDocType(type);
-    setEdited(new Set());
+    setV(form);
+    setConflicts(merged.conflicts);
     // Vermesser sind keine Stammliste: der erkannte Name wird wählbar und erst mit dem Projekt gespeichert
-    if (applied.form.vermesser) setNewSurveyors((old) => [...new Set([...old, applied.form.vermesser!])]);
+    if (form.vermesser) setNewSurveyors((old) => [...new Set([...old, form.vermesser!])]);
     // Prüfmaske: leere Pflichtfelder sofort zeigen
     setTouched(true);
     setStep("form");
-    // Entwurf sofort sichern, damit man abbrechen und später weitermachen kann
-    const saved = await mutate((r) => r.saveProjectDraft({ draft: d, form: { project: applied.form, meta: applied.meta, edited: [] }, docType: type, file: datei, blob: file }));
-    if (saved.ok) setSavedId(saved.value.id);
-    else toast("Entwurf nicht gespeichert", "danger", saved.error);
+    if (savedRef.current) void repo.saveProjectDraft({ id: savedRef.current, draft: display, form: { ...formState(), project: form }, docType: list.find((d) => d.phase === "fertig")?.art ?? "sonstiges", file: display.datei }).catch(() => undefined);
   }
 
-  /** Haustyp von der Plan-Seite nachlesen (zweites Bild); alle anderen Felder bleiben, wie sie sind. */
-  async function readPlanPage() {
-    // die gerade angezeigte Seite; Seite 1 ist schon ausgelesen
-    const page = viewPage;
-    if (!draft || !blob || page < 2 || page > pageCount) return;
-    setBusy(true);
-    setReadingPlan(true);
+  /** Art einer Datei ändern: Schema der neuen Art anwenden (nicht Erlaubtes fällt weg), Ordner folgt der Art. */
+  function changeArt(d: DocEntry, art: Vertragsart) {
+    const next: DocEntry = { ...d, art, artTouched: true, draft: d.draft ? { ...d.draft, felder: restrictToType(d.draft.felder, art) } : null };
+    const list = docsRef.current.map((x) => (x.key === d.key ? next : x));
+    setDocs(list);
+    if (d.fileId) void repo.updateDraftFile(d.fileId, { docType: art, ...(next.draft ? { draft: next.draft } : {}) }).catch(() => undefined);
+    if (step === "form") toReview(list);
+  }
+
+  function changeMeta(d: DocEntry, k: keyof ContractMeta, value: string) {
+    markEdited([`${d.key}.${k}`]);
+    updateDoc(d.key, { meta: { ...d.meta, [k]: value } });
+  }
+
+  /**
+   * Eine Datei (erneut) auslesen: mit der gewählten Art, oder nur eine weitere Seite (dann kommen nur bisher leere Felder
+   * dazu). Zählt als weitere Auslesung.
+   */
+  async function reread(d: DocEntry, pages?: number[]) {
+    const file = fileOf(d) ?? (d.fileId ? await repo.draftFileBlob(d.fileId).then((b) => (b ? new File([b], d.name, { type: d.type }) : null)) : null);
+    if (!file) return toast("Datei nicht verfügbar", "danger", "Die Datei ließ sich nicht laden.");
+    setReadingKey(d.key);
     try {
-      const again = await extractProjectFromDocument(new File([blob], draft.datei.name, { type: draft.datei.type }), extractorEnv, { planPage: page });
-      const haustyp = again.felder.haustyp;
-      if (haustyp.wert) {
-        setDraft({ ...draft, felder: { ...draft.felder, haustyp } });
-        setMeta((old) => ({ ...old, haustyp: haustyp.wert! }));
-      } else toast("Auf dieser Seite wurde kein Haustyp gefunden", "danger");
+      const again = await extractProjectFromDocument(file, extractorEnv, { art: d.artTouched || d.draft ? d.art : undefined, draftFileId: d.fileId ?? undefined, pages });
+      let next = again;
+      if (pages && d.draft) {
+        const felder = { ...d.draft.felder };
+        for (const k of Object.keys(felder) as DraftFieldKey[]) if (!felder[k].wert && again.felder[k].wert) felder[k] = again.felder[k];
+        next = { ...d.draft, felder, seiten: { gelesen: [...new Set([...(d.draft.seiten?.gelesen ?? []), ...(again.seiten?.gelesen ?? [])])], gesamt: again.seiten?.gesamt ?? d.draft.seiten?.gesamt ?? null } };
+        const neu = (Object.keys(felder) as DraftFieldKey[]).filter((k) => !d.draft!.felder[k].wert && felder[k].wert).length;
+        toast(neu ? `Seite ${pages.join(", ")} gelesen: ${neu} ${neu === 1 ? "Angabe" : "Angaben"} ergänzt` : `Auf Seite ${pages.join(", ")} kam nichts Neues dazu`, neu ? "ok" : undefined);
+      }
+      const art = (next.felder.vertragsart.wert as Vertragsart | null) ?? d.art;
+      const meta = { ...metaOf(next), ...Object.fromEntries(Object.entries(d.meta).filter(([, x]) => x)) };
+      const updated: DocEntry = { ...d, phase: "fertig", error: null, errorCode: null, draft: next, art, meta };
+      const list = docsRef.current.map((x) => (x.key === d.key ? updated : x));
+      setDocs(list);
+      if (d.fileId) void repo.updateDraftFile(d.fileId, { status: "ausgelesen", error: null, draft: next, docType: art, meta }).catch(() => undefined);
+      if (step === "form") toReview(list);
     } catch (e) {
-      toast("Plan-Seite nicht gelesen", "danger", e instanceof Error ? e.message : undefined);
+      const message = e instanceof Error ? e.message : "Die Datei ließ sich nicht auslesen.";
+      if (!pages) updateDoc(d.key, { phase: "fehler", error: message, errorCode: e instanceof ExtractUnavailable ? e.code : null });
+      toast(`${d.name} nicht ausgelesen`, "danger", message);
     }
-    setReadingPlan(false);
-    setBusy(false);
+    setReadingKey(null);
+  }
+
+  async function removeDoc(d: DocEntry) {
+    if (d.fileId) {
+      const res = await repo.removeDraftFile(d.fileId).then(() => null, (e: unknown) => (e instanceof Error ? e.message : "Fehler"));
+      if (res) return toast("Datei nicht entfernt", "danger", res);
+    }
+    const list = docsRef.current.filter((x) => x.key !== d.key);
+    setDocs(list);
+    if (activeKey === d.key) setActiveKey(list.find((x) => x.phase !== "abgelehnt")?.key ?? null);
+  }
+
+  /** Wert aus einem der abweichenden Dokumente übernehmen. */
+  function chooseConflict(key: DraftFieldKey, o: ConflictOption) {
+    const patch = formPatchFor(key, o.wert, companies);
+    setV((old) => ({ ...old, ...patch.project, bauherr: patch.bauherr ? { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr, ...patch.bauherr } : old.bauherr }));
+    setUnmatched((old) => (key === "company" ? (patch.unmatchedCompany ? { company: patch.unmatchedCompany } : {}) : old));
+    setDraft((old) => (old ? { ...old, felder: { ...old.felder, [key]: o.feld } } : old));
+    setResolved((old) => new Set([...old, key]));
   }
 
   function onDrop(e: DragEvent) {
     e.preventDefault();
     setDropActive(false);
-    void readContract(e.dataTransfer.files[0]);
+    void addFiles(e.dataTransfer.files);
   }
 
-  /** Schließen mit offenem Entwurf: den Stand der Prüfmaske sichern. */
+  /** Schließen mit offenem Entwurf: den Stand der Prüfmaske und die Angaben je Dokument sichern. */
   async function closeDialog() {
-    if (draft && savedId && !busy) {
-      const res = await mutate((r) => r.saveProjectDraft({ id: savedId, draft, form: formState(), docType, file: draft.datei }));
+    if (savedId && stored.length && !busy && !running) {
+      const merged = draft ?? displayDraft(docs, mergeOf(docs));
+      for (const d of docs) if (d.fileId) await repo.updateDraftFile(d.fileId, { docType: d.art, meta: d.meta }).catch(() => undefined);
+      const res = await mutate((r) => r.saveProjectDraft({ id: savedId, draft: merged, form: formState(), docType: docs.find((d) => d.phase === "fertig")?.art ?? "sonstiges", file: merged.datei }));
       if (res.ok) toast("Entwurf gespeichert", "ok", pilot ? "Weiter über die Projektliste: „Angefangene Projekte“." : "Weiter über die Prüfliste: „Neues Projekt vorgeschlagen“.");
     }
     onClose();
@@ -294,11 +453,25 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     onClose();
   }
 
-  /** Vertrag im Projekt ablegen und den Entwurf abschließen. Liefert eine Fehlermeldung oder null. */
-  async function fileInto(projectId: string): Promise<string | null> {
-    if (!draft) return null;
-    const res = await mutate((r) => r.fileContract({ projectId, docType, meta: cleanMeta(meta), file: draft.datei, blob: blob ?? undefined, draftId: savedId }));
-    return res.ok ? null : res.error;
+  /**
+   * Alle Dateien im Projekt ablegen (auch die, deren Auslesung scheiterte) und den Entwurf abschließen.
+   * Liefert die Fehlermeldungen je Datei.
+   */
+  async function fileInto(projectId: string): Promise<{ filed: string[]; errors: string[] }> {
+    const filed: string[] = [];
+    const errors: string[] = [];
+    for (const d of stored) {
+      const res = await mutate((r) =>
+        r.fileContract({ projectId, docType: d.art, meta: cleanMeta(d.meta), file: { name: d.name, size: d.size, type: d.type }, blob: d.blob ?? undefined, draftId: d.legacy ? savedId : null, draftFileId: d.fileId }),
+      );
+      if (res.ok) filed.push(`${d.name} als ${VERTRAGSART_LABEL[d.art]}`);
+      else errors.push(`${d.name}: ${res.error}`);
+    }
+    if (!errors.length && savedId && !stored.some((d) => d.legacy)) {
+      const res = await mutate((r) => r.completeProjectDraft(savedId, projectId));
+      if (!res.ok) errors.push(res.error);
+    }
+    return { filed, errors };
   }
 
   async function createProject() {
@@ -311,23 +484,27 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     }
     const notes = [v.createFolders ? "Projektordner aus der Vorlage angelegt." : "Ohne Projektordner angelegt."];
     if (missing.length && !pilot) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
-    const filingError = await fileInto(res.value.id);
+    const { filed, errors: filingErrors } = await fileInto(res.value.id);
     setBusy(false);
-    if (draft && !filingError) notes.push(`${draft.datei.name} als ${VERTRAGSART_LABEL[docType]} abgelegt.`);
+    if (filed.length) notes.push(`Abgelegt: ${filed.join(", ")}.`);
     toast(`Projekt ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
-    if (filingError)
-      toast("Dokument nicht abgelegt", "danger", `${filingError} Der Entwurf bleibt ${pilot ? "in der Projektliste unter „Angefangene Projekte“" : "in der Prüfliste"}; von dort lässt sich das Dokument dem Projekt hinzufügen.`);
+    if (filingErrors.length)
+      toast(
+        filingErrors.length === 1 ? "Ein Dokument nicht abgelegt" : `${filingErrors.length} Dokumente nicht abgelegt`,
+        "danger",
+        `${filingErrors.join(" ")} Der Entwurf bleibt ${pilot ? "in der Projektliste unter „Angefangene Projekte“" : "in der Prüfliste"}; von dort lässt sich das Dokument dem Projekt hinzufügen.`,
+      );
     onClose();
     navigate(`/projekte/${res.value.id}`);
   }
 
-  /** Duplikat: kein neues Projekt, das Dokument kommt zum bestehenden. */
+  /** Duplikat: kein neues Projekt, die Dokumente kommen zum bestehenden. */
   async function addToExisting(p: Project) {
     setBusy(true);
-    const error = await fileInto(p.id);
+    const { filed, errors: filingErrors } = await fileInto(p.id);
     setBusy(false);
-    if (error) return setServerError(error);
-    toast(`Dokument zu ${projectTitle(p)} hinzugefügt`, "ok", `${draft?.datei.name} als ${VERTRAGSART_LABEL[docType]} abgelegt. Es wurde kein neues Projekt angelegt.`);
+    if (filingErrors.length) return setServerError(filingErrors.join(" "));
+    toast(`${filed.length === 1 ? "Dokument" : "Dokumente"} zu ${projectTitle(p)} hinzugefügt`, "ok", `${filed.join(", ")} abgelegt. Es wurde kein neues Projekt angelegt.`);
     onClose();
     navigate(`/projekte/${p.id}?tab=dokumente`);
   }
@@ -336,6 +513,11 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     e.preventDefault();
     setTouched(true);
     setServerError(null);
+    if (openConflicts.length) {
+      setServerError(`Bitte zuerst wählen, welcher Wert gilt: ${openConflicts.map((k) => CONFLICT_LABEL[k]).join(", ")} (abweichende Angaben in den Dokumenten).`);
+      setTimeout(() => document.querySelector<HTMLElement>("#new-project .conflict-option")?.focus(), 0);
+      return;
+    }
     if (Object.keys(errors).length) {
       // ersten fehlerhaften Wert fokussieren (nach dem Rendern, erst dann trägt das Feld aria-invalid)
       setTimeout(() => document.querySelector<HTMLElement>("#new-project [aria-invalid=true]")?.focus(), 0);
@@ -361,27 +543,63 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
       </span>
     ) : null;
 
+  const docName = (id: string | undefined) => docs.find((d) => d.fileId === id || d.key === id)?.name ?? null;
+  const sameType = (art: Vertragsart | undefined) => docs.filter((d) => d.phase === "fertig" && d.art === art).length;
+
   /**
-   * Herkunft und Sicherheit eines vorbefüllten Felds. Hervorgehoben (gelb) wird bei niedriger Sicherheit und,
-   * bei Scans und Handschrift, immer bei Telefon und E-Mail, jeweils bis der Mensch das Feld geändert hat.
+   * Herkunft und Sicherheit eines vorbefüllten Felds, bei mehreren Dokumenten mit Quelle ("aus Werkvertrag").
+   * Hervorgehoben (gelb) wird bei niedriger Sicherheit und, bei Scans und Handschrift, immer bei Telefon und E-Mail,
+   * jeweils bis der Mensch das Feld geändert hat. Abweichende Werte: Auswahl mit beiden Quellen.
    */
   const Src = ({ k }: { k: FormKey }) => {
     if (!draft) return null;
-    const f = draft.felder[FORM_SOURCE[k]];
+    const key = FORM_SOURCE[k];
+    const f = draft.felder[key];
+    const options = conflicts[key];
+    const changed = edited.has(k === "companyId" ? "companyId" : k);
+    if (options && !changed) {
+      const done = resolved.has(key);
+      return (
+        <span className="field-conflict" role="group" aria-label={`Abweichende Werte für ${CONFLICT_LABEL[key]}`} data-open={!done || undefined}>
+          <span className="field-conflict-title">{done ? "Gewählt aus abweichenden Werten:" : "Abweichende Werte in den Dokumenten, bitte wählen:"}</span>
+          {options.map((o) => (
+            <button
+              key={o.dokumentId}
+              type="button"
+              className="conflict-option"
+              aria-pressed={done && f.wert === o.wert}
+              onClick={() => chooseConflict(key, o)}
+              title={o.feld.quelle?.text ? `${o.feld.quelle.seite ? `S. ${o.feld.quelle.seite}: ` : ""}„${o.feld.quelle.text}“` : undefined}
+            >
+              „{o.wert}“ <span className="muted">{sourceLabel(o.art, docName(o.dokumentId), sameType(o.art))}</span>
+            </button>
+          ))}
+        </span>
+      );
+    }
     const notFound = k === "companyId" ? unmatched.company : undefined;
     if (!f.wert) return null;
-    const changed = edited.has(k === "companyId" ? "companyId" : k);
     const mustCheck = draft.gescannt && ALWAYS_CHECK.includes(k);
     const level: Sicherheit = notFound ? "niedrig" : f.sicherheit;
     const flag = level === "niedrig" || mustCheck;
-    // Klick auf die Textstelle springt in der Vorschau auf ihre Seite
-    const jump = sourcePage(f.quelle?.seite, pageCount);
-    const text = `${notFound ? `Im Vertrag: „${notFound}“, nicht in den Stammdaten. ` : ""}${f.quelle ? `${f.quelle.seite ? `S. ${f.quelle.seite}: ` : ""}„${f.quelle.text}“` : "ohne Textstelle"}`;
+    // Klick auf die Textstelle zeigt das Dokument und springt in der Vorschau auf ihre Seite
+    const fromDoc = f.quelle?.dokumentArt && docs.length > 1 ? `${sourceLabel(f.quelle.dokumentArt, docName(f.quelle.dokumentId), sameType(f.quelle.dokumentArt))} · ` : "";
+    const sourceKey = docs.find((d) => d.fileId === f.quelle?.dokumentId || d.key === f.quelle?.dokumentId)?.key ?? null;
+    const jump = sourcePage(f.quelle?.seite, sourceKey && sourceKey !== active?.key ? Number.MAX_SAFE_INTEGER : pageCount);
+    const text = `${fromDoc}${notFound ? `Im Dokument: „${notFound}“, nicht in den Stammdaten. ` : ""}${f.quelle?.text ? `${f.quelle.seite ? `S. ${f.quelle.seite}: ` : ""}„${f.quelle.text}“` : "ohne Textstelle"}`;
     return (
       <span className="field-src" data-check={flag && !changed ? true : undefined}>
         <Pill tone={changed ? "neutral" : flag ? "warn" : SICHERHEIT_TONE[level]}>{changed ? "geändert" : mustCheck ? `bitte kontrollieren · ${SICHERHEIT_LABEL[level]}` : `Sicherheit ${SICHERHEIT_LABEL[level]}`}</Pill>
         {jump ? (
-          <button type="button" className="field-src-text field-src-jump" title={`Seite ${jump} in der Vorschau zeigen: ${f.quelle?.text ?? ""}`} onClick={() => setViewPage(jump)}>
+          <button
+            type="button"
+            className="field-src-text field-src-jump"
+            title={`Seite ${jump} in der Vorschau zeigen: ${f.quelle?.text ?? ""}`}
+            onClick={() => {
+              if (sourceKey) setActiveKey(sourceKey);
+              setViewPage(jump);
+            }}
+          >
             {text}
           </button>
         ) : (
@@ -393,59 +611,89 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     );
   };
 
-  if (step === "start" || step === "loading") {
+  if (step === "start") {
+    const ready = stored.length > 0 && !running;
     return (
-      <Dialog title="Neues Projekt" wide onClose={onClose} footer={<Button onClick={onClose}>Abbrechen</Button>}>
-        {step === "loading" ? (
-          <div className="contract-loading">
-            <AiSpinner label="KI liest den Vertrag …" hint="Die Projektfelder werden gleich vorbefüllt." />
-          </div>
-        ) : (
-          <div className="contract-start">
-            <div
-              className="contract-drop"
-              data-drop={dropActive}
-              onDragOver={(e) => {
-                e.preventDefault();
-                e.dataTransfer.dropEffect = "copy";
-                setDropActive(true);
-              }}
-              onDragLeave={() => setDropActive(false)}
-              onDrop={onDrop}
-            >
-              <FileUp size={28} aria-hidden />
-              <p className="contract-drop-title">Vertrag hierher ziehen oder auswählen</p>
-              <p className="muted">
-                PDF, DOCX oder Bild, höchstens 10 MB. Die App füllt die Projektfelder vor, du prüfst und bestätigst.
-                {extractorKind() === "edge" && repo.mode !== "demo" && " Zum Auslesen geht nur die erste Seite als Bild an den KI-Dienst."}
-              </p>
-              <Button variant="primary" onClick={() => fileInput.current?.click()}>
-                Datei auswählen
+      <Dialog
+        title="Neues Projekt"
+        wide
+        onClose={closeStable}
+        footer={
+          <>
+            <Button onClick={() => void closeDialog()} disabled={running}>
+              {savedId && stored.length ? "Später weitermachen" : "Abbrechen"}
+            </Button>
+            {docs.length > 0 && (
+              <Button variant="primary" onClick={() => toReview()} disabled={!ready}>
+                {running ? "Wird gelesen …" : `Weiter zur Prüfung${stored.length > 1 ? ` (${stored.length} Dokumente)` : ""}`}
               </Button>
-              <input ref={fileInput} type="file" accept={CONTRACT_ACCEPT} hidden aria-label="Vertrag auswählen" onChange={(e) => void readContract(e.target.files?.[0])} />
-            </div>
-            {fileError && (
-              <p className="form-error" role="alert">
-                {fileError}
-              </p>
             )}
-            {repo.mode === "demo" && (
-              <p className="contract-samples">
-                Zum Ausprobieren (erfundene Beispiele):{" "}
-                <button type="button" className="hint-action" onClick={async () => void readContract(await scanWerkvertragFile())}>
-                  gescannter Werkvertrag
-                </button>{" "}
-                ·{" "}
-                <button type="button" className="hint-action" onClick={() => void readContract(vorlageVermessungFile())}>
-                  leere Vorlage Vermessungsauftrag
-                </button>
-              </p>
-            )}
+          </>
+        }
+      >
+        <div className="contract-start" data-has-files={docs.length > 0 || undefined}>
+          <div
+            className="contract-drop"
+            data-drop={dropActive}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              setDropActive(true);
+            }}
+            onDragLeave={() => setDropActive(false)}
+            onDrop={onDrop}
+          >
+            <FileUp size={28} aria-hidden />
+            <p className="contract-drop-title">{docs.length ? "Weitere Dokumente hierher ziehen oder auswählen" : "Dokumente hierher ziehen oder auswählen"}</p>
+            <p className="muted">
+              Zum Beispiel Werkvertrag und Vermesservertrag zusammen. PDF, DOCX oder Bild, höchstens 30 MB je Datei. Jede Datei wird gespeichert und einzeln
+              ausgelesen; die App füllt die Projektfelder vor, du prüfst und bestätigst.
+              {edge && " Zum Auslesen gehen je Dokument die ersten zwei Seiten als Bild an den KI-Dienst; jedes Dokument zählt einzeln gegen das Tageslimit."}
+            </p>
+            <Button variant="primary" onClick={() => fileInput.current?.click()} disabled={running}>
+              Dateien auswählen
+            </Button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept={CONTRACT_ACCEPT}
+              multiple
+              hidden
+              aria-label="Dokumente auswählen"
+              onChange={(e) => {
+                void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+          <UploadList docs={docs} onArt={changeArt} onRemove={(d) => void removeDoc(d)} onRetry={(d) => void reread(d)} />
+          {fileError && (
+            <p className="form-error" role="alert">
+              {fileError}
+            </p>
+          )}
+          {repo.mode === "demo" && (
+            <p className="contract-samples">
+              Zum Ausprobieren (erfundene Beispiele):{" "}
+              <button type="button" className="hint-action" onClick={async () => void addFiles([await scanWerkvertragFile(), vermesservertragFile()])} disabled={running}>
+                Werkvertrag und Vermesservertrag
+              </button>{" "}
+              ·{" "}
+              <button type="button" className="hint-action" onClick={async () => void addFiles([await scanWerkvertragFile()])} disabled={running}>
+                gescannter Werkvertrag
+              </button>{" "}
+              ·{" "}
+              <button type="button" className="hint-action" onClick={() => void addFiles([vorlageVermessungFile()])} disabled={running}>
+                leere Vorlage Vermessungsauftrag
+              </button>
+            </p>
+          )}
+          {!docs.length && (
             <button type="button" className="hint-action contract-manual" onClick={() => setStep("form")}>
               Ohne Dokument manuell anlegen
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </Dialog>
     );
   }
@@ -525,19 +773,45 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
       }
     >
       <div className={draft ? "review-layout" : undefined}>
-        {draft && (
+        {draft && active && (
           <aside className="review-doc" aria-label="Dokument">
+            {docs.filter((d) => d.phase !== "abgelehnt").length > 1 && (
+              <div className="draft-doc-tabs" role="tablist" aria-label="Dokumente">
+                {docs
+                  .filter((d) => d.phase !== "abgelehnt")
+                  .map((d) => (
+                    <button
+                      key={d.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={d.key === active.key}
+                      className="draft-doc-tab"
+                      title={d.name}
+                      onClick={() => {
+                        setActiveKey(d.key);
+                        setViewPage(1);
+                      }}
+                    >
+                      {VERTRAGSART_LABEL[d.art]}
+                    </button>
+                  ))}
+              </div>
+            )}
             <div className="contract-file">
               <FileText size={18} aria-hidden />
-              <span className="contract-file-name" title={draft.datei.name}>
-                {draft.datei.name}
+              <span className="contract-file-name" title={active.name}>
+                {active.name}
               </span>
-              <span className="muted">{formatBytes(draft.datei.size)}</span>
+              <span className="muted">{formatBytes(active.size)}</span>
             </div>
-            <DocumentPreview file={blob} kind={KIND_OF(draft.datei.name, draft.datei.type)} page={viewPage} onPage={setViewPage} onPageCount={setPageCount} />
-            {canReadPlan && (
+            <DocumentPreview key={active.key} file={active.blob} kind={KIND_OF(active.name, active.type)} page={viewPage} onPage={setViewPage} onPageCount={setPageCount} />
+            {canReadMore && (
               <div className="review-plan">
-                <Field label="Haustyp fehlt? Zur Plan-Seite blättern und lesen" htmlFor="np-plan" hint="Sendet zusätzlich genau diese eine Seite als Bild an den KI-Dienst. Seite 1 ist schon ausgelesen.">
+                <Field
+                  label="Angaben auf einer weiteren Seite? Hinblättern und lesen"
+                  htmlFor="np-plan"
+                  hint={`${pagesText(active) ?? ""}. Sendet genau diese eine Seite zusätzlich als Bild an den KI-Dienst (zählt als weitere Auslesung); ergänzt nur leere Felder, z. B. den Haustyp von der Plan-Seite.`}
+                >
                   <span className="review-plan-row">
                     <Input
                       id="np-plan"
@@ -551,10 +825,10 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
                       }}
                       aria-label="Angezeigte Seite"
                     />
-                    <Button size="sm" onClick={() => void readPlanPage()} disabled={busy || viewPage < 2}>
-                      Diese Seite lesen
+                    <Button size="sm" onClick={() => void reread(active, [viewPage])} disabled={busy || readingKey !== null || pageRead}>
+                      {pageRead ? "Seite schon gelesen" : "Diese Seite lesen"}
                     </Button>
-                    {readingPlan && <AiSpinner size="sm" label="KI liest …" />}
+                    {readingKey === active.key && <AiSpinner size="sm" label="KI liest …" />}
                   </span>
                 </Field>
               </div>
@@ -564,28 +838,21 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
 
         <form id="new-project" className="dialog-form" data-review={draft ? true : undefined} onSubmit={submit} noValidate>
           {draft && (
-            <section className="contract-summary" aria-label="Hinweise zum Dokument">
+            <section className="contract-summary" aria-label="Hinweise zu den Dokumenten">
               <p className="muted">
-                {draft.textquelle === "ohne" ? "Dokument ohne Vorschläge." : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen; gelb markierte Felder sind unsicher
-                {draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr.
+                {draft.textquelle === "ohne" ? "Ohne Vorschläge aus den Dokumenten." : stored.length > 1 ? `Vorschläge aus ${stored.length} Dokumenten, je Feld mit Quelle.` : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen;
+                gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr.
               </p>
+              {openConflicts.length > 0 && (
+                <p className="form-note" role="status">
+                  {openConflicts.length === 1 ? "Ein Feld weicht" : `${openConflicts.length} Felder weichen`} zwischen den Dokumenten ab ({openConflicts.map((k) => CONFLICT_LABEL[k]).join(", ")}). Bitte am Feld wählen, welcher Wert gilt.
+                </p>
+              )}
               {draft.hinweise.map((h) => (
                 <p key={h} className="form-note">
                   {h}
                 </p>
               ))}
-              <Field label="Dokumenttyp (bestimmt den Ablageordner)" htmlFor="np-doctype">
-                <Select
-                  id="np-doctype"
-                  value={docType}
-                  onChange={(e) => {
-                    setDocType(e.target.value as Vertragsart);
-                    markEdited(["vertragsart"]);
-                  }}
-                  options={(Object.keys(VERTRAGSART_LABEL) as Vertragsart[]).map((k) => ({ value: k, label: VERTRAGSART_LABEL[k] }))}
-                />
-                <Src k="vertragsart" />
-              </Field>
             </section>
           )}
 
@@ -740,7 +1007,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
             <Field label="Bauadresse" htmlFor="np-bauadresse">
               <Input id="np-bauadresse" value={v.bauherr?.buildingAddress ?? ""} onChange={(e) => setContact({ buildingAddress: e.target.value || null })} placeholder="Straße, PLZ Ort oder Flurstück" autoComplete="off" />
               <Src k="buildingAddress" />
-              {draft && docType === "werkvertrag" && !v.bauherr?.buildingAddress && <span className="field-hint">{NO_SITE_HINT}</span>}
+              {draft && !v.bauherr?.buildingAddress && stored.length > 0 && stored.every((d) => d.art === "werkvertrag") && <span className="field-hint">{NO_SITE_HINT}</span>}
             </Field>
           </div>
 
@@ -852,42 +1119,21 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
             )}
           </fieldset>
 
-          {draft && (
-            <fieldset className="form-group">
-              <legend>Weitere Angaben aus dem Vertrag</legend>
-              <p className="field-hint">Werden mit dem Dokument gespeichert, nicht als Projektfelder.{pilot ? "" : " Der Vertragspreis belegt keine Rechnungsbeträge vor."}</p>
-              <div className="dialog-row">
-                <Field label="Vertragsdatum" htmlFor="np-vdatum">
-                  <Input id="np-vdatum" type="date" value={meta.vertragsdatum ?? ""} onChange={(e) => setMetaField("vertragsdatum", e.target.value)} />
-                  <Src k="vertragsdatum" />
-                </Field>
-                <Field label="Vertragspreis" htmlFor="np-vpreis">
-                  <Input id="np-vpreis" value={meta.vertragspreis ?? ""} onChange={(e) => setMetaField("vertragspreis", e.target.value)} autoComplete="off" />
-                  <Src k="vertragspreis" />
-                </Field>
-              </div>
-              <div className="dialog-row">
-                <Field label="Angebotsnummer" htmlFor="np-angebot">
-                  <Input id="np-angebot" value={meta.angebotsnummer ?? ""} onChange={(e) => setMetaField("angebotsnummer", e.target.value)} autoComplete="off" />
-                  <Src k="angebotsnummer" />
-                </Field>
-                <Field label="Haustyp" htmlFor="np-haustyp">
-                  <Input id="np-haustyp" value={meta.haustyp ?? ""} onChange={(e) => setMetaField("haustyp", e.target.value)} autoComplete="off" />
-                  <Src k="haustyp" />
-                </Field>
-              </div>
-              {(draft.felder.rechtsform.wert || draft.felder.foerderung.wert) && (
-                <ul className="contract-notes">
-                  {draft.felder.rechtsform.wert && <li>Rechtsform laut Vertrag: {draft.felder.rechtsform.wert}</li>}
-                  {draft.felder.foerderung.wert && (
-                    <li>
-                      KfW/WEF-Förderung angekreuzt. Frist {FOERDER_FRIST_MONATE} Monate ab Vertragsdatum
-                      {foerderFrist(meta.vertragsdatum) ? `: bis ${formatDate(foerderFrist(meta.vertragsdatum)!)}` : " (Vertragsdatum fehlt)"}. Nur als Hinweis{pilot ? "" : ", es entsteht keine Aufgabe"}.
-                    </li>
-                  )}
-                </ul>
-              )}
-            </fieldset>
+          {draft && stored.length > 0 && (
+            <DocumentCards
+              docs={docs}
+              activeKey={active?.key ?? null}
+              readingKey={readingKey}
+              pilot={pilot}
+              onShow={(d) => {
+                setActiveKey(d.key);
+                setViewPage(1);
+              }}
+              onArt={changeArt}
+              onMeta={changeMeta}
+              onReread={(d) => void reread(d)}
+              onEditDocuments={canCreate && !stored.some((d) => d.legacy) ? () => setStep("start") : undefined}
+            />
           )}
 
           <Checkbox label="Projektordner aus der Vorlage anlegen" checked={v.createFolders} onChange={(e) => set({ createFolders: e.target.checked })} />

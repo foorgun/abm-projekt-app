@@ -195,7 +195,8 @@ export interface FolderTemplate {
 
 export type DocumentSource = "upload" | "agent";
 /** Typ eines abgelegten Vertrags; bestimmt den Zielordner (lib/extract/filing.ts). */
-export type DocumentType = "werkvertrag" | "vermessungsvertrag" | "sonstiges";
+/** Art eines Vertragsdokuments (Migration 0010; Baugrundauftrag und Honorarvereinbarung seit 0019). */
+export type DocumentType = "werkvertrag" | "vermessungsvertrag" | "baugrundauftrag" | "honorarvereinbarung" | "sonstiges";
 /** Metadaten eines Vertrags am Dokument (keine Projektfelder): Texte, wie sie in der Prüfmaske bestätigt wurden. */
 export interface ContractMeta {
   vertragsdatum?: string;
@@ -446,9 +447,55 @@ export interface KalenderEintrag {
 
 export type DraftStatus = "offen" | "uebernommen" | "verworfen";
 
+/**
+ * Datei eines Entwurfs (Migration 0019). Jede Datei wird zuerst gespeichert und dann einzeln ausgelesen; scheitert die
+ * Auslesung, bleibt die Datei mit Fehlermeldung im Entwurf und wird mit dem Projekt abgelegt.
+ * "entfernt": vom Menschen aus dem Entwurf genommen (Datei im Speicher gelöscht). "abgelegt": im Projekt.
+ */
+export type DraftFileStatus = "offen" | "ausgelesen" | "fehler" | "entfernt" | "abgelegt";
+
+export interface DraftFileRecord {
+  id: string;
+  draftId: string;
+  /** Reihenfolge im Entwurf */
+  sort: number;
+  file: { name: string; size: number; type: string };
+  docType: DocumentType;
+  status: DraftFileStatus;
+  /** Grund, warum die Auslesung scheiterte (Datei ist trotzdem gespeichert) */
+  error: string | null;
+  /** Ergebnis der Auslesung dieser Datei (Felder mit Quelle und Sicherheit), null solange nicht ausgelesen */
+  draft: import("./extract/types").ProjectDraft | null;
+  /** Metadaten am Dokument (Vertragsdatum, Preis …), wie in der Prüfmaske bestätigt */
+  meta: ContractMeta;
+  storagePath: string | null;
+  documentId: string | null;
+}
+
+/** Kosten der KI-Auslesung (nur Admin). Aus extraction_log, geschätzt aus Tokens und Listenpreis. */
+export interface ExtractionCostRow {
+  /** Monat (JJJJ-MM) bzw. Projekt-ID */
+  key: string;
+  label: string;
+  auslesungen: number;
+  fehlgeschlagen: number;
+  inputTokens: number;
+  outputTokens: number;
+  kostenEur: number;
+}
+
+export interface ExtractionCosts {
+  monate: ExtractionCostRow[];
+  projekte: ExtractionCostRow[];
+  /** Auslesungen ohne Projekt (Entwurf offen, verworfen oder ohne Datei-ID) */
+  ohneProjekt: ExtractionCostRow | null;
+}
+
 export interface ProjectDraftRecord {
   id: string;
   status: DraftStatus;
+  /** Dateien des Entwurfs in ihrer Reihenfolge (ohne entfernte). Ältere Entwürfe ohne Dateizeilen: leer, dann gilt `file`. */
+  files: DraftFileRecord[];
   /** Ergebnis des Extractors (Felder mit Wert, Quelle, Sicherheit). */
   draft: ProjectDraft;
   /** Stand der Prüfmaske, damit man später weitermachen kann. */

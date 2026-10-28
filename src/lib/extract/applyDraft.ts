@@ -2,7 +2,7 @@
 
 import { splitAnschrift } from "../planungsprotokoll/daten";
 import { compactText } from "../projectFilters";
-import type { NewProject } from "../repo";
+import type { BauherrInput, NewProject } from "../repo";
 import type { BauherrContact, Company, ContractMeta, Project } from "../types";
 import type { DraftFieldKey, ProjectDraft } from "./types";
 
@@ -75,7 +75,7 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
   const unmatched: AppliedDraft["unmatched"] = {};
 
   const companyName = v("company");
-  const company = companyName ? (ctx.companies.find((c) => same(c.name, companyName)) ?? ctx.companies.find((c) => contains(c.name, companyName))) : undefined;
+  const company = matchCompany(companyName, ctx.companies);
   if (companyName && !company) unmatched.company = companyName;
 
   // Getrennte Anschrift und Bauort fürs Planungsprotokoll: aus der erkannten Zeile, wenn sie eindeutig aufteilbar ist
@@ -114,6 +114,66 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
     if (value) meta[k] = value;
   }
   return { form, meta, unmatched };
+}
+
+/** Hausbaufirma aus den Stammdaten zum erkannten Namen (gleich oder enthalten), sonst undefined. Nichts wird angelegt. */
+export function matchCompany(name: string | null | undefined, companies: Company[]): Company | undefined {
+  if (!name) return undefined;
+  return companies.find((c) => same(c.name, name)) ?? companies.find((c) => contains(c.name, name));
+}
+
+/**
+ * Einen einzelnen Wert ins Formular übernehmen (Auswahl bei abweichenden Werten aus mehreren Dokumenten).
+ * Anschrift und Bauadresse ziehen ihre getrennten Felder mit; die Hausbaufirma wird gegen die Stammdaten abgeglichen.
+ */
+export function formPatchFor(key: DraftFieldKey, wert: string, companies: Company[]): { project?: Partial<NewProject>; bauherr?: Partial<BauherrInput>; unmatchedCompany?: string } {
+  switch (key) {
+    case "bauherrLabel":
+    case "location":
+    case "flurstueck":
+    case "gemarkung":
+    case "vermesser":
+      return { project: { [key]: wert } };
+    case "company": {
+      const c = matchCompany(wert, companies);
+      return c ? { project: { companyId: c.id, salespersonId: null } } : { unmatchedCompany: wert };
+    }
+    case "bauherrName":
+      return { bauherr: { name: wert } };
+    case "phone":
+    case "email":
+      return { bauherr: { [key]: wert } };
+    case "bauherr2Name":
+      return { bauherr: { name2: wert } };
+    case "bauherr2Phone":
+      return { bauherr: { phone2: wert } };
+    case "bauherr2Email":
+      return { bauherr: { email2: wert } };
+    case "address": {
+      const a = splitAnschrift(wert);
+      return { bauherr: { address: wert, street: a.strasse, postalCode: a.plz, city: a.ort } };
+    }
+    case "buildingAddress": {
+      const a = splitAnschrift(wert);
+      return { bauherr: { buildingAddress: wert, siteStreet: a.strasse, sitePostalCode: a.plz, siteCity: a.ort } };
+    }
+    default:
+      return {};
+  }
+}
+
+/**
+ * Nach erneutem Zusammenführen (Dokument hinzugefügt, Art geändert, Seite nachgelesen): was der Mensch schon selbst
+ * geändert hat, bleibt stehen. `edited` enthält Formularschlüssel (bauherrName steht für den Namen beim Bauherrn).
+ */
+export function preserveEdited(prev: NewProject, next: NewProject, edited: ReadonlySet<string>): NewProject {
+  const out: NewProject = { ...next, bauherr: { phone: null, email: null, address: null, buildingAddress: null, ...next.bauherr } };
+  for (const k of Object.keys(prev) as (keyof NewProject)[]) if (k !== "bauherr" && edited.has(k)) (out as unknown as Record<string, unknown>)[k] = prev[k];
+  if (edited.has("companyId")) out.salespersonId = prev.salespersonId;
+  for (const k of Object.keys(prev.bauherr ?? {}) as (keyof BauherrInput)[]) {
+    if (edited.has(k === "name" ? "bauherrName" : k)) (out.bauherr as unknown as Record<string, unknown>)[k] = prev.bauherr?.[k] ?? null;
+  }
+  return out;
 }
 
 /** Metadaten für die Ablage: nur gefüllte Werte, ohne Rand-Leerzeichen. */
