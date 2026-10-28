@@ -184,6 +184,26 @@ describe("Edge Function: Eingabe", () => {
   });
 });
 
+describe("Edge Function: versteht den Aufruf der App vor Migration 0019 (main)", () => {
+  it("nur `images` mit einem oder zwei Bildern, ohne Art, Datei-ID und Seiten", () => {
+    const one = parseRequest({ images: [img()] });
+    expect(one).toMatchObject({ ok: true, art: null, draftFileId: null, pages: [1] });
+    const two = parseRequest({ images: [img(), img()] });
+    expect(two).toMatchObject({ ok: true, art: null, draftFileId: null, pages: [1, 2] });
+  });
+
+  it("antwortet in der Form, die die alte App liest: ok, felder (alle Felder), hinweise; zusätzliche Angaben stören nicht", () => {
+    const r = toResponse({ felder: [{ feld: "vertragsart", wert: "werkvertrag", quelle: "Kopf", seite: 1, sicherheit: "hoch" }, { feld: "haustyp", wert: "Beispielhaus 140", quelle: "Plan", seite: 2, sicherheit: "mittel" }], hinweise: [] });
+    if (!r.ok) throw new Error("erwartet ok");
+    expect(Object.keys(r.felder).sort()).toEqual([...DRAFT_FIELDS].sort());
+    expect(r.felder.haustyp.wert).toBe("Beispielhaus 140"); // Plan-Seite der alten App: Haustyp kommt an
+    expect(Array.isArray(r.hinweise)).toBe(true);
+    // neue Arten kennt die alte App nicht; sie macht daraus "sonstiges" (normalizeFields auf main)
+    const neu = toResponse({ felder: [{ feld: "vertragsart", wert: "baugrundauftrag", quelle: "", seite: 1, sicherheit: "hoch" }], hinweise: [] });
+    expect(neu).toMatchObject({ ok: true, felder: { vertragsart: { wert: "baugrundauftrag" } } });
+  });
+});
+
 describe("Edge Function: Parameter und Schema passen zum KI-Dienst", () => {
   it("sendet 'effort' nur an Modelle, die den Parameter kennen", () => {
     for (const m of ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-sonnet-5", "claude-opus-4-8", "claude-sonnet-4-6"]) expect(supportsEffort(m), m).toBe(true);
