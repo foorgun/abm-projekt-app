@@ -1,8 +1,9 @@
-// Welche Dateien als Vertrag angenommen werden: PDF, DOCX oder Bild, höchstens 10 MB.
+// Welche Dateien als Vertrag angenommen werden: PDF, DOCX oder Bild, höchstens 30 MB je Datei.
 
 import { extension } from "../files";
 
-export const MAX_CONTRACT_BYTES = 10 * 1024 * 1024;
+/** 30 MB je Datei. Dieselbe Grenze prüft die Datenbank (project_draft_files, Migration 0019). */
+export const MAX_CONTRACT_BYTES = 30 * 1024 * 1024;
 
 const TYPES: Record<string, { kind: "pdf" | "docx" | "bild"; mime: string[] }> = {
   pdf: { kind: "pdf", mime: ["application/pdf"] },
@@ -27,6 +28,6 @@ export function checkContractFile(file: { name: string; size: number; type: stri
   if (!t) return { ok: false, reason: "Nur PDF, DOCX oder Bild (JPG, PNG)." };
   if (file.type && !t.mime.includes(file.type)) return { ok: false, reason: "Dateityp und Endung passen nicht zusammen." };
   if (file.size <= 0) return { ok: false, reason: "Die Datei ist leer." };
-  if (file.size > MAX_CONTRACT_BYTES) return { ok: false, reason: "Die Datei ist größer als 10 MB." };
+  if (file.size > MAX_CONTRACT_BYTES) return { ok: false, reason: `Die Datei ist größer als 30 MB (${(file.size / 1024 / 1024).toFixed(1).replace(".", ",")} MB).` };
   return { ok: true, kind: t.kind };
 }

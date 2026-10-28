@@ -5837,12 +5837,12 @@ li:first-child > .doc-card {
     margin-right: 0;
   }
 
-  /* drei Knöpfe passen schmal nicht nebeneinander */
-  .dialog-xwide .dialog-foot {
+  /* zwei oder drei Knöpfe passen schmal nicht nebeneinander (Prüfmaske, Dateiliste "Neues Projekt") */
+  .dialog-foot {
     flex-wrap: wrap;
   }
 
-  .dialog-xwide .dialog-foot .btn {
+  .dialog-foot .btn {
     flex: 1 1 auto;
   }
 }
@@ -6309,4 +6309,260 @@ li:first-child > .doc-card {
   .group-btn-label {
     max-width: 120px;
   }
+}
+
+/* ---------------------------------------------------------------- Neues Projekt: mehrere Dokumente */
+
+.contract-start[data-has-files] {
+  place-items: stretch;
+  gap: var(--sp-4);
+  padding: var(--sp-5);
+}
+
+.contract-start[data-has-files] .contract-drop {
+  padding: var(--sp-6) var(--sp-5);
+}
+
+.job-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.job-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto minmax(150px, 210px) auto;
+  grid-template-areas:
+    "icon name size art actions"
+    "status status status status status";
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+
+.job-item[data-phase="fehler"],
+.job-item[data-phase="abgelehnt"] {
+  border-color: var(--warn);
+}
+
+.job-icon {
+  grid-area: icon;
+  color: var(--muted);
+}
+
+.job-name {
+  grid-area: name;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.job-size {
+  grid-area: size;
+  font-size: var(--fs-12);
+  white-space: nowrap;
+}
+
+.job-art {
+  grid-area: art;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-12);
+}
+
+.job-hint {
+  font-size: var(--fs-12);
+}
+
+.job-actions {
+  grid-area: actions;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.job-status {
+  grid-area: status;
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+
+.job-item[data-phase="fehler"] .job-status,
+.job-item[data-phase="abgelehnt"] .job-status {
+  color: var(--warn);
+}
+
+.job-progress {
+  width: 100%;
+  height: 4px;
+  border: 0;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  appearance: none;
+  overflow: hidden;
+}
+
+.job-progress::-webkit-progress-bar {
+  background: var(--accent-soft);
+}
+
+.job-progress::-webkit-progress-value {
+  background: var(--accent);
+  transition: width 0.2s ease;
+}
+
+.job-progress::-moz-progress-bar {
+  background: var(--accent);
+}
+
+.job-progress[data-phase="fehler"]::-webkit-progress-value,
+.job-progress[data-phase="abgelehnt"]::-webkit-progress-value {
+  background: var(--warn);
+}
+
+.job-progress[data-phase="fehler"]::-moz-progress-bar,
+.job-progress[data-phase="abgelehnt"]::-moz-progress-bar {
+  background: var(--warn);
+}
+
+@media (max-width: 640px) {
+  /* feste Randspalten: sonst verteilt der Browser die Breite der Auswahl (über alle Spalten) auf sie, und der Name schrumpft */
+  .job-item {
+    grid-template-columns: 20px minmax(0, 1fr) 64px;
+    grid-template-areas:
+      "icon name actions"
+      "size size size"
+      "art art art"
+      "status status status";
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .job-progress::-webkit-progress-value {
+    transition: none;
+  }
+}
+
+/* Vorschau: Reiter je Dokument */
+.draft-doc-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+}
+
+.draft-doc-tab {
+  padding: var(--sp-1) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-12);
+  cursor: pointer;
+}
+
+.draft-doc-tab[aria-selected="true"] {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--accent-soft);
+}
+
+/* Prüfmaske: Kachel je Dokument */
+.draft-docs {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.draft-doc {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+
+.draft-doc[data-active] {
+  border-color: var(--border-strong);
+}
+
+.draft-doc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-12);
+}
+
+.draft-doc-name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.draft-doc-name:hover {
+  text-decoration: underline;
+}
+
+/* Abweichende Werte aus mehreren Dokumenten: Auswahl mit Quelle */
+.field-conflict {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  font-size: var(--fs-12);
+}
+
+.field-conflict[data-open] {
+  background: var(--warn-soft);
+}
+
+.field-conflict-title {
+  color: var(--text-2);
+}
+
+.conflict-option {
+  display: block;
+  width: 100%;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.conflict-option:hover {
+  border-color: var(--border-strong);
+}
+
+.conflict-option[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.field:has(.field-conflict[data-open]) .input,
+.field:has(.field-conflict[data-open]) .select {
+  border-color: var(--warn);
 }

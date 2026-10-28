@@ -610,3 +610,29 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   einklappbar; die Sortierung gilt innerhalb der Gruppen.
 - **Freiberufler:** sehen Hausbaufirmen und Verkäufer nicht (Stammdaten, seit 0001); in ihrer Liste stehen dort "–".
 
+
+## Neues Projekt aus mehreren Dokumenten (Migration 0019)
+
+- **Erst speichern, dann auslesen:** Jede Datei wird als Zeile in `project_draft_files` und im Entwurfsspeicher
+  abgelegt, bevor sie ausgelesen wird. So bleibt eine Datei auch dann erhalten (und wird mit dem Projekt abgelegt),
+  wenn die Auslesung scheitert. Eigene Tabelle statt JSON im Entwurf: Kosten lassen sich je Datei und damit je Projekt
+  zuordnen, und die Zugriffsregel ist dieselbe wie bei Entwürfen (nur Admin und Mitarbeiter, nur offene Entwürfe).
+- **Seitenbilder statt PDF:** Die Funktion bekommt je Dokument die ersten zwei Seiten als Bild (1568 px, JPEG 85),
+  nicht das PDF. Das hält jede Anfrage weit unter 32 MB, unabhängig von der Dateigröße (bis 30 MB), und kostet je Seite
+  nur das Bild statt Bild plus extrahiertem Text. Weitere Seiten nur auf Wunsch, je eine; gelesene Seiten stehen in
+  der Prüfmaske (keine stille Kürzung).
+- **Schema je Art** statt eines großen Schemas: Die Antwort bleibt an das kleine, flache Schema gebunden; welche
+  Felder je Art zählen, stehen in der Anweisung, und die Funktion sowie die App verwerfen alles andere.
+- **Konflikte:** Abweichende Werte muss der Mensch auflösen, bevor das Projekt angelegt wird; vorbelegt ist der Wert
+  aus dem für das Feld verlässlicheren Dokument (Bauherr aus dem Werkvertrag, Grundstück aus dem Vermesservertrag).
+  Wer das Feld von Hand ändert, hat damit ebenfalls entschieden.
+- **Zähler pro Dokument:** jedes Dokument ein Aufruf, also eine Zeile in `extraction_log`. Das Limit von 20 je Person
+  und Tag zählt damit Dokumente; ein Nachlesen einer Seite oder ein erneutes Auslesen zählt ebenfalls.
+- **Ordner:** Baugrundauftrag nach "10 Bodengutachten"; für die Honorarvereinbarung gibt es keinen Ordner in der
+  Vorlage, deshalb vorläufig "00 Verträge".
+- **"Nicht angemeldet" in der Prüfmaske:** Mit frischer Anmeldung nicht nachstellbar (Funktion antwortet korrekt).
+  Ursache ist eine fehlende oder abgelaufene Sitzung im Browser: supabase-js schickt mit dem neuen Publishable key dann
+  gar kein Token mit. Die App frischt die Sitzung vor dem Aufruf auf, versucht es bei 401 einmal erneut und meldet sonst
+  "Anmeldung abgelaufen, die Dateien bleiben im Entwurf". Die Funktion unterscheidet jetzt "keine Sitzung" und
+  "abgelaufen".
+

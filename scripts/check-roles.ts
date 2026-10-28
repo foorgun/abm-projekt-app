@@ -169,7 +169,7 @@ for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.r
 
 // ---- nicht angemeldet
 const anon = publicClient();
-for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+for (const t of ["projects", "invoices", "bauherren", "documents", "user_roles", "project_drafts", "project_draft_files", "extraction_log"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("delete_project", { p_id: NIL })));
 for (const t of ["abwesenheiten", "urlaubs_anspruch"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t, undefined, "user_id"));
 for (const t of ["buero_daten", "planungsprotokolle"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
@@ -312,6 +312,18 @@ for (const k of mitPasswort) {
     const log = await count(sb, "extraction_log");
     if (k.rolle === "admin") record(who, "extraction_log lesen (nur Admin)", "lesbar", show(log), log.kind === "zeilen");
     else expectRows(who, "extraction_log: sieht keine Zeile", 0, log);
+    // Mehrere Dokumente je Entwurf und Kostenübersicht (Migration 0019)
+    const files = await count(sb, "project_draft_files");
+    record(who, "Dateien der Entwürfe lesen (project_draft_files)", "lesbar", show(files), files.kind === "zeilen");
+    for (const [view, col] of [["extraction_costs_by_month", "monat"], ["extraction_costs_by_project", "auslesungen"]] as const) {
+      const n = await count(sb, view, undefined, col);
+      if (k.rolle === "admin") record(who, `${view} lesen (nur Admin)`, "lesbar", show(n), n.kind === "zeilen");
+      else expectRows(who, `${view}: sieht keine Zeile`, 0, n);
+    }
+    if (k.rolle === "admin") {
+      const cols = await count(sb, "extraction_log", undefined, "draft_file_id, doc_type");
+      record(who, "neue Spalten lesbar (extraction_log.draft_file_id, doc_type)", "lesbar", show(cols), cols.kind === "zeilen");
+    }
     expectRows(who, "neue Spalten lesbar (projects.flurstueck)", all.projects, await count(sb, "projects", undefined, "flurstueck"));
     expectRows(who, "neue Spalten lesbar (bauherren.name2)", all.bauherren, await count(sb, "bauherren", undefined, "name2"));
     const docs = await count(sb, "documents", undefined, "doc_type");
@@ -426,6 +438,11 @@ for (const k of mitPasswort) {
     expectDenied(who, "Entwurf anlegen", await attempt(sb.from("project_drafts").insert(NEVER).select("id")));
     expectBlocked(who, "Entwurf ändern", await attempt(sb.from("project_drafts").update({ status: "verworfen" }).neq("id", NIL).select("id")));
     expectRows(who, "sieht nichts in extraction_log", 0, await count(sb, "extraction_log"));
+    expectRows(who, "sieht keine Dateien von Entwürfen (project_draft_files)", 0, await count(sb, "project_draft_files"));
+    expectDenied(who, "Datei zu einem Entwurf anlegen", await attempt(sb.from("project_draft_files").insert({ draft_id: NIL, file_name: "rollenpruefung.pdf", file_size: 1 }).select("id")));
+    expectBlocked(who, "Datei eines Entwurfs ändern", await attempt(sb.from("project_draft_files").update({ status: "entfernt" }).neq("id", NIL).select("id")));
+    expectRows(who, "sieht keine Kosten (extraction_costs_by_month)", 0, await count(sb, "extraction_costs_by_month", undefined, "monat"));
+    expectRows(who, "sieht keine Kosten (extraction_costs_by_project)", 0, await count(sb, "extraction_costs_by_project", undefined, "auslesungen"));
     expectRows(who, "zweiter Bauherr (bauherren.name2) nicht lesbar", 0, await count(sb, "bauherren", undefined, "name2"));
     // Dokument-Ablage nur mit Berechtigung: weder im Entwurfsspeicher noch in einem fremden Projekt
     const draftFiles = await sb.storage.from("project-documents").list("drafts");

@@ -78,7 +78,8 @@ describe("Entwürfe: speichern, laden, fortsetzen", () => {
     const r = repo();
     const { draft, form } = await startDraft(r);
     await expect(r.saveProjectDraft({ draft, form, docType: "werkvertrag", file: { name: "plan.dwg", size: 10, type: "" } })).rejects.toThrow();
-    await expect(r.saveProjectDraft({ draft, form, docType: "werkvertrag", file: { name: "gross.pdf", size: 11 * 1024 * 1024, type: "application/pdf" } })).rejects.toThrow(/10 MB/);
+    await expect(r.saveProjectDraft({ draft, form, docType: "werkvertrag", file: { name: "gross.pdf", size: 31 * 1024 * 1024, type: "application/pdf" } })).rejects.toThrow(/30 MB/);
+    await expect(r.addDraftFile({ file: { name: "gross.pdf", size: 31 * 1024 * 1024, type: "application/pdf" }, blob: new Blob(["x"]) })).rejects.toThrow(/30 MB/);
   });
 });
 
@@ -155,5 +156,56 @@ describe("Rollen: Freiberufler sieht und nutzt das nicht", () => {
 
   it("der Demo-Modus kennt keinen Aufruf des KI-Dienstes", () => {
     expect(repo().extractProject).toBeUndefined();
+  });
+});
+
+describe("Entwurf mit mehreren Dateien", () => {
+  const pdf = (name: string) => new File(["%PDF-1.4 erfunden"], name, { type: "application/pdf" });
+
+  it("erste Datei legt den Entwurf an, weitere hängen sich an; Ergebnis und Fehler je Datei; Entfernen; Ablage je Datei; Abschluss", async () => {
+    const r = repo();
+    await r.load(staff);
+    const a = await r.addDraftFile({ file: meta(pdf("Werkvertrag.pdf")), blob: pdf("Werkvertrag.pdf"), form: { project: blank, meta: {}, edited: [] } });
+    const b = await r.addDraftFile({ draftId: a.draft.id, file: meta(pdf("Vermesser.pdf")), blob: pdf("Vermesser.pdf") });
+    const c = await r.addDraftFile({ draftId: a.draft.id, file: meta(pdf("Falsch.pdf")), blob: pdf("Falsch.pdf") });
+    expect(b.draft.id).toBe(a.draft.id);
+    expect([a.file.sort, b.file.sort, c.file.sort]).toEqual([0, 1, 2]);
+    expect(await r.draftFileBlob(b.file.id)).not.toBeNull();
+
+    const draft = await createMockExtractor({ demo: true }).extract(scan());
+    await r.updateDraftFile(a.file.id, { status: "ausgelesen", draft, docType: "werkvertrag", meta: { vertragsdatum: "2026-10-02" } });
+    await r.updateDraftFile(b.file.id, { status: "fehler", error: "Dein Tageslimit ist erreicht", docType: "vermessungsvertrag" });
+    await r.removeDraftFile(c.file.id);
+    expect(await r.draftFileBlob(c.file.id)).toBeNull();
+
+    let data = await r.load(staff);
+    const rec = data.projectDrafts.find((d) => d.id === a.draft.id)!;
+    // entfernte Dateien gehören nicht mehr zum Entwurf
+    expect(rec.files.map((f) => [f.file.name, f.status, f.docType])).toEqual([
+      ["Werkvertrag.pdf", "ausgelesen", "werkvertrag"],
+      ["Vermesser.pdf", "fehler", "vermessungsvertrag"],
+    ]);
+    expect(rec.files[1].error).toContain("Tageslimit");
+
+    // anlegen: beide Dateien abgelegt (auch die nicht ausgelesene), jede im Ordner ihrer Art
+    const project = await r.createProject({ ...blank, bauherrLabel: "Hoffmann" });
+    const d1 = await r.fileContract({ projectId: project.id, docType: "werkvertrag", meta: { vertragsdatum: "2026-10-02" }, file: meta(pdf("Werkvertrag.pdf")), draftFileId: a.file.id });
+    const d2 = await r.fileContract({ projectId: project.id, docType: "vermessungsvertrag", meta: {}, file: meta(pdf("Vermesser.pdf")), draftFileId: b.file.id });
+    expect([d1.folderPath, d2.folderPath]).toEqual(["00 Verträge", "04 Vermesser"]);
+    await r.completeProjectDraft(a.draft.id, project.id);
+    data = await r.load(staff);
+    expect(data.projectDrafts.find((d) => d.id === a.draft.id)).toMatchObject({ status: "uebernommen", projectId: project.id });
+    await expect(r.addDraftFile({ draftId: a.draft.id, file: meta(pdf("Spaet.pdf")), blob: pdf("Spaet.pdf") })).rejects.toThrow(/nicht mehr offen/);
+  });
+
+  it("Freiberufler: keine Dateien zu Entwürfen; Kostenübersicht nur für Admins", async () => {
+    const r = repo();
+    await r.load(freelancer);
+    await expect(r.addDraftFile({ file: meta(pdf("x.pdf")), blob: pdf("x.pdf") })).rejects.toThrow(PermissionError);
+    await expect(r.extractionCosts()).rejects.toThrow(PermissionError);
+    await r.load(staff);
+    await expect(r.extractionCosts()).rejects.toThrow(PermissionError);
+    await r.load(admin);
+    await expect(r.extractionCosts()).resolves.toEqual({ monate: [], projekte: [], ohneProjekt: null });
   });
 });

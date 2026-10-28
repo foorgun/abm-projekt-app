@@ -1,5 +1,6 @@
-// Edge Function extract-project: liest Seite 1 (und optional die Plan-Seite) eines Vertrags mit einem Bildmodell aus
-// und liefert je Feld {wert, quelle, sicherheit}. Einrichtung: docs/vertrag-extraktion.md.
+// Edge Function extract-project: liest die ersten Seiten EINES Dokuments (als Bilder) mit einem Bildmodell aus, mit dem
+// Schema seiner Dokumentart, und liefert je Feld {wert, quelle, sicherheit}. Mehrere Dokumente = mehrere Aufrufe; die App
+// führt die Ergebnisse zusammen. Einrichtung: docs/vertrag-extraktion.md.
 //
 // Sicherheit:
 //   * Der Schlüssel zum KI-Dienst (ANTHROPIC_API_KEY) liegt nur hier als Secret, nie im Frontend.
@@ -25,6 +26,7 @@ import {
   outputConfig,
   parseRequest,
   periodStarts,
+  questionText,
   repairMessage,
   strictEnabled,
   SYSTEM_PROMPT,
@@ -48,11 +50,13 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return fail("error", "Nur POST.", 405);
 
   // --- Anmeldung und Rolle ---------------------------------------------------------------------------
+  // Ohne Sitzung schickt der Browser kein Token mit (neue Publishable keys werden nicht als Token gesendet).
+  // Abgelaufenes oder ungültiges Token: eigene Meldung, damit die App einmal auffrischen und erneut senden kann.
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
-  if (!token) return fail("forbidden", "Nicht angemeldet.", 401);
+  if (!token || !token.includes(".")) return fail("forbidden", "Nicht angemeldet: Es wurde keine Sitzung mitgeschickt. Bitte neu anmelden.", 401);
   const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: auth, error: authError } = await admin.auth.getUser(token);
-  if (authError || !auth.user) return fail("forbidden", "Nicht angemeldet.", 401);
+  if (authError || !auth.user) return fail("forbidden", "Sitzung abgelaufen oder ungültig. Bitte neu anmelden.", 401);
   const userId = auth.user.id;
   const { data: role } = await admin.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
   if (role?.role !== "admin" && role?.role !== "mitarbeiter") return fail("forbidden", "Keine Berechtigung für diese Aktion.", 403);
@@ -71,6 +75,11 @@ Deno.serve(async (req) => {
   }
   const parsed = parseRequest(body);
   if (!parsed.ok) return json(parsed, 400);
+  // Datei im Entwurf: muss es geben (Zuordnung der Kosten zum späteren Projekt)
+  if (parsed.draftFileId) {
+    const { data: file, error } = await admin.from("project_draft_files").select("id").eq("id", parsed.draftFileId).maybeSingle();
+    if (error || !file) return fail("error", "Die Datei gehört zu keinem offenen Entwurf.", 400);
+  }
 
   // --- Kostenbremse: zählen, bevor irgendetwas an den KI-Dienst geht -----------------------------------
   const model = env("EXTRACTOR_MODEL")?.trim() || DEFAULT_MODEL;
@@ -89,7 +98,11 @@ Deno.serve(async (req) => {
   if (blocked) return json(blocked, 429);
 
   // Platz im Protokoll belegen, damit gleichzeitige Aufrufe mitzählen; Tokens und Kosten folgen nach dem Aufruf
-  const reserved = await admin.from("extraction_log").insert({ user_id: userId, model, images: parsed.images.length, ok: false }).select("id").single();
+  const reserved = await admin
+    .from("extraction_log")
+    .insert({ user_id: userId, model, images: parsed.images.length, ok: false, draft_file_id: parsed.draftFileId, doc_type: parsed.art })
+    .select("id")
+    .single();
   if (reserved.error) {
     console.error("extraction_log nicht schreibbar");
     return fail("error", "Die Auslesung ist gerade nicht verfügbar (Protokoll nicht schreibbar).", 500);
@@ -103,16 +116,16 @@ Deno.serve(async (req) => {
     role: "user",
     content: [
       ...parsed.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
-      { type: "text" as const, text: parsed.images.length > 1 ? "Bild 1 ist Seite 1 des Vertrags, Bild 2 die Plan-Seite (für den Haustyp). Fülle die Felder." : "Das Bild ist Seite 1 des Vertrags. Fülle die Felder." },
+      { type: "text" as const, text: questionText(parsed.art, parsed.pages) },
     ],
   };
   // Tokens über alle Versuche dieser Auslesung (höchstens drei Aufrufe: mit Schema, ohne Schema, eine Nachfrage)
   let inputTokens = 0;
   let outputTokens = 0;
-  const saveUsage = (ok: boolean) =>
+  const saveUsage = (ok: boolean, docType: string | null = parsed.art) =>
     admin
       .from("extraction_log")
-      .update({ input_tokens: inputTokens, output_tokens: outputTokens, cost_eur: estimateCostEur(model, inputTokens, outputTokens, Number(env("EXTRACTOR_USD_EUR")) || 1), ok })
+      .update({ input_tokens: inputTokens, output_tokens: outputTokens, cost_eur: estimateCostEur(model, inputTokens, outputTokens, Number(env("EXTRACTOR_USD_EUR")) || 1), ok, doc_type: docType })
       .eq("id", reserved.data.id);
 
   /** Ein Aufruf. `strict`: Antwort an das JSON-Schema binden; sonst verlangt nur die Anweisung reines JSON. */
@@ -173,8 +186,8 @@ Deno.serve(async (req) => {
       ]);
     }
 
-    const answer = toResponse(result);
-    await saveUsage(answer.ok);
+    const answer = toResponse(result, parsed.art);
+    await saveUsage(answer.ok, answer.ok ? answer.dokumentart : parsed.art);
     return json(answer);
   } catch (error) {
     // Tokens der bis hierher gelungenen Aufrufe festhalten (bei Fehler im ersten Aufruf: 0)

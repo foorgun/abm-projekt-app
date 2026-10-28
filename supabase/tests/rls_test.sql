@@ -1234,6 +1234,92 @@ select test.expect('0018: Freiberufler ohne Zuweisung sieht kein Projekt und kei
   (select count(*) from public.projects), 0);
 rollback;
 
+-- ===========================================================================
+-- Migration 0019: mehrere Dokumente je Entwurf, 30 MB, Kosten je Auslesung
+-- ===========================================================================
+select test.expect('0019: neue Dokumentarten Baugrundauftrag und Honorarvereinbarung',
+  (select count(*) from unnest(enum_range(null::public.document_type)) t where t::text in ('baugrundauftrag', 'honorarvereinbarung')), 2);
+
+begin;
+set local role authenticated;
+-- Mitarbeiter: Entwurf mit zwei Dateien, Art je Datei, Ergebnis und Fehler je Datei
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+insert into public.project_drafts (id, file_name, file_size) values ('e0000000-0000-4000-8000-000000000018', 'werkvertrag.pdf', 1000);
+select test.expect('0019: Mitarbeiter legt zwei Dateien zum Entwurf an',
+  test.affected($$insert into public.project_draft_files (draft_id, sort, file_name, file_size, doc_type)
+    select id, n, f, 1000, t::public.document_type from public.project_drafts,
+      (values (0, 'werkvertrag.pdf', 'werkvertrag'), (1, 'vermesser.pdf', 'vermessungsvertrag')) v(n, f, t)
+    where file_name = 'werkvertrag.pdf'$$), 2);
+select test.expect('0019: … und ändert Art, Ergebnis und Fehler einer Datei',
+  test.affected($$update public.project_draft_files set status = 'fehler', error = 'nicht lesbar', doc_type = 'baugrundauftrag', fields = '{"felder": {}}' where file_name = 'vermesser.pdf'$$), 1);
+select test.throws('0019: Datei über 30 MB wird abgelehnt',
+  $$insert into public.project_draft_files (draft_id, file_name, file_size) select id, 'gross.pdf', 31457281 from public.project_drafts where file_name = 'werkvertrag.pdf'$$);
+select test.expect('0019: genau 30 MB gehen',
+  test.affected($$insert into public.project_draft_files (draft_id, sort, file_name, file_size) select id, 2, 'grenze.pdf', 31457280 from public.project_drafts where file_name = 'werkvertrag.pdf'$$), 1);
+select test.throws('0019: leere Datei wird abgelehnt',
+  $$insert into public.project_draft_files (draft_id, file_name, file_size) select id, 'leer.pdf', 0 from public.project_drafts where file_name = 'werkvertrag.pdf'$$);
+select test.throws('0019: Entwurf über 30 MB wird abgelehnt', $$insert into public.project_drafts (file_name, file_size) values ('gross.pdf', 31457281)$$);
+select test.throws('0019: Dateien eines Entwurfs löschen geht nicht (nur Status)', $$delete from public.project_draft_files$$);
+select test.throws('0019: Ersteller der Datei lässt sich nicht umschreiben',
+  $$update public.project_draft_files set created_by = '00000000-0000-4000-8000-0000000000a1'$$);
+-- abgeschlossener Entwurf: keine neuen Dateien, keine Änderungen mehr
+update public.project_drafts set status = 'verworfen' where file_name = 'werkvertrag.pdf';
+select test.throws('0019: keine Datei zu einem abgeschlossenen Entwurf',
+  $$insert into public.project_draft_files (draft_id, file_name, file_size) select id, 'spaet.pdf', 10 from public.project_drafts where file_name = 'werkvertrag.pdf'$$);
+select test.expect('0019: Dateien eines abgeschlossenen Entwurfs bleiben unverändert',
+  test.affected($$update public.project_draft_files set status = 'entfernt'$$), 0);
+select test.expect('0019: Mitarbeiter sieht keine Kosten (Protokoll nur für Admins)',
+  (select count(*) from public.extraction_costs_by_month) + (select count(*) from public.extraction_costs_by_project), 0);
+
+-- Freiberufler: sieht und schreibt keine Datei eines Entwurfs, sieht keine Kosten
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0019: Freiberufler sieht keine Dateien eines Entwurfs', (select count(*) from public.project_draft_files), 0);
+select test.throws('0019: Freiberufler legt keine Datei an (auch mit bekannter Entwurfs-ID)',
+  $$insert into public.project_draft_files (draft_id, file_name, file_size) values ('e0000000-0000-4000-8000-000000000018', 'x.pdf', 10)$$);
+select test.expect('0019: Freiberufler ändert keine Datei', test.affected($$update public.project_draft_files set status = 'entfernt'$$), 0);
+select test.expect('0019: Freiberufler sieht keine Kosten',
+  (select count(*) from public.extraction_costs_by_month) + (select count(*) from public.extraction_costs_by_project), 0);
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+set local role authenticated;
+select test.expect('0019: Freiberufler ohne Zuweisung sieht weder Projekt noch Datei',
+  (select count(*) from public.projects) + (select count(*) from public.project_draft_files), 0);
+rollback;
+
+-- Kosten je Monat und je Projekt: Protokoll mit Datei-ID, Entwurf übernommen → Projekt; nur Admin liest
+begin;
+insert into public.project_drafts (id, file_name, file_size, status, project_id, created_by)
+  values ('e0000000-0000-4000-8000-000000000019', 'kosten.pdf', 10, 'offen', null, '00000000-0000-4000-8000-0000000000a2');
+insert into public.project_draft_files (id, draft_id, file_name, file_size, created_by) values
+  ('f0000000-0000-4000-8000-000000000001', 'e0000000-0000-4000-8000-000000000019', 'werk.pdf', 10, '00000000-0000-4000-8000-0000000000a2'),
+  ('f0000000-0000-4000-8000-000000000002', 'e0000000-0000-4000-8000-000000000019', 'verm.pdf', 10, '00000000-0000-4000-8000-0000000000a2');
+update public.project_drafts set status = 'uebernommen', project_id = 'a0000000-0000-4000-8000-000000000001' where id = 'e0000000-0000-4000-8000-000000000019';
+insert into public.extraction_log (user_id, at, model, images, input_tokens, output_tokens, cost_eur, ok, draft_file_id, doc_type) values
+  ('00000000-0000-4000-8000-0000000000a2', '2026-10-05T10:00:00Z', 'm', 2, 4000, 500, 0.0130, true,  'f0000000-0000-4000-8000-000000000001', 'werkvertrag'),
+  ('00000000-0000-4000-8000-0000000000a2', '2026-10-05T10:01:00Z', 'm', 2, 3000, 400, 0.0100, true,  'f0000000-0000-4000-8000-000000000002', 'vermessungsvertrag'),
+  ('00000000-0000-4000-8000-0000000000a2', '2026-09-30T23:59:00Z', 'm', 1, 1000, 0,   0.0020, false, null, null);
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0019: Admin sieht Kosten im Oktober 2026 (zwei Auslesungen, 0,023 €)',
+  (select (auslesungen * 1000 + kosten_eur * 1000)::bigint from public.extraction_costs_by_month where monat = '2026-10'), 2023);
+select test.expect('0019: … und im September die fehlgeschlagene (UTC)',
+  (select fehlgeschlagen from public.extraction_costs_by_month where monat = '2026-09'), 1);
+select test.expect('0019: Admin sieht Kosten je Projekt (beide Dateien beim Projekt)',
+  (select (auslesungen * 1000 + kosten_eur * 1000)::bigint from public.extraction_costs_by_project where project_id = 'a0000000-0000-4000-8000-000000000001'), 2023);
+select test.expect('0019: Auslesungen ohne Datei stehen ohne Projekt',
+  (select auslesungen from public.extraction_costs_by_project where project_id is null), 1);
+select test.throws('0019: Admin schreibt das Protokoll weiterhin nicht',
+  $$update public.extraction_log set draft_file_id = null$$);
+rollback;
+
+begin;
+set local role anon;
+select test.throws('0019: anon spricht Dateien eines Entwurfs nicht an', $$select count(*) from public.project_draft_files$$);
+select test.throws('0019: anon spricht die Kostenübersicht nicht an', $$select count(*) from public.extraction_costs_by_month$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',

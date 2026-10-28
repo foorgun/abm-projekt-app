@@ -18,6 +18,7 @@ import type {
   Project,
   ProjectDocument,
   ProjectDraftRecord,
+  DraftFileRecord,
   ProjectParty,
   Salesperson,
   StepDates,
@@ -49,7 +50,9 @@ export const COLS = {
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
   abwesenheiten: "id, user_id, art, von, bis, werktage, status, notiz, entscheidung_von, entscheidung_am, ablehn_grund, created_at",
   urlaubs_anspruch: "user_id, jahr, tage, uebertrag",
-  project_drafts: "id, status, fields, form, doc_type, file_name, file_size, file_mime, storage_path, project_id, created_by, created_at, updated_at",
+  project_drafts:
+    "id, status, fields, form, doc_type, file_name, file_size, file_mime, storage_path, project_id, created_by, created_at, updated_at, project_draft_files(id, draft_id, sort, file_name, file_size, file_mime, doc_type, status, error, fields, meta, storage_path, document_id)",
+  project_draft_files: "id, draft_id, sort, file_name, file_size, file_mime, doc_type, status, error, fields, meta, storage_path, document_id",
   tasks: "id, project_id, title, due_on, assignee_id, status, source, source_key, created_at, done_at",
   activities: "id, project_id, kind, text, actor, at",
   mailboxes: "id, label, address, provider, status, last_checked_at, watch_folder",
@@ -231,9 +234,28 @@ export const toAbwesenheit = (r: Row, names: Map<string, string> = new Map()): A
 export const toUrlaubsAnspruch = (r: Row): UrlaubsAnspruch => ({ userId: r.user_id, jahr: Number(r.jahr), tage: Number(r.tage), uebertrag: Number(r.uebertrag) });
 
 /** Entwurf aus der Datenbank. `fields` und `form` sind JSON, das die App selbst geschrieben hat. */
+export const toDraftFile = (r: Row): DraftFileRecord => ({
+  id: r.id,
+  draftId: r.draft_id,
+  sort: num(r.sort) ?? 0,
+  file: { name: r.file_name, size: num(r.file_size) ?? 0, type: r.file_mime ?? "" },
+  docType: r.doc_type,
+  status: r.status,
+  error: r.error ?? null,
+  draft: r.fields && typeof r.fields === "object" && r.fields.felder ? r.fields : null,
+  meta: r.meta ?? {},
+  storagePath: r.storage_path ?? null,
+  documentId: r.document_id ?? null,
+});
+
 export const toProjectDraft = (r: Row, names: Map<string, string> = new Map()): ProjectDraftRecord => ({
   id: r.id,
   status: r.status,
+  // entfernte Dateien zeigt die Prüfmaske nicht mehr; Reihenfolge wie beim Hinzufügen
+  files: ((r.project_draft_files ?? []) as Row[])
+    .map(toDraftFile)
+    .filter((f) => f.status !== "entfernt")
+    .sort((a, b) => a.sort - b.sort),
   draft: r.fields,
   form: r.form,
   docType: r.doc_type,

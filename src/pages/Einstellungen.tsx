@@ -1,5 +1,6 @@
 import { useId, useState, type FormEvent } from "react";
 import { Building2, Hammer, Hash, Lock, Pencil, Plus, SunMoon } from "lucide-react";
+import { ExtractionCostsCard } from "../components/ExtractionCostsCard";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Select, SettingRow, Skeleton } from "../components/ui";
@@ -54,6 +55,7 @@ export function Einstellungen() {
           <>
             <BueroKarte buero={data.buero} admin={user.role === "admin"} />
             <NummernkreisKarte companies={data.companies} admin={user.role === "admin"} />
+            {user.role === "admin" && <ExtractionCostsCard />}
           </>
         )}
         {!isPilot() && (

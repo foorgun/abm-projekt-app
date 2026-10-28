@@ -106,8 +106,9 @@ describe("Edge Function: Feldliste und Schema", () => {
         "text",
       ],
       hinweise: ["a", " ", "b", "c", "d", 5],
-    });
+    }, "werkvertrag");
     if (!r.ok) throw new Error("erwartet ok");
+    expect(r.dokumentart).toBe("werkvertrag");
     expect(Object.keys(r.felder).sort()).toEqual([...DRAFT_FIELDS].sort());
     expect(r.felder.bauherrLabel).toEqual({ wert: "Hoffmann", quelle: { text: "1. Bauherr", seite: 1 }, sicherheit: "mittel" });
     expect(r.felder.phone).toEqual({ wert: "0731", quelle: null, sicherheit: "hoch" });
@@ -124,7 +125,9 @@ describe("Edge Function: Feldliste und Schema", () => {
   it("kommt mit leeren und falsch geformten Antworten zurecht", () => {
     const empty = toResponse({ felder: [], hinweise: [] });
     if (!empty.ok) throw new Error("erwartet ok");
-    expect(DRAFT_FIELDS.every((k) => empty.felder[k].wert === null)).toBe(true);
+    expect(DRAFT_FIELDS.every((k) => k === "vertragsart" || empty.felder[k].wert === null)).toBe(true);
+    // ohne erkannte Art: "sonstiges"
+    expect(empty).toMatchObject({ dokumentart: "sonstiges", felder: { vertragsart: { wert: "sonstiges" } } });
     expect(toResponse({ felder: [] })).toMatchObject({ ok: true, hinweise: [] });
     // alte Form (Objekt je Feld), Text oder nichts: kein verwertbares Ergebnis
     expect(toResponse({ felder: { bauherrLabel: { wert: "Hoffmann" } }, hinweise: [] })).toMatchObject({ ok: false, code: "error" });
@@ -169,7 +172,8 @@ describe("Edge Function: Eingabe", () => {
   });
 
   it("lehnt mehr als zwei Bilder, fremde Typen, zu große und unlesbare Bilder ab", () => {
-    expect(parseRequest({ images: [img(), img(), img()] })).toMatchObject({ ok: false, message: expect.stringContaining("Höchstens 2") });
+    expect(parseRequest({ images: [img(), img(), img(), img(), img()] })).toMatchObject({ ok: false, message: expect.stringContaining("Höchstens 4") });
+    expect(parseRequest({ images: [img(), img(), img(), img()] })).toMatchObject({ ok: true });
     expect(parseRequest({ images: [] })).toMatchObject({ ok: false });
     expect(parseRequest({})).toMatchObject({ ok: false });
     expect(parseRequest(null)).toMatchObject({ ok: false });
@@ -177,6 +181,26 @@ describe("Edge Function: Eingabe", () => {
     expect(parseRequest({ images: [img(jpeg(10, 10) + "A")] })).toMatchObject({ ok: false });
     expect(parseRequest({ images: [img("<script>".repeat(50))] })).toMatchObject({ ok: false });
     expect(parseRequest({ images: [img("kurz")] })).toMatchObject({ ok: false });
+  });
+});
+
+describe("Edge Function: versteht den Aufruf der App vor Migration 0019 (main)", () => {
+  it("nur `images` mit einem oder zwei Bildern, ohne Art, Datei-ID und Seiten", () => {
+    const one = parseRequest({ images: [img()] });
+    expect(one).toMatchObject({ ok: true, art: null, draftFileId: null, pages: [1] });
+    const two = parseRequest({ images: [img(), img()] });
+    expect(two).toMatchObject({ ok: true, art: null, draftFileId: null, pages: [1, 2] });
+  });
+
+  it("antwortet in der Form, die die alte App liest: ok, felder (alle Felder), hinweise; zusätzliche Angaben stören nicht", () => {
+    const r = toResponse({ felder: [{ feld: "vertragsart", wert: "werkvertrag", quelle: "Kopf", seite: 1, sicherheit: "hoch" }, { feld: "haustyp", wert: "Beispielhaus 140", quelle: "Plan", seite: 2, sicherheit: "mittel" }], hinweise: [] });
+    if (!r.ok) throw new Error("erwartet ok");
+    expect(Object.keys(r.felder).sort()).toEqual([...DRAFT_FIELDS].sort());
+    expect(r.felder.haustyp.wert).toBe("Beispielhaus 140"); // Plan-Seite der alten App: Haustyp kommt an
+    expect(Array.isArray(r.hinweise)).toBe(true);
+    // neue Arten kennt die alte App nicht; sie macht daraus "sonstiges" (normalizeFields auf main)
+    const neu = toResponse({ felder: [{ feld: "vertragsart", wert: "baugrundauftrag", quelle: "", seite: 1, sicherheit: "hoch" }], hinweise: [] });
+    expect(neu).toMatchObject({ ok: true, felder: { vertragsart: { wert: "baugrundauftrag" } } });
   });
 });
 
@@ -323,9 +347,10 @@ describe("Edge Function: Schalter und Kostenbremse", () => {
   it("sperrt bei erreichtem Limit mit klarer Meldung, sonst nicht", () => {
     const ok = { userToday: 19, totalToday: 99, monthCostEur: 19.99 };
     expect(checkLimits(ok, DEFAULT_LIMITS)).toBeNull();
-    expect(checkLimits({ ...ok, userToday: 20 }, DEFAULT_LIMITS)).toMatchObject({ ok: false, code: "limit", message: expect.stringContaining("Tageslimit erreicht") });
-    expect(checkLimits({ ...ok, totalToday: 100 }, DEFAULT_LIMITS)).toMatchObject({ code: "limit", message: expect.stringContaining("Tageslimit erreicht") });
-    expect(checkLimits({ ...ok, monthCostEur: 20 }, DEFAULT_LIMITS)).toMatchObject({ code: "limit", message: expect.stringContaining("Monatsbudget") });
+    // verständlich: wer, wie viele, dass jedes Dokument einzeln zählt und die Datei gespeichert bleibt
+    expect(checkLimits({ ...ok, userToday: 20 }, DEFAULT_LIMITS)).toMatchObject({ ok: false, code: "limit", message: expect.stringMatching(/Dein Tageslimit ist erreicht: 20 .*jedes Dokument zählt einzeln.*Datei ist gespeichert/) });
+    expect(checkLimits({ ...ok, totalToday: 100 }, DEFAULT_LIMITS)).toMatchObject({ code: "limit", message: expect.stringContaining("Tageslimit des Büros ist erreicht: 100") });
+    expect(checkLimits({ ...ok, monthCostEur: 20.4 }, DEFAULT_LIMITS)).toMatchObject({ code: "limit", message: expect.stringContaining("Monatsbudget für die Auslesung ist aufgebraucht (20,40 € von 20,00 €)") });
     expect(checkLimits({ userToday: 0, totalToday: 0, monthCostEur: 0 }, { ...DEFAULT_LIMITS, perUserPerDay: 0 })).toMatchObject({ code: "limit" });
   });
 

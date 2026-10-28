@@ -24,6 +24,9 @@ import type {
   Project,
   ProjectDocument,
   ProjectDraftRecord,
+  DraftFileRecord,
+  DraftFileStatus,
+  ExtractionCosts,
   ProtokollVariante,
   ProtokollVorlage,
   Salesperson,
@@ -148,6 +151,24 @@ export interface DraftInput {
   blob?: Blob;
 }
 
+/** Eine Datei zu einem Entwurf hinzufügen (legt den Entwurf an, wenn es noch keinen gibt). Datei zuerst speichern, dann auslesen. */
+export interface DraftFileInput {
+  draftId?: string | null;
+  file: { name: string; size: number; type: string };
+  blob: Blob;
+  docType?: DocumentType;
+  /** Stand der Prüfmaske für einen neuen Entwurf */
+  form?: DraftFormState;
+}
+
+export interface DraftFilePatch {
+  docType?: DocumentType;
+  status?: DraftFileStatus;
+  error?: string | null;
+  draft?: ProjectDraft | null;
+  meta?: ContractMeta;
+}
+
 /** Vertrag aus der Prüfmaske in ein Projekt ablegen und den Entwurf abschließen. */
 export interface ContractFiling {
   projectId: string;
@@ -157,6 +178,8 @@ export interface ContractFiling {
   blob?: Blob;
   /** Entwurf, der damit erledigt ist (wird als übernommen markiert, seine Datei im Entwurfsspeicher entfernt). */
   draftId?: string | null;
+  /** Datei eines Entwurfs mit mehreren Dateien: Inhalt kommt aus dem Entwurfsspeicher, die Datei gilt danach als abgelegt. */
+  draftFileId?: string | null;
 }
 
 export type NewAgentRule = Pick<AgentRule, "kind" | "match" | "projectId" | "folderPath">;
@@ -258,6 +281,17 @@ export interface Repo {
   draftFile(id: string): Promise<Blob | null>;
   /** Legt den Vertrag im Zielordner seines Typs ab (privater Speicher) und schließt den Entwurf ab. */
   fileContract(input: ContractFiling): Promise<ProjectDocument>;
+  /** Datei speichern (Entwurfsspeicher) und als Zeile im Entwurf anlegen; legt den Entwurf an, wenn nötig. */
+  addDraftFile(input: DraftFileInput): Promise<{ draft: ProjectDraftRecord; file: DraftFileRecord }>;
+  updateDraftFile(id: string, patch: DraftFilePatch): Promise<DraftFileRecord>;
+  /** Datei aus dem Entwurf nehmen (Status "entfernt", Datei im Entwurfsspeicher gelöscht). */
+  removeDraftFile(id: string): Promise<void>;
+  /** Inhalt einer Datei im Entwurf (Vorschau, Fortsetzen). null, wenn sie fehlt. */
+  draftFileBlob(id: string): Promise<Blob | null>;
+  /** Entwurf mit mehreren Dateien abschließen, nachdem alle Dateien abgelegt sind. */
+  completeProjectDraft(draftId: string, projectId: string): Promise<void>;
+  /** Nur Admin: Kosten der KI-Auslesung je Monat und je Projekt. */
+  extractionCosts(): Promise<ExtractionCosts>;
   /** Nur Echtbetrieb: KI-Auslesung über die Edge Function extract-project. Fehlt im Demo-Modus. */
   extractProject?(request: ExtractRequest): Promise<ExtractResponse>;
 

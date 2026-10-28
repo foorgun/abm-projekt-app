@@ -1,12 +1,56 @@
 # Neues Projekt aus einem Vertrag: KI-Auslesung einrichten
 
-Im Dialog "Neues Projekt" lässt sich ein Vertrag (PDF, DOCX oder Bild, höchstens 10 MB) ablegen. Die App füllt die
-Projektfelder vor, ein Mensch prüft jedes Feld und bestätigt. Ohne diese Einrichtung arbeitet die App mit dem Mock:
-Er liest nur Text-PDFs und DOCX im Browser, Scans kann er nicht lesen.
+Im Dialog "Neues Projekt" lassen sich mehrere Dokumente auf einmal ablegen, typisch Werkvertrag und Vermesservertrag
+(PDF, DOCX oder Bild, höchstens 30 MB je Datei). Jede Datei wird zuerst gespeichert (Entwurf, `project_draft_files`)
+und dann einzeln ausgelesen, mit dem Schema ihrer Dokumentart. Die App führt die Ergebnisse zusammen, ein Mensch prüft
+jedes Feld und bestätigt. Ohne diese Einrichtung arbeitet die App mit dem Mock: Er liest nur Text-PDFs und DOCX im
+Browser, Scans kann er nicht lesen.
 
-Die echte Auslesung macht die Edge Function `extract-project` (`supabase/functions/extract-project/`). Sie bekommt
-**nur Seite 1** des Vertrags als Bild (auf Wunsch zusätzlich die Plan-Seite für den Haustyp), ruft damit ein Bildmodell
-von Anthropic auf und gibt je Feld `{wert, quelle, sicherheit}` zurück.
+Die echte Auslesung macht die Edge Function `extract-project` (`supabase/functions/extract-project/`). Sie bekommt je
+Dokument **die ersten zwei Seiten** als Bild (auf Wunsch eine weitere Seite, z. B. die Plan-Seite für den Haustyp), ruft
+damit ein Bildmodell von Anthropic auf und gibt je Feld `{wert, quelle, sicherheit}` zurück. Ein Dokument = ein Aufruf =
+eine Auslesung im Tageslimit.
+
+### Mehrere Dokumente: Ablauf
+
+1. Dateien wählen oder hineinziehen (mehrere auf einmal). Je Datei zeigt die Liste Name, Größe, Fortschritt (gespeichert,
+   KI liest, ausgelesen), die von der KI vorgeschlagene Dokumentart (änderbar) und "Entfernen".
+2. Über 30 MB oder falscher Typ: abgelehnt, nicht gespeichert, nicht ausgelesen. Scheitert die Auslesung (Limit,
+   beschädigt, Dienst nicht erreichbar), bleibt die Datei gespeichert, die Meldung nennt Datei und Grund, und sie wird
+   mit dem Projekt abgelegt. Die Ergebnisse der anderen Dateien bleiben.
+3. Schema je Art (`FIELDS_BY_TYPE`, in App und Funktion gleich, per Test geprüft): Werkvertrag liefert Bauherr,
+   Hausbaufirma und Vertragsdaten, nie das Grundstück; Vermesservertrag und Baugrundauftrag liefern Bauort und Grundstück;
+   Honorarvereinbarung Bauherr und Bauvorhaben. Wird die Art geändert, fallen nicht passende Felder weg, und die App
+   bietet an, die Datei mit der neuen Art erneut zu lesen.
+4. Zusammenführen (`src/lib/extract/merge.ts`): gleicher Wert in mehreren Dokumenten (Schreibweise und Leerzeichen
+   egal, Telefon nur Ziffern) wird übernommen. Abweichende Werte zeigt die Prüfmaske mit Quelle ("aus Werkvertrag" /
+   "aus Vermesservertrag"); der Mensch wählt, vorher lässt sich das Projekt nicht anlegen. Jedes Feld nennt seine Quelle.
+   Vertragsdatum, Preis, Angebotsnummer und Haustyp bleiben beim jeweiligen Dokument.
+5. Anlegen: jedes Dokument wird im Ordner seiner Art abgelegt (Werkvertrag und Honorarvereinbarung "00 Verträge",
+   Vermesservertrag "04 Vermesser", Baugrundauftrag "10 Bodengutachten").
+
+Keine stille Kürzung: Die Prüfmaske nennt je Dokument, welche Seiten gelesen wurden ("Seiten 1–2 von 9 gelesen").
+Ist ein Seitenbild über 5 MB, rendert die App es kleiner (1024 statt 1568 px); reicht das nicht, meldet sie es.
+
+### Grenzen der Anthropic-API (geprüft am 28.10.2026, Dokumentation "PDF support" und "Vision")
+
+| Grenze | Wert | Bedeutung hier |
+|---|---|---|
+| Anfragegröße | 32 MB (Standard-Endpunkte) | je Aufruf höchstens 4 Seitenbilder à typisch 150–500 kB: weit darunter |
+| PDF-Seiten je Anfrage | 600, bei Kontextfenster unter 1 Mio. Token 100 | nicht berührt: die App sendet Seitenbilder, keine PDFs |
+| PDF-Kosten | je Seite Text (1.500–3.000 Token) plus Bild | Grund, keine ganzen PDFs zu senden |
+| Bild je Datei | 10 MB (Base64) auf der Claude API, 5 MB auf Bedrock | die Funktion lässt 5 MB zu (strenger) |
+| Bildmaße | höchstens 8000 × 8000 px; ab 21 Bildern je Anfrage höchstens 2000 px | die App sendet höchstens 1568 px |
+| Bilder je Anfrage | 100 (Modelle mit 200k Kontext) bzw. 600 | höchstens 4 |
+| Auflösung | Claude 4.7 und neuer: bis 2576 px lange Kante, sonst 1568 px | 1568 px genügt für Vertragsseiten |
+
+### Grenzen von Supabase
+
+- Speicher: projektweite Grenze je Datei im Free-Plan höchstens 50 MB, ab Pro bis 500 GB (Dashboard → Storage →
+  Settings). Die Buckets haben keine eigene Grenze (`file_size_limit` leer); 30 MB passen in beiden Plänen.
+- Edge Functions: 256 MB Speicher, 2 s CPU-Zeit, 150 s Laufzeit (Free) bzw. 400 s (bezahlte Pläne). Eine
+  Grenze für die Größe der Anfrage nennt die Dokumentation nicht. Die Funktion bekommt nur Seitenbilder (unter 5 MB je
+  Bild), nie die Originaldatei.
 
 ## Was vorher geklärt sein muss
 
@@ -94,11 +138,12 @@ Reihenfolge je Aufruf, der KI-Dienst kommt zuletzt:
    aus, weil sie mit den neuen Signaturschlüsseln gültige Anmeldungen abweisen kann; die Funktion prüft selbst.)
 2. Rolle aus `user_roles`: nur `admin` und `mitarbeiter`. Freiberufler und Konten ohne Rolle bekommen 403.
 3. `EXTRACTOR_ENABLED`: sonst "Auslesung noch nicht freigeschaltet", kein Aufruf.
-4. Eingabe: höchstens 2 Bilder, JPEG oder PNG, je höchstens 5 MB (Grenze des KI-Dienstes) und 2576 px Kantenlänge.
+4. Eingabe: höchstens 4 Bilder, JPEG oder PNG, je höchstens 5 MB und 2576 px Kantenlänge; optional Dokumentart
+   und Datei-ID des Entwurfs (die Datei muss es geben).
    Geprüft wird der Kopf der Bilddatei: Typ und Pixelmaße müssen stimmen. Die App sendet Seiten mit höchstens 1568 px
    als JPEG (Qualität 85), das sind typischerweise 150 bis 500 kB.
-5. Kostenbremse: Zählung in `extraction_log`. Bei Überschreitung "Tageslimit erreicht" bzw. "Monatsbudget erreicht",
-   kein Aufruf.
+5. Kostenbremse: Zählung in `extraction_log`, jedes Dokument zählt einzeln (20 je Person und Tag, 100 im Büro, 20 € im
+   Monat). Bei Überschreitung eine verständliche Meldung (wer, wie viele, dass die Datei gespeichert bleibt), kein Aufruf.
 6. Aufruf mit `max_tokens` 2000 und Zeitlimit 60 Sekunden je Aufruf. Die Antwort ist an ein kleines JSON-Schema gebunden:
    ein flaches Array `felder` mit Einträgen `{feld, wert, quelle, seite, sicherheit}` und `hinweise`. Die erlaubten
    Feldnamen und Sicherheitsstufen stehen in der Anweisung, nicht im Schema (ein Schema mit einem Unterobjekt je Feld
@@ -110,7 +155,10 @@ Reihenfolge je Aufruf, der KI-Dienst kommt zuletzt:
    (die Anweisung verlangt dann reines JSON). Ist eine Antwort kein gültiges JSON, fragt sie genau einmal nach.
    Je Auslesung also höchstens drei Aufrufe; ihr Verbrauch wird zusammengezählt und zählt als eine Auslesung.
 
-`extraction_log` enthält nur Person, Zeit, Modell, Bildanzahl, Tokens, geschätzte Kosten und ob es geklappt hat.
+`extraction_log` enthält nur Person, Zeit, Modell, Bildanzahl, Tokens, geschätzte Kosten, ob es geklappt hat, die
+Dokumentart und die Datei im Entwurf (darüber Kosten je Projekt, sobald der Entwurf übernommen ist). Admins sehen die
+Kosten je Monat und je Projekt unter Einstellungen → "KI-Auslesung: Kosten" (Ansichten `extraction_costs_by_month`,
+`extraction_costs_by_project`).
 Bilder und Feldwerte stehen weder dort noch in den Logs der Funktion. Die Logs der Funktion (Dashboard → Edge Functions →
 extract-project → Logs) enthalten je Aufruf eine Zeile mit Modell, Pixelmaßen und Dateigröße der Bilder und, wenn der
 KI-Dienst ablehnt, Status, Fehlertyp und Fehlermeldung des Dienstes (z. B. `invalid_request_error` mit dem betroffenen
@@ -132,8 +180,8 @@ dort lässt sich zusätzlich ein hartes Ausgabenlimit setzen (empfohlen).
 - Vertragsdatum, Vertragspreis, Angebotsnummer und Haustyp werden als Metadaten am Dokument gespeichert
   (`documents.meta`), nicht am Projekt. Der Vertragspreis belegt keine Rechnungen vor.
 - Blättern, Zoomen und die Seiten-Übersicht in der Vorschau senden nichts: die Seiten werden nur im Browser gerendert.
-  Eine weitere Seite geht nur über den Knopf "Diese Seite lesen" an den KI-Dienst (für den Haustyp), und dann genau
-  diese eine.
+  Eine weitere Seite geht nur über den Knopf "Diese Seite lesen" an den KI-Dienst (z. B. für den Haustyp), und dann genau
+  diese eine; sie ergänzt nur leere Felder und zählt als weitere Auslesung.
 - DOCX hat kein Seitenbild: dort liest die App den Text weiterhin lokal, ohne Aufruf.
 
 ## Nicht eingeschaltet: Ausweichmodell bei Ablehnung
@@ -147,9 +195,10 @@ bewusst aus, weil das Ausweichmodell zu anderen Preisen abrechnet und die Kosten
 | Meldung in der App | Ursache | Abhilfe |
 |---|---|---|
 | "Auslesung noch nicht freigeschaltet" | `EXTRACTOR_ENABLED` ist nicht `true`, oder der Schlüssel fehlt bzw. ist ungültig | Secrets prüfen (`supabase secrets list`) |
-| "Tageslimit erreicht" / "Monatsbudget … erreicht" | Kostenbremse | morgen erneut, oder Limit per Secret anheben |
+| "Dein Tageslimit ist erreicht" / "Tageslimit des Büros" / "Monatsbudget … aufgebraucht" | Kostenbremse (jedes Dokument zählt) | Felder von Hand ausfüllen, morgen bzw. ab dem Monatsersten erneut, oder Limit per Secret anheben |
+| "Nicht angemeldet: Es wurde keine Sitzung mitgeschickt" / "Sitzung abgelaufen" | Anmeldung im Browser verloren oder abgelaufen | die App frischt die Sitzung vorher auf und versucht es einmal erneut; sonst neu anmelden, die Dateien bleiben im Entwurf |
 | "Der KI-Dienst hat die Anfrage abgelehnt (…)" | Fehler 400 des KI-Dienstes: ungültiger Parameter, Modell nicht verfügbar, Guthaben aufgebraucht o. Ä. | Log der Funktion lesen: die Zeile "KI-Dienst: Fehler 400 · Typ · Meldung" nennt den Grund |
 | "Die Auslesung lieferte kein verwertbares Ergebnis" | Antwort war auch nach einer Nachfrage kein gültiges JSON | erneut versuchen; tritt es öfter auf, im Log nachsehen und `EXTRACTOR_STRICT` prüfen |
 | "Die Auslesung ist gerade nicht erreichbar" | Funktion nicht deployt oder Netzfehler | `supabase functions deploy extract-project`, Logs im Dashboard unter Edge Functions |
 | "Keine Berechtigung für diese Aktion" | Konto ist Freiberufler oder hat keine Rolle | gewollt |
-| "Die erste Seite ließ sich nicht als Bild lesen" | beschädigtes oder geschütztes PDF | Seite als JPG/PNG fotografieren oder von Hand anlegen |
+| "Die Datei ließ sich nicht als Bild darstellen" | beschädigtes oder mit Passwort geschütztes PDF | Seite als JPG/PNG fotografieren oder von Hand ausfüllen; die Datei wird trotzdem abgelegt |

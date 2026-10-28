@@ -23,7 +23,7 @@ export function DraftsCard({ drafts, title = "Neues Projekt vorgeschlagen" }: { 
       <CardHead
         icon={<FilePlus2 size={16} />}
         title={title}
-        sub={drafts.length === 1 ? "Ein Vertrag wartet auf die Prüfung." : `${drafts.length} Verträge warten auf die Prüfung.`}
+        sub={drafts.length === 1 ? "Ein Entwurf wartet auf die Prüfung." : `${drafts.length} Entwürfe warten auf die Prüfung.`}
       />
       <div className="card-body flush">
         {drafts.map((d) => {
@@ -33,7 +33,10 @@ export function DraftsCard({ drafts, title = "Neues Projekt vorgeschlagen" }: { 
               <div className="draft-main">
                 <span className="draft-title">{name ? `Bauherr ${name}` : "Bauherr noch offen"}</span>
                 <span className="draft-sub">
-                  {VERTRAGSART_LABEL[d.docType]} · {d.file.name} ({formatBytes(d.file.size)}) · {d.createdBy ?? "Unbekannt"}, {formatRelative(d.createdAt)}
+                  {d.files.length > 1
+                    ? `${d.files.map((f) => VERTRAGSART_LABEL[f.docType]).join(", ")} · ${d.files.length} Dateien (${formatBytes(d.files.reduce((n, f) => n + f.file.size, 0))})`
+                    : `${VERTRAGSART_LABEL[d.files[0]?.docType ?? d.docType]} · ${d.files[0]?.file.name ?? d.file.name} (${formatBytes(d.files[0]?.file.size ?? d.file.size)})`}{" "}
+                  · {d.createdBy ?? "Unbekannt"}, {formatRelative(d.createdAt)}
                 </span>
               </div>
               <Button size="sm" variant="ghost" onClick={() => void discard(d)}>

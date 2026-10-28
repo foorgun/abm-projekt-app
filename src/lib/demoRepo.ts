@@ -12,6 +12,7 @@ import { werktage } from "./abwesenheit/werktage";
 import { filterDocuments, type DocumentFilter, type DocumentRow } from "./documentFilters";
 import { cleanMeta } from "./extract/applyDraft";
 import { checkContractFile } from "./extract/contractFile";
+import { emptyDraft } from "./extract/types";
 import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
 import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
@@ -25,6 +26,8 @@ import {
   PermissionError,
   type AgentRunSummary,
   type ContractFiling,
+  type DraftFileInput,
+  type DraftFilePatch,
   type DraftInput,
   type MailboxInput,
   type ProjectPatch,
@@ -39,7 +42,7 @@ import {
 } from "./repo";
 import type { SessionUser } from "./session";
 import { CLASSIC_PARTY_ROLES } from "./types";
-import type { Activity, AgentSettings, BueroDaten, Dataset, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import type { Activity, AgentSettings, BueroDaten, Dataset, DraftFileRecord, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -530,6 +533,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         draft: structuredClone(input.draft),
         form: structuredClone(input.form),
         docType: input.docType,
+        files: [],
         file: { ...input.file },
         storagePath: `drafts/${id}/${input.file.name}`,
         projectId: null,
@@ -548,7 +552,88 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (!cur) throw new Error("Entwurf nicht gefunden");
       Object.assign(cur, { status: "verworfen", storagePath: null, updatedAt: now() });
       draftBlobs.delete(id);
+      for (const f of cur.files) draftBlobs.delete(f.id);
       return done(undefined);
+    },
+
+    async addDraftFile(input: DraftFileInput) {
+      requireStaff();
+      const check = checkContractFile(input.file);
+      if (!check.ok) throw new Error(check.reason);
+      let rec = input.draftId ? db.projectDrafts.find((d) => d.id === input.draftId && d.status === "offen") : undefined;
+      if (input.draftId && !rec) throw new Error("Der Entwurf ist nicht mehr offen.");
+      if (!rec) {
+        const id = newId("e");
+        rec = {
+          id,
+          status: "offen",
+          draft: emptyDraft(input.file, "mock", []),
+          form: structuredClone(input.form ?? { project: {} as DraftInput["form"]["project"], meta: {}, edited: [] }),
+          docType: input.docType ?? "sonstiges",
+          files: [],
+          file: { ...input.file },
+          storagePath: null,
+          projectId: null,
+          createdBy: user.name,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        db.projectDrafts.unshift(rec);
+      }
+      const fileId = newId("ef");
+      const row: DraftFileRecord = {
+        id: fileId,
+        draftId: rec.id,
+        sort: rec.files.length,
+        file: { ...input.file },
+        docType: input.docType ?? "sonstiges",
+        status: "offen",
+        error: null,
+        draft: null,
+        meta: {},
+        storagePath: `drafts/${rec.id}/${fileId}-${input.file.name}`,
+        documentId: null,
+      };
+      rec.files.push(row);
+      draftBlobs.set(fileId, input.blob);
+      return done({ draft: structuredClone(rec), file: structuredClone(row) });
+    },
+
+    async updateDraftFile(id: string, patch: DraftFilePatch) {
+      requireStaff();
+      const row = db.projectDrafts.flatMap((d) => (d.status === "offen" ? d.files : [])).find((f) => f.id === id);
+      if (!row) throw new Error("Die Datei gehört zu keinem offenen Entwurf.");
+      Object.assign(row, structuredClone(patch));
+      return done(structuredClone(row));
+    },
+
+    async removeDraftFile(id: string) {
+      requireStaff();
+      const row = db.projectDrafts.flatMap((d) => (d.status === "offen" ? d.files : [])).find((f) => f.id === id);
+      if (!row) throw new Error("Die Datei gehört zu keinem offenen Entwurf.");
+      // wie beim Laden aus der Datenbank: entfernte Dateien gehören nicht mehr zum Entwurf
+      for (const d of db.projectDrafts) d.files = d.files.filter((f) => f.id !== id);
+      draftBlobs.delete(id);
+      return done(undefined);
+    },
+
+    async draftFileBlob(id: string) {
+      requireStaff();
+      return done(draftBlobs.get(id) ?? null);
+    },
+
+    async completeProjectDraft(draftId: string, projectId: string) {
+      requireStaff();
+      const cur = db.projectDrafts.find((d) => d.id === draftId && d.status === "offen");
+      if (!cur) throw new Error("Der Entwurf ist nicht mehr offen.");
+      Object.assign(cur, { status: "uebernommen", projectId, storagePath: null, updatedAt: now() });
+      return done(undefined);
+    },
+
+    async extractionCosts() {
+      if (user.role !== "admin") throw new PermissionError();
+      // Im Demo-Modus liest der Browser selbst (kein KI-Dienst): es fallen keine Kosten an
+      return done({ monate: [], projekte: [], ohneProjekt: null });
     },
 
     async draftFile(id) {
@@ -556,7 +641,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(draftBlobs.get(id) ?? null);
     },
 
-    async fileContract({ projectId, docType, meta, file, draftId }: ContractFiling) {
+    async fileContract({ projectId, docType, meta, file, draftId, draftFileId }: ContractFiling) {
       requireStaff();
       project(projectId);
       const check = checkContractFile(file);
@@ -567,6 +652,11 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (draft) {
         Object.assign(draft, { status: "uebernommen", projectId, storagePath: null, updatedAt: now() });
         draftBlobs.delete(draft.id);
+      }
+      const row = draftFileId ? db.projectDrafts.flatMap((d) => d.files).find((f) => f.id === draftFileId) : null;
+      if (row) {
+        Object.assign(row, { status: "abgelegt", storagePath: null, documentId: doc.id });
+        draftBlobs.delete(row.id);
       }
       return done(structuredClone(doc));
     },
