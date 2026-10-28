@@ -428,7 +428,9 @@ def build_report(projects: list[Project], contacts: list[Contact], matches: dict
     lines += [f"- {x}" for x in report.corrections] or ["- keine"]
     lines += ["", "## Bitte prüfen", ""]
     lines += [f"- {x}" for x in report.review]
-    lines += [f"- ABM-Nummer {k} kommt {v}× vor (Zeilen {', '.join(map(str, rows_by_nr[k]))})" for k, v in dups.items()]
+    # Seit Migration 0017 ist die ABM-Nr. eindeutig: der Import übernähme nur die erste Zeile ("on conflict do nothing")
+    lines += [f"- ABM-Nummer {k} kommt {v}× vor (Zeilen {', '.join(map(str, rows_by_nr[k]))}). Vor dem Import in der Excel "
+              "klären: die Datenbank nimmt jede ABM-Nr. nur einmal an, weitere Zeilen würden übersprungen." for k, v in dups.items()]
     if not report.review and not dups:
         lines.append("- nichts")
     lines += ["", "## Hinweise", "",

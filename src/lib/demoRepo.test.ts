@@ -197,6 +197,35 @@ describe("Projekt anlegen mit wenigen Angaben, Stammdaten ergänzen", () => {
     expect(d.team.some((x) => x.id === t.id)).toBe(true);
   });
 
+  it("Nummernkreise der Hausbaufirmen: nur Admins setzen, ändern und legen Firmen damit an", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    await repo.load({ name: "Test", role: "mitarbeiter" });
+    await expect(repo.setCompanyPrefix("c-bz", "8162")).rejects.toThrow(PermissionError);
+    await expect(repo.createCompany("Testhaus Nord", "8300")).rejects.toThrow(PermissionError);
+    await repo.load({ name: "Frei", role: "freiberufler" });
+    await expect(repo.setCompanyPrefix("c-bz", "8162")).rejects.toThrow(PermissionError);
+
+    let d = await repo.load({ name: "Chefin", role: "admin" });
+    expect(d.companies.find((c) => c.id === "c-bz")?.numberPrefix).toBe("8161");
+    await expect(repo.setCompanyPrefix("c-lh", "8161")).rejects.toThrow("schon Bien-Zenker zugeordnet");
+    await expect(repo.setCompanyPrefix("c-lh", "82600")).rejects.toThrow("vier Ziffern");
+    const f = await repo.createCompany("Testhaus Nord", "8300");
+    expect(f.numberPrefix).toBe("8300");
+    await repo.setCompanyPrefix("c-lh", null);
+    d = await repo.load({ name: "Chefin", role: "admin" });
+    expect(d.companies.find((c) => c.id === "c-lh")?.numberPrefix).toBeNull();
+    expect(d.companies.find((c) => c.name === "Testhaus Nord")?.numberPrefix).toBe("8300");
+  });
+
+  it("ABM-Nr. ist eindeutig, auch beim Bearbeiten", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    const d = await repo.load({ name: "Test", role: "mitarbeiter" });
+    const [a, b] = d.projects.filter((p) => p.abmNr && /^\d{4}-\d+$/.test(p.abmNr));
+    await expect(repo.updateProject(b.id, { project: { abmNr: a.abmNr } })).rejects.toThrow("schon vergeben");
+    // andere Felder lassen sich ändern, ohne dass die (unveränderte) Nummer erneut geprüft wird
+    await repo.updateProject(b.id, { project: { location: "Neu-Ulm" } });
+  });
+
   it("Freiberufler darf weder Stammdaten noch Projekte anlegen", async () => {
     const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
     await repo.load({ name: "Frei", role: "freiberufler" });
@@ -335,5 +364,25 @@ describe("Projekt löschen (nur Admin)", () => {
     const r = repo();
     await r.load(admin);
     await expect(r.deleteProject("gibt-es-nicht")).rejects.toThrow(/nicht gefunden/);
+  });
+});
+
+describe("Bundesland am Projekt (Migration 0018)", () => {
+  const base = { kind: "neubau" as const, abmNr: null, hausbauNr: null, companyId: null, salespersonId: null, location: null, architectId: null, planerId: null, intakeMonth: null, createFolders: false };
+  it("Demo-Daten: aus der PLZ vorbelegt; anlegen und bearbeiten speichert das Kürzel und protokolliert", async () => {
+    const r = createDemoRepo("2026-10-10", { delayMs: 0 });
+    let d = await r.load({ name: "Mira", role: "mitarbeiter" });
+    expect(d.projects.some((p) => p.bundesland === "BW")).toBe(true);
+    expect(d.projects.some((p) => p.bundesland === "BY")).toBe(true); // Neu-Ulm, Senden
+    const created = await r.createProject({ ...base, bauherrLabel: "Landtest", bundesland: "BY" });
+    const p = d.projects.find((x) => x.id !== created.id && x.status === "aktiv")!;
+    await r.updateProject(p.id, { project: { bundesland: "HE" } });
+    d = await r.load({ name: "Mira", role: "mitarbeiter" });
+    expect(d.projects.find((x) => x.id === created.id)?.bundesland).toBe("BY");
+    expect(d.projects.find((x) => x.id === p.id)?.bundesland).toBe("HE");
+    expect(d.activities.some((a) => a.projectId === p.id && a.text.includes("Bundesland"))).toBe(true);
+    // Freiberufler sieht das Feld bei zugewiesenen Projekten (keine Kontaktdaten nötig)
+    const f = await r.load({ name: "Frei", role: "freiberufler" });
+    expect(f.projects.every((x) => "bundesland" in x)).toBe(true);
   });
 });

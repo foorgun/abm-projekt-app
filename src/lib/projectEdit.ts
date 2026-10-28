@@ -14,6 +14,7 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
   companyId: "Hausbaufirma",
   salespersonId: "Verkäufer",
   location: "Bauort",
+  bundesland: "Bundesland",
   architectId: "Architekt",
   planerId: "Planer",
   intakeMonth: "Eingangsmonat",
@@ -207,8 +208,9 @@ export function planProjectUpdate(
     changed.push(PARTY_LABEL[role]);
   }
 
+  // ABM-Nr. nur prüfen, wenn sie sich ändert: ein alter Wert in anderem Format blockiert sonst jede andere Änderung
   const errors = validateProjectFields(
-    { bauherrLabel: next.bauherrLabel ?? "", kind: next.kind, abmNr: next.abmNr, hausbauNr: next.hausbauNr ?? null, intakeMonth: next.intakeMonth, email: after.email },
+    { bauherrLabel: next.bauherrLabel ?? "", kind: next.kind, abmNr: "abmNr" in project ? next.abmNr : null, hausbauNr: next.hausbauNr ?? null, intakeMonth: next.intakeMonth, email: after.email },
     data.projects.filter((x) => x.id !== projectId),
   );
 

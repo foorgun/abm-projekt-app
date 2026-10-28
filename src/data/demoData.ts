@@ -2,6 +2,7 @@
 // Alle Daten sind relativ zu `today` erzeugt, damit Warnungen und Fristen an jedem Tag gleich aussehen.
 // Deterministisch über einen festen Seed: gleicher Tag → gleiche Daten.
 
+import { bundeslandFromPlz } from "../lib/bundesland";
 import { concretePath } from "../lib/folders";
 import { buildDemoAbsences, DEMO_ME, DEMO_STAFF } from "./demoAbwesenheit";
 import { addDays, monthStart } from "../lib/format";
@@ -260,7 +261,8 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const projects: Project[] = [];
   const parties: ProjectParty[] = [];
   const bauherren: BauherrContact[] = [];
-  const numberCounters: Record<string, number> = { "8161": 101, "8260": 41, "8185": 23 };
+  // Laufende Nummern ohne führende Nullen, unterschiedlich lang (wie im Büro: 8161-1588, 8185-633, 8260-321)
+  const numberCounters: Record<string, number> = { "8161": 1571, "8260": 305, "8185": 617 };
 
   specs.forEach((spec, idx) => {
     const id = `p-${pad(idx + 1)}`;
@@ -304,7 +306,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       kind === "bauvoranfrage"
         ? "Bauvoranfrage"
         : company?.numberPrefix
-          ? `${company.numberPrefix}-${pad(numberCounters[company.numberPrefix]++)}`
+          ? `${company.numberPrefix}-${numberCounters[company.numberPrefix]++}`
           : null;
 
     projects.push({
@@ -317,6 +319,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       salespersonId: sales.length ? r.pick(sales).id : null,
       bauherrLabel: name!,
       location: town,
+      bundesland: bundeslandFromPlz(plz),
       architectId: r.pick(["t-be", "t-mc"]),
       planerId: spec.planerId !== undefined ? spec.planerId : r.pick(["t-tb", "t-sk", null]),
       baubetreuung: r.chance(0.3) ? "3.1+3.2" : null,

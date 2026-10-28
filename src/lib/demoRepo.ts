@@ -17,6 +17,7 @@ import { checkFile } from "./files";
 import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
 import { isAllowedFolder, templateOf } from "./folders";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
+import { cleanPrefix } from "./abmNr";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, followupKey, infoStateOfNew, validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
@@ -273,6 +274,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         salespersonId: input.salespersonId,
         bauherrLabel: input.bauherrLabel.trim(),
         location: input.location?.trim() || null,
+        bundesland: input.bundesland?.trim() || null,
         architectId: input.architectId,
         planerId: input.planerId,
         baubetreuung: null,
@@ -340,13 +342,27 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(undefined);
     },
 
-    async createCompany(name) {
+    async createCompany(name, numberPrefix = null) {
       requireStaff();
+      // Nummernkreis nur durch Admins (wie die Zeilenregel companies_prefix_insert_admin)
+      if (numberPrefix && user.role !== "admin") throw new PermissionError();
       const c = cleanMasterName(name, db.companies.map((x) => x.name));
       if (!c.ok) throw new Error(c.reason);
-      const row = { id: newId("c"), name: c.name, numberPrefix: null };
+      const p = cleanPrefix(numberPrefix ?? "", null, db.companies);
+      if (!p.ok) throw new Error(p.reason);
+      const row = { id: newId("c"), name: c.name, numberPrefix: p.prefix };
       db.companies.push(row);
       return done(structuredClone(row));
+    },
+
+    async setCompanyPrefix(companyId, numberPrefix) {
+      if (user.role !== "admin") throw new PermissionError();
+      const row = db.companies.find((x) => x.id === companyId);
+      if (!row) throw new Error("Hausbaufirma nicht gefunden");
+      const p = cleanPrefix(numberPrefix ?? "", companyId, db.companies);
+      if (!p.ok) throw new Error(p.reason);
+      row.numberPrefix = p.prefix;
+      return done(undefined);
     },
 
     async createSalesperson(companyId, name) {

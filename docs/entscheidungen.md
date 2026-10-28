@@ -556,3 +556,57 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   keine Inline-Skripte erlaubt. Kontrast beider Farbsätze prüft `src/styles/contrast.test.ts`.
 - **Einstellungen im Pilot für alle Rollen:** Die Darstellung ist persönlich. Bürodaten sehen weiterhin nur Admin und
   Mitarbeiter, ändern nur Admins.
+
+
+## ABM-Nr. mit Nummernkreis, Spalten der Projektliste (Migration 0017)
+
+- **Format:** vier Ziffern (Nummernkreis der Hausbaufirma), Bindestrich, laufende Nummer ohne führende Nullen und mit
+  beliebiger Länge (8161-1588, 8185-633, 8260-321). Regeln in `src/lib/abmNr.ts`. Falsches Format und führende Nullen
+  sind im Formular ein Fehler, ein unbekannter Nummernkreis nur ein Hinweis.
+- **Keine Tabelle `hausbaufirmen`:** Den Nummernkreis gab es schon als `companies.number_prefix` (0001, bisher leer). Dieselbe
+  Firma steuert Verkäufer, Filter und Planungsprotokoll; eine zweite Tabelle hätte die Zuordnung doppelt gehalten. 0017
+  trägt 8161/8185/8260 ein, prüft vier Ziffern und Eindeutigkeit. Pflegen dürfen nur Admins (Einstellungen); Mitarbeiter
+  legen Firmen weiter nur mit Namen an. Eine Firma hat genau einen Nummernkreis.
+- **Eindeutig:** Index über Nummernkreis und Nummer als Zahl (8260-041 = 8260-41), nur für Werte im gültigen Format, auch
+  über stornierte Projekte hinweg. "Bauvoranfrage" (so speichert die App Bauvoranfragen) und Altwerte bleiben erlaubt.
+  Bestand vor 0017 geprüft: keine Dubletten; 38 Demo-Projekte haben noch führende Nullen (nicht geändert). Beim Bearbeiten
+  prüft die App die ABM-Nr. nur, wenn sie sich ändert, damit Altwerte andere Änderungen nicht blockieren.
+- **Vorschlag:** höchste Nummer des Nummernkreises + 1, als Zahl verglichen. Wird eine Firma gewählt und ist die ABM-Nr.
+  leer (oder noch der letzte Vorschlag), trägt die App den Vorschlag ein. Wird eine Nummer eingegeben und fehlt die Firma,
+  setzt sie die Firma des Nummernkreises. Passen beide nicht zusammen, steht das unter dem Feld (mit "übernehmen").
+  Auf der Projektseite steht die ABM-Nr. deshalb jetzt in der Kachel "Projektdaten" neben der Hausbaufirma.
+- **Spalten der Projektliste:** Alle Felder gab es schon (Verkäufer, Architekt, Planer als Teammitglied mit Kürzel,
+  Bauort, Baubetreuung als Freitext, die fünf Excel-Termine als Schritte in `project_steps`); keine neue Spalte in der
+  Datenbank. Auswahl und Reihenfolge pro Benutzer nur im Browser (`abm.projekte.spalten.v2.<Benutzer-ID>`), weil es kein
+  Nutzerprofil in der Datenbank gibt. Drag-and-drop mit nativem HTML5 (kein Paket), dazu Auf/Ab-Knöpfe für Tastatur und
+  Handy (Touch kennt kein HTML5-Drag). Pfeil links und "Projekt öffnen" rechts sind nicht wählbar und bleiben beim
+  horizontalen Scrollen stehen, ebenso die erste gewählte Spalte.
+
+
+## Projektliste wie die Excel, Bundesland, Gruppierung (Migration 0018)
+
+- **Spalten = Excel:** Standard sind die 14 Spalten der Excel-Projektliste in deren Reihenfolge (Anzahl Projekte,
+  Fertighausfirma, ABM-Nr., Bauherrschaft, Bundesland - Bauort, Verkäufer, Architekt, Planer, Plan-Gespräch, Übergabe
+  Baugesuch, ABM-Vertrag – versendet, ABM-Vertrag – zurück, Baugenehmigung, Baubetreuung), dahinter die
+  Fertighausfirma-Nr. (= Hausbau-Nr.). "Bundesland" und "Bauort" einzeln sind wählbar, aber aus. Status, Schritte,
+  Nächste Aufgabe und Warnung stehen nicht mehr in der Liste (Daten bleiben, Projektseite zeigt sie). Gespeichert unter
+  `abm.projekte.spalten.v3.<Benutzer-ID>`; v3, damit alle einmal den Excel-Standard bekommen.
+- **Anzahl Projekte:** laufende Nummer der angezeigten Zeilen, über Gruppen hinweg (wie in der Excel, die über die
+  Monate durchzählt), bleibt beim Einklappen gleich. Nicht gespeichert.
+- **Bundesland:** neue Spalte `projects.bundesland` (Kürzel, 16 Werte, optional). Es gab schon `bauherren.site_state`
+  (0013, Freitext fürs Planungsprotokoll), das liegt aber bei den Kontaktdaten und ist für Freiberufler gesperrt; die
+  Listenspalte brauchen alle Rollen. 0018 belegt den Bestand aus `site_state` vor, wenn dort ein Landesname oder Kürzel
+  steht. In den Formularen schlägt die App das Land vor (Landesname beim Bauort, sonst PLZ des Bauorts beim Bauherrn,
+  sonst eine PLZ im Feld Bauort); die PLZ-Zuordnung ist eine Näherung (Leitregionen, Ausnahmen um Ulm/Neu-Ulm).
+- **Datentypen aus der Excel:** Termine sind Datumswerte (wie bisher in `project_steps`). Baubetreuung ist Freitext
+  ("3.1+3.2", Namen), bleibt Text. Planer und Architekt sind Teammitglieder mit Kürzel (bisher schon), die Liste zeigt das
+  Kürzel. Der Bauort enthält in der Excel weder PLZ noch Bundesland.
+- **Gruppierung:** Knopf "Gruppierung" (Keine, Monat, Jahr, Fertighausfirma, Bundesland, Planer, Architekt, Verkäufer),
+  je Benutzer im Browser gespeichert (`abm.projekte.gruppierung.v1.<Benutzer-ID>`); "Keine" entfernt den Eintrag. Ersetzt
+  den alten Haken "Nach Eingangsmonat gruppieren" (URL-Parameter `gruppe=monat`). Monat/Jahr nach wählbarem Datum,
+  Standard Plan-Gespräch: In der Excel fällt es bei 114 von 123 Projekten in den Monat der Monatsüberschrift; die
+  übrigen Termine liegen meist später. "Anlage des Projekts" nimmt den Eingangsmonat (ein Anlagedatum führt die App
+  nicht im Projekt). Gruppen: neueste zuerst bzw. alphabetisch, Restgruppe ("Ohne Datum" …) am Ende, Kopf mit Anzahl,
+  einklappbar; die Sortierung gilt innerhalb der Gruppen.
+- **Freiberufler:** sehen Hausbaufirmen und Verkäufer nicht (Stammdaten, seit 0001); in ihrer Liste stehen dort "–".
+

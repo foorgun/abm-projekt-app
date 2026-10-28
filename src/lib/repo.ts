@@ -39,6 +39,8 @@ export interface NewProject {
   companyId: string | null;
   salespersonId: string | null;
   location: string | null;
+  /** Bundesland als Kürzel, optional */
+  bundesland?: string | null;
   architectId: string | null;
   planerId: string | null;
   /** Erster Tag des Eingangsmonats */
@@ -100,7 +102,7 @@ export interface ProtokollAblage {
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
   Project,
-  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "bundesland" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
 >;
 
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */
@@ -206,7 +208,9 @@ export interface Repo {
    */
   updateProject(projectId: string, patch: ProjectPatch): Promise<void>;
   /** Stammdaten direkt beim Anlegen eines Projekts ergänzen (nur Admin und Mitarbeiter). Der Name genügt. */
-  createCompany(name: string): Promise<Company>;
+  createCompany(name: string, numberPrefix?: string | null): Promise<Company>;
+  /** Nummernkreis einer Hausbaufirma setzen oder leeren (vier Ziffern, eindeutig; nur Admin, Migration 0017). Auch beim Anlegen nur Admin. */
+  setCompanyPrefix(companyId: string, numberPrefix: string | null): Promise<void>;
   createSalesperson(companyId: string, name: string): Promise<Salesperson>;
   createTeamMember(name: string, role: TeamMember["role"]): Promise<TeamMember>;
   setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;

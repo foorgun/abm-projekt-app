@@ -38,7 +38,7 @@ export const COLS = {
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, flur, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, flur, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
   bauherren:
@@ -112,6 +112,7 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   salespersonId: r.salesperson_id ?? null,
   bauherrLabel: r.bauherr_label,
   location: r.location ?? null,
+  bundesland: r.bundesland ?? null,
   architectId: r.architect_id ?? null,
   planerId: r.planer_id ?? null,
   baubetreuung: r.baubetreuung ?? null,
@@ -351,6 +352,8 @@ export function dbErrorMessage(e: { message?: string; code?: string } | null | u
   const msg = e?.message ?? "";
   const code = e?.code ?? "";
   if (code === "42501" || /permission denied|row-level security/i.test(msg)) return "Keine Berechtigung für diese Aktion";
+  if (code === "23505" && /projects_abm_nr_unique/.test(msg)) return "Diese ABM-Nr. ist schon vergeben";
+  if (code === "23505" && /companies_prefix_unique/.test(msg)) return "Dieser Nummernkreis ist schon einer Hausbaufirma zugeordnet";
   if (code === "23505") return "Diesen Eintrag gibt es schon";
   if (code === "23503") return "Der Eintrag verweist auf etwas, das es nicht (mehr) gibt";
   if (code === "PGRST205" || /schema cache/i.test(msg)) return "Die Datenbank ist noch nicht eingerichtet (Migrationen fehlen). Siehe docs/supabase-einrichten.md";

@@ -2,13 +2,13 @@
 // Reine Funktionen; dieselben Regeln nutzen das Demo-Repo und das Supabase-Repo.
 // Pflicht ist nur der Bauherr. Alles andere darf fehlen und wird dann per Aufgabe nachgefragt.
 
+import { ABM_RE, parseAbm } from "./abmNr";
 import { addDays } from "./format";
 import type { NewProject } from "./repo";
 import type { Project } from "./types";
 
 export type ProjectFormErrors = Partial<Record<"bauherrLabel" | "abmNr" | "hausbauNr" | "intakeMonth" | "email", string>>;
 
-const ABM_RE = /^\d{4}-\d{1,4}$/;
 const HAUSBAU_RE = /^[A-Za-z]{1,4}-?\d{3,8}$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
@@ -26,10 +26,16 @@ export function validateProjectFields(
   // Freiwillige Angaben: nur prüfen, wenn etwas eingetragen ist
   const abm = input.kind === "neubau" ? input.abmNr?.trim() : "";
   if (abm) {
-    if (!ABM_RE.test(abm)) e.abmNr = "Format: vier Ziffern, Bindestrich, Nummer, z. B. 8161-123.";
+    if (!ABM_RE.test(abm)) e.abmNr = "Format: vier Ziffern, Bindestrich, Nummer ohne führende Nullen, z. B. 8161-1588.";
+    else if (/^\d{4}-0/.test(abm)) e.abmNr = `Ohne führende Nullen, also ${abm.slice(0, 5)}${Number(abm.slice(5))}.`;
     else {
-      const dup = existing.find((p) => p.abmNr === abm && p.status !== "storno");
-      if (dup) e.abmNr = `Diese ABM-Nr. ist schon vergeben (${dup.bauherrLabel}).`;
+      // eindeutig auch gegenüber stornierten Projekten (wie in der Datenbank, Migration 0017)
+      const a = parseAbm(abm)!;
+      const dup = existing.find((p) => {
+        const b = parseAbm(p.abmNr);
+        return b?.prefix === a.prefix && b.num === a.num;
+      });
+      if (dup) e.abmNr = `Diese ABM-Nr. ist schon vergeben (${dup.bauherrLabel}${dup.status === "storno" ? ", storniert" : ""}).`;
     }
   }
   const hb = input.hausbauNr?.trim();

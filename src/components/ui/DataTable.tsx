@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react";
 
 export interface Column<T> {
   key: string;
   header: ReactNode;
-  render: (row: T) => ReactNode;
+  /** `index`: laufende Position der Zeile in der Anzeige (0, 1, 2 …), über Gruppen hinweg. */
+  render: (row: T, index: number) => ReactNode;
   /** Wert für die Sortierung. Ohne diesen Wert ist die Spalte nicht sortierbar. */
   sortValue?: (row: T) => string | number | null;
   align?: "left" | "right";
@@ -26,6 +27,7 @@ export function DataTable<T>({
   label,
   initialSort,
   groupBy,
+  groups,
   stickyFirst,
   compact,
   pageSize,
@@ -45,6 +47,11 @@ export function DataTable<T>({
   initialSort?: { key: string; dir: "asc" | "desc" };
   /** Gruppiert Zeilen (z. B. nach Eingangsmonat). Reihenfolge der Gruppen = Reihenfolge des ersten Auftretens. */
   groupBy?: (row: T) => string;
+  /**
+   * Fertige Gruppen mit Titel (Reihenfolge wie übergeben): Gruppenkopf mit Anzahl, einklappbar. Die Spaltensortierung
+   * gilt innerhalb jeder Gruppe. Geht vor `groupBy`; `rows` wird dann nicht verwendet.
+   */
+  groups?: { key: string; title: string; rows: T[] }[];
   /** Erste Spalte bleibt beim horizontalen Scrollen stehen (Mobil). */
   stickyFirst?: boolean;
   /** Engere Zellenabstände für breite Tabellen. */
@@ -58,21 +65,24 @@ export function DataTable<T>({
   // Anderer Filter (andere Zeilenzahl): wieder von vorn
   useEffect(() => setLimit(pageSize ?? Infinity), [pageSize, rows.length]);
 
-  const sorted = useMemo(() => {
-    if (!sort) return rows;
-    const col = columns.find((c) => c.key === sort.key);
-    if (!col?.sortValue) return rows;
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+
+  const sortRows = useMemo(() => {
+    const col = sort ? columns.find((c) => c.key === sort.key) : undefined;
+    if (!sort || !col?.sortValue) return (list: T[]) => list;
     const get = col.sortValue;
     const dir = sort.dir === "asc" ? 1 : -1;
-    return [...rows].sort((a, b) => {
-      const va = get(a);
-      const vb = get(b);
-      if (va == null && vb == null) return 0;
-      if (va == null) return 1;
-      if (vb == null) return -1;
-      return (typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "de")) * dir;
-    });
-  }, [rows, columns, sort]);
+    return (list: T[]) =>
+      [...list].sort((a, b) => {
+        const va = get(a);
+        const vb = get(b);
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        return (typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "de")) * dir;
+      });
+  }, [columns, sort]);
+  const sorted = useMemo(() => sortRows(rows), [rows, sortRows]);
 
   function toggleSort(key: string) {
     setSort((s) => (s?.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null));
@@ -82,7 +92,8 @@ export function DataTable<T>({
   const clickable = Boolean(onRowClick || (expand && !controlled));
 
   // Gruppen: stabil nach erstem Auftreten, innerhalb der Gruppe bleibt die Sortierung erhalten
-  const grouped = useMemo(() => {
+  const grouped = useMemo((): { key: string; title?: string; rows: T[]; count?: number }[] => {
+    if (groups) return groups.map((g) => ({ key: g.key, title: g.title, rows: sortRows(g.rows), count: g.rows.length }));
     const visible = sorted.slice(0, limit);
     if (!groupBy) return [{ key: "", rows: visible }];
     const map = new Map<string, T[]>();
@@ -92,9 +103,17 @@ export function DataTable<T>({
       map.get(k)!.push(r);
     }
     return [...map.entries()].map(([key, rows]) => ({ key, rows }));
-  }, [sorted, groupBy, limit]);
+  }, [sorted, groupBy, groups, sortRows, limit]);
 
-  function renderRow(row: T) {
+  function toggleGroup(key: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  function renderRow(row: T, index: number) {
     const k = rowKey(row);
     const isOpen = isExpanded ? isExpanded(row) : open === k;
     const toggle = () => (expand && !controlled ? setOpen(isOpen ? null : k) : onRowClick?.(row));
@@ -113,7 +132,7 @@ export function DataTable<T>({
         >
           {columns.map((c) => (
             <td key={c.key} className={[c.align === "right" && "num", c.strong && "strong", c.className].filter(Boolean).join(" ") || undefined}>
-              {c.render(row)}
+              {c.render(row, index)}
             </td>
           ))}
         </tr>
@@ -155,21 +174,37 @@ export function DataTable<T>({
           </tr>
         </thead>
         <tbody>
-          {grouped.map((g) => (
-            <Fragment key={g.key}>
-              {groupBy && (
-                <tr className="row-group">
-                  <th colSpan={columns.length} scope="colgroup">
-                    {g.key} <span className="muted">· {g.rows.length}</span>
-                  </th>
-                </tr>
-              )}
-              {g.rows.map(renderRow)}
-            </Fragment>
-          ))}
+          {grouped.map((g, gi) => {
+            // laufende Nummer über alle Gruppen, auch über eingeklappte hinweg (bleibt beim Einklappen gleich)
+            const offset = grouped.slice(0, gi).reduce((n, x) => n + x.rows.length, 0);
+            const isCollapsed = Boolean(groups) && collapsed.has(g.key);
+            return (
+              <Fragment key={g.key}>
+                {groups ? (
+                  <tr className="row-group">
+                    <th colSpan={columns.length} scope="colgroup">
+                      <button type="button" className="group-toggle" aria-expanded={!isCollapsed} onClick={() => toggleGroup(g.key)}>
+                        <ChevronRight size={14} aria-hidden className="group-chevron" />
+                        {g.title} <span className="muted">({g.count})</span>
+                      </button>
+                    </th>
+                  </tr>
+                ) : (
+                  groupBy && (
+                    <tr className="row-group">
+                      <th colSpan={columns.length} scope="colgroup">
+                        {g.key} <span className="muted">· {g.rows.length}</span>
+                      </th>
+                    </tr>
+                  )
+                )}
+                {!isCollapsed && g.rows.map((r, i) => renderRow(r, offset + i))}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
-      {sorted.length > limit && (
+      {!groups && sorted.length > limit && (
         <div className="card-foot table-more">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLimit((n) => n + (pageSize ?? 25))}>
             Weitere anzeigen ({Math.min(limit, sorted.length)} von {sorted.length})

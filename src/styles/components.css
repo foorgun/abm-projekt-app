@@ -2438,6 +2438,12 @@ a.list-item:hover {
   background: var(--surface);
 }
 
+/* feine Kante, an der die übrigen Spalten beim Scrollen unter der festen Spalte verschwinden */
+.table-sticky-first:has(td.toggle-cell) td.toggle-cell + td,
+.table-sticky-first:has(td.toggle-cell) th:nth-child(2) {
+  box-shadow: inset -1px 0 0 var(--border);
+}
+
 .table-sticky-first:has(td.toggle-cell) tbody tr:hover td.toggle-cell + td {
   background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
 }
@@ -6112,4 +6118,195 @@ li:first-child > .doc-card {
 
 .form-details .field-hint {
   margin: 0;
+}
+
+/* ---------------------------------------------------------------- Projektliste: Spalten wählen und sortieren */
+
+.table td.nowrap {
+  white-space: nowrap;
+}
+
+.col-panel-hint {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4) 0;
+  font-size: var(--fs-12);
+}
+
+.col-list {
+  max-height: min(420px, 60vh);
+  margin: 0;
+  padding: var(--sp-2);
+  overflow-y: auto;
+  list-style: none;
+}
+
+.col-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 36px;
+  padding: 0 var(--sp-1) 0 var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+}
+
+.col-item:hover {
+  background: var(--accent-soft);
+}
+
+.col-item[data-dragging] {
+  opacity: 0.5;
+}
+
+.col-item[data-over] {
+  border-color: var(--border-strong);
+  background: var(--accent-soft);
+}
+
+.col-item .checkbox {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+}
+
+.col-grip {
+  flex: none;
+  color: var(--muted);
+  cursor: grab;
+}
+
+.col-moves {
+  display: inline-flex;
+  flex: none;
+}
+
+.col-panel-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--sp-2) var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+/* Hinweis unter der ABM-Nr. (unbekannter Nummernkreis, Firma passt nicht): kein Fehler, aber sichtbar */
+.abm-hint[data-tone="warn"] {
+  color: var(--warn);
+}
+
+/* Schmale Bildschirme: das Feld steht unten über die volle Breite statt am Knopf (der Knopf sitzt dort links) */
+@media (max-width: 640px) {
+  .popover.col-popover {
+    position: fixed;
+    top: auto;
+    right: var(--sp-4);
+    bottom: var(--sp-4);
+    left: var(--sp-4);
+    width: auto;
+  }
+
+  .col-popover .col-list {
+    max-height: 55vh;
+  }
+}
+
+/* Projektliste: "Projekt öffnen" bleibt rechts stehen, auch wenn viele Spalten eingeblendet sind */
+.table-sticky-first:has(td.action-cell) td.action-cell,
+.table-sticky-first:has(td.action-cell) thead th:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  box-shadow: -1px 0 0 var(--border);
+}
+
+.table-sticky-first:has(td.action-cell) td.action-cell {
+  background: var(--surface);
+}
+
+.table-sticky-first:has(td.action-cell) tbody tr:hover td.action-cell {
+  background: color-mix(in srgb, var(--surface-2) 60%, var(--surface));
+}
+
+.table-sticky-first:has(td.action-cell) thead th:last-child {
+  z-index: 2;
+}
+
+/* Projektliste: Gruppenkopf (einklappbar) und Auswahl der Gruppierung */
+.table .row-group .group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.table .row-group .group-toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+.group-chevron {
+  color: var(--muted);
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+}
+
+.group-toggle[aria-expanded="false"] .group-chevron {
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group-chevron {
+    transition: none;
+  }
+}
+
+.table td.num-cell {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.group-modes {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+}
+
+.group-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 30px;
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+.group-mode input {
+  accent-color: var(--accent);
+}
+
+.group-date {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) var(--sp-3);
+  border-top: 1px solid var(--border);
+}
+
+.group-btn-label {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .group-btn-label {
+    max-width: 120px;
+  }
 }

@@ -384,7 +384,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
 select test.expect('Mitarbeiter darf Hausbaufirma anlegen (nur Name)',
   test.affected($$insert into public.companies (name) values ('Fingerhaus')$$), 1);
-select test.throws('Hausbaufirma mit Nummernkreis anlegen geht nicht (Spaltenrecht)',
+select test.throws('Hausbaufirma mit Nummernkreis anlegen geht nicht (nur Admin, 0017)',
   $$insert into public.companies (name, number_prefix) values ('Okal', '9999')$$);
 select test.throws('Hausbaufirma als Demo kennzeichnen geht nicht (Spaltenrecht)',
   $$insert into public.companies (name, is_demo) values ('Okal', true)$$);
@@ -1129,6 +1129,109 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1
 select public.delete_project('a0000000-0000-4000-8000-000000000002');
 select test.expect('Verlauf: nach dem Löschen bleibt kein Eintrag des Projekts',
   (select count(*) from public.activities where project_id = 'a0000000-0000-4000-8000-000000000002'), 0);
+rollback;
+
+-- ===========================================================================
+-- Migration 0017: Nummernkreise der Hausbaufirmen (nur Admins pflegen), eindeutige ABM-Nr.
+-- ===========================================================================
+select test.expect('0017: Nummernkreise 8161, 8185, 8260 bei den drei Hausbaufirmen',
+  (select count(*) from public.companies where (name, number_prefix) in (('Bien-Zenker', '8161'), ('Schwabenhaus', '8185'), ('Living Haus', '8260'))), 3);
+
+begin;
+set local role authenticated;
+-- Mitarbeiter: liest Nummernkreise, ändert sie nicht, legt Firmen nur ohne Nummernkreis an
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('0017: Mitarbeiter liest die Nummernkreise', (select count(*) from public.companies where number_prefix is not null), 3);
+select test.expect('0017: Mitarbeiter ändert keinen Nummernkreis (Zeilenregel, 0 Zeilen)',
+  test.affected($$update public.companies set number_prefix = '8162' where name = 'Bien-Zenker'$$), 0);
+select test.throws('0017: Mitarbeiter legt keine Firma mit Nummernkreis an',
+  $$insert into public.companies (name, number_prefix) values ('Okal', '9999')$$);
+select test.expect('0017: Mitarbeiter legt Firma ohne Nummernkreis weiter an',
+  test.affected($$insert into public.companies (name) values ('Okal')$$), 1);
+select test.throws('0017: Mitarbeiter ändert keinen Firmennamen', $$update public.companies set name = 'X' || name$$);
+
+-- Admin: setzt, ändert und leert Nummernkreise, legt Firmen damit an; Format und Eindeutigkeit gelten
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0017: Admin ändert einen Nummernkreis',
+  test.affected($$update public.companies set number_prefix = '8162' where name = 'Bien-Zenker'$$), 1);
+select test.expect('0017: Admin legt Firma mit Nummernkreis an',
+  test.affected($$insert into public.companies (name, number_prefix) values ('Testhaus Nord', '8300')$$), 1);
+select test.expect('0017: Admin leert einen Nummernkreis',
+  test.affected($$update public.companies set number_prefix = null where name = 'Testhaus Nord'$$), 1);
+select test.throws('0017: Nummernkreis doppelt wird abgelehnt', $$update public.companies set number_prefix = '8185' where name = 'Bien-Zenker'$$);
+select test.throws('0017: Nummernkreis nicht vierstellig wird abgelehnt', $$update public.companies set number_prefix = '816' where name = 'Bien-Zenker'$$);
+select test.throws('0017: Admin ändert auch keinen Firmennamen (kein Spaltenrecht)', $$update public.companies set name = 'X' where name = 'Okal'$$);
+
+-- ABM-Nr. eindeutig: im gültigen Format, als Zahl verglichen, auch gegenüber stornierten Projekten
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.throws('0017: vergebene ABM-Nr. wird abgelehnt',
+  $$update public.projects set abm_nr = '8161-9001' where id = 'a0000000-0000-4000-8000-000000000003'$$);
+select test.throws('0017: vergebene ABM-Nr. auch mit führender Null',
+  $$update public.projects set abm_nr = '8161-09001' where id = 'a0000000-0000-4000-8000-000000000003'$$);
+select test.throws('0017: Nummer eines stornierten Projekts bleibt vergeben',
+  $$update public.projects set abm_nr = '8161-9002' where id = 'a0000000-0000-4000-8000-000000000003'$$);
+select test.throws('0017: auch über update_project',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000003', p_project => '{"abm_nr": "8260-9001"}', p_activity => 'x')$$);
+select test.expect('0017: freie Nummer im selben Nummernkreis geht',
+  test.affected($$update public.projects set abm_nr = '8185-633' where id = 'a0000000-0000-4000-8000-000000000003'$$), 1);
+select test.expect('0017: "Bauvoranfrage" darf mehrfach vorkommen (kein gültiges Format)',
+  test.affected($$update public.projects set abm_nr = 'Bauvoranfrage' where id = 'a0000000-0000-4000-8000-000000000003'$$), 1);
+
+-- Freiberufler: sieht keine Firmen, ändert und legt nichts an; ohne Zuweisung sieht er kein Projekt
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0017: Freiberufler sieht keine Hausbaufirmen', (select count(*) from public.companies), 0);
+select test.expect('0017: Freiberufler ändert keinen Nummernkreis', test.affected($$update public.companies set number_prefix = '8100'$$), 0);
+select test.throws('0017: Freiberufler legt keine Firma mit Nummernkreis an', $$insert into public.companies (name, number_prefix) values ('Frei Haus', '8400')$$);
+select test.expect('0017: Freiberufler sieht das zugewiesene Projekt mit seinen Feldern',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and abm_nr is not null and location is not null), 1);
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+set local role authenticated;
+select test.expect('0017: Freiberufler ohne Zuweisung sieht kein Projekt', (select count(*) from public.projects), 0);
+select test.expect('0017: … und keine Schrittdaten (Plan-Gespräch, Baugenehmigung …)', (select count(*) from public.project_steps), 0);
+rollback;
+
+-- ===========================================================================
+-- Migration 0018: Bundesland am Projekt (Spalte "Bundesland - Bauort" der Projektliste)
+-- ===========================================================================
+begin;
+set local role authenticated;
+-- Mitarbeiter: setzt das Bundesland über update_project und direkt; nur die 16 Kürzel sind erlaubt
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"bundesland": "bw"}', p_activity => 'Geändert: Bundesland');
+select test.expect('0018: update_project setzt das Bundesland (als Kürzel in Großbuchstaben)',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and bundesland = 'BW'), 1);
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"location": "Ulm"}');
+select test.expect('0018: update_project ohne "bundesland" lässt es stehen',
+  (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and bundesland = 'BW'), 1);
+select test.throws('0018: unbekanntes Kürzel wird abgelehnt',
+  $$update public.projects set bundesland = 'XX' where id = 'a0000000-0000-4000-8000-000000000002'$$);
+select test.expect('0018: Mitarbeiter leert das Bundesland',
+  test.affected($$update public.projects set bundesland = null where id = 'a0000000-0000-4000-8000-000000000002'$$), 1);
+select public.create_project('{"bauherr_label": "Landtest", "bundesland": "BY"}');
+select test.expect('0018: create_project übernimmt das Bundesland',
+  (select count(*) from public.projects where bauherr_label = 'Landtest' and bundesland = 'BY'), 1);
+
+-- Freiberufler: sieht das Bundesland seines zugewiesenen Projekts, ändert es nicht
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0018: Freiberufler sieht das Bundesland seines Projekts',
+  (select count(*) from public.projects where bundesland = 'BW'), 1);
+select test.expect('0018: Freiberufler sieht kein fremdes Projekt (auch nicht das neue)', (select count(*) from public.projects), 1);
+select test.expect('0018: Freiberufler ändert das Bundesland nicht (0 Zeilen)',
+  test.affected($$update public.projects set bundesland = 'HE'$$), 0);
+select test.throws('0018: Freiberufler auch nicht über update_project',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"bundesland": "HE"}')$$);
+select test.expect('0018: Freiberufler ändert keine Hausbaufirma/Nummernkreis',
+  test.affected($$update public.companies set number_prefix = '8999'$$), 0);
+reset role;
+select set_config('request.jwt.claim.sub', '', true);
+delete from public.project_members where user_id = '00000000-0000-4000-8000-0000000000a3';
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+set local role authenticated;
+select test.expect('0018: Freiberufler ohne Zuweisung sieht kein Projekt und kein Bundesland',
+  (select count(*) from public.projects), 0);
 rollback;
 
 -- Seed-Plausibilität -----------------------------------------------------------
