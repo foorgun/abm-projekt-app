@@ -1244,7 +1244,7 @@ begin;
 set local role authenticated;
 -- Mitarbeiter: Entwurf mit zwei Dateien, Art je Datei, Ergebnis und Fehler je Datei
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
-insert into public.project_drafts (file_name, file_size) values ('werkvertrag.pdf', 1000);
+insert into public.project_drafts (id, file_name, file_size) values ('e0000000-0000-4000-8000-000000000018', 'werkvertrag.pdf', 1000);
 select test.expect('0019: Mitarbeiter legt zwei Dateien zum Entwurf an',
   test.affected($$insert into public.project_draft_files (draft_id, sort, file_name, file_size, doc_type)
     select id, n, f, 1000, t::public.document_type from public.project_drafts,
@@ -1274,8 +1274,8 @@ select test.expect('0019: Mitarbeiter sieht keine Kosten (Protokoll nur für Adm
 -- Freiberufler: sieht und schreibt keine Datei eines Entwurfs, sieht keine Kosten
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
 select test.expect('0019: Freiberufler sieht keine Dateien eines Entwurfs', (select count(*) from public.project_draft_files), 0);
-select test.throws('0019: Freiberufler legt keine Datei an',
-  $$insert into public.project_draft_files (draft_id, file_name, file_size) select id, 'x.pdf', 10 from public.project_drafts$$);
+select test.throws('0019: Freiberufler legt keine Datei an (auch mit bekannter Entwurfs-ID)',
+  $$insert into public.project_draft_files (draft_id, file_name, file_size) values ('e0000000-0000-4000-8000-000000000018', 'x.pdf', 10)$$);
 select test.expect('0019: Freiberufler ändert keine Datei', test.affected($$update public.project_draft_files set status = 'entfernt'$$), 0);
 select test.expect('0019: Freiberufler sieht keine Kosten',
   (select count(*) from public.extraction_costs_by_month) + (select count(*) from public.extraction_costs_by_project), 0);
