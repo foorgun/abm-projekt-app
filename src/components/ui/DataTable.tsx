@@ -11,6 +11,10 @@ export interface Column<T> {
   align?: "left" | "right";
   strong?: boolean;
   className?: string;
+  /** Zusätzliches Bedienelement im Spaltenkopf neben der Beschriftung (z. B. Filter-Symbol). */
+  headerAction?: ReactNode;
+  /** Spaltenkopf hervorheben (z. B. aktiver Filter). */
+  headerActive?: boolean;
 }
 
 /**
@@ -156,7 +160,7 @@ export function DataTable<T>({
               return (
                 <th
                   key={c.key}
-                  className={c.align === "right" ? "num" : undefined}
+                  className={[c.align === "right" && "num", c.headerActive && "th-active"].filter(Boolean).join(" ") || undefined}
                   aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
                   scope="col"
                 >
@@ -168,6 +172,7 @@ export function DataTable<T>({
                   ) : (
                     c.header
                   )}
+                  {c.headerAction}
                 </th>
               );
             })}

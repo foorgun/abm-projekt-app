@@ -1,6 +1,9 @@
 // Suche, Filter und Sortierung der Projektliste. Reine Funktionen (getestet), Zustand liegt in der URL.
 
 import { parseAbm } from "./abmNr";
+import { dateFiltersFromParams, dateFiltersToParams, matchesDateFilters, type DateFilters } from "./dateFilters";
+import { todayIso } from "./format";
+import { browserStore, type KeyValueStore } from "./projectColumns";
 import { phaseOf, progressOf } from "./projects";
 import type { StepDefinition } from "./steps";
 import type { Company, Project, Task, TeamMember } from "./types";
@@ -15,9 +18,11 @@ export interface ProjectFilters {
   phase: string;
   sort: ProjectSort;
   storno: boolean;
+  /** Datumsfilter je Datumsspalte (lib/dateFilters), untereinander und mit allem anderen UND-verknüpft. */
+  dates: DateFilters;
 }
 
-export const DEFAULT_FILTERS: ProjectFilters = { q: "", company: "", architect: "", phase: "", sort: "eingang", storno: false };
+export const DEFAULT_FILTERS: ProjectFilters = { q: "", company: "", architect: "", phase: "", sort: "eingang", storno: false, dates: {} };
 
 /** Kleinbuchstaben, Umlaute vereinheitlicht, Leerzeichen/Bindestriche/Punkte entfernt (für Nummern). */
 export function compactText(s: string): string {
@@ -49,8 +54,9 @@ export function filterProjects(
   projects: Project[],
   tab: ProjectTab,
   f: ProjectFilters,
-  ctx: { steps: StepDefinition[]; companies: Company[] },
+  ctx: { steps: StepDefinition[]; companies: Company[]; today?: string },
 ): Project[] {
+  const today = ctx.today ?? todayIso();
   const companyName = new Map(ctx.companies.map((c) => [c.id, c.name]));
   return projects.filter(
     (p) =>
@@ -58,6 +64,7 @@ export function filterProjects(
       (!f.company || (f.company === "-" ? !p.companyId : p.companyId === f.company)) &&
       (!f.architect || p.architectId === f.architect) &&
       (!f.phase || phaseOf(p, ctx.steps).key === f.phase) &&
+      matchesDateFilters(p, f.dates, today) &&
       matchesQuery(p, f.q, p.companyId ? companyName.get(p.companyId) : null),
   );
 }
@@ -111,6 +118,7 @@ export function filtersFromParams(sp: URLSearchParams): ProjectFilters {
     phase: sp.get("phase") ?? "",
     sort: sort === "abm" || sort === "bauherr" || sort === "fortschritt" ? sort : "eingang",
     storno: sp.get("storno") === "1",
+    dates: dateFiltersFromParams(sp),
   };
 }
 
@@ -122,5 +130,44 @@ export function filtersToParams(f: ProjectFilters): URLSearchParams {
   if (f.phase) sp.set("phase", f.phase);
   if (f.sort !== "eingang") sp.set("sort", f.sort);
   if (f.storno) sp.set("storno", "1");
+  dateFiltersToParams(f.dates, sp);
   return sp;
+}
+
+/** Gesetzte Filter ohne Suche und Sortierung (für "Filter · n", Chips und "x von y"). */
+export function hasActiveFilters(f: ProjectFilters): boolean {
+  return Boolean(f.q || f.company || f.architect || f.phase || Object.keys(f.dates).length);
+}
+
+/** "Alle Filter zurücksetzen": Suche, Auswahlfilter und Datumsfilter weg; Sortierung und "Stornierte einblenden" bleiben. */
+export function clearFilters(f: ProjectFilters): ProjectFilters {
+  return { ...DEFAULT_FILTERS, sort: f.sort, storno: f.storno };
+}
+
+// Gespeicherte Filter je Benutzer (wie Spalten und Gruppierung): beim nächsten Öffnen der Liste ohne Filter in der URL
+// gelten sie wieder. Die Suche wird nicht gespeichert (sie ist für den Moment gedacht). Ohne Speicher: nur dieser Besuch.
+export function filtersStorageKey(user: { id?: string; role: string }): string {
+  return `abm.projekte.filter.v1.${user.id ?? `demo-${user.role}`}`;
+}
+
+/** Gespeicherte Filter als URL-Parameter; nichts Gespeichertes oder Unlesbares: null. */
+export function loadSavedFilters(key: string, store: KeyValueStore | null = browserStore()): URLSearchParams | null {
+  try {
+    const raw = store?.getItem(key);
+    if (!raw) return null;
+    const sp = filtersToParams({ ...filtersFromParams(new URLSearchParams(raw)), q: "" });
+    return sp.toString() ? sp : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveFilters(key: string, f: ProjectFilters, store: KeyValueStore | null = browserStore()): void {
+  try {
+    const raw = filtersToParams({ ...f, q: "" }).toString();
+    if (raw) store?.setItem(key, raw);
+    else store?.removeItem(key);
+  } catch {
+    // nur für diesen Besuch
+  }
 }

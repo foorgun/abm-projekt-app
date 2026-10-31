@@ -6566,3 +6566,167 @@ li:first-child > .doc-card {
 .field:has(.field-conflict[data-open]) .select {
   border-color: var(--warn);
 }
+
+/* ---------------------------------------------------------------- Projektliste: Datumsfilter */
+
+.filters-dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-basis: 100%;
+}
+
+.filters-dates .field-label {
+  margin-right: var(--sp-1);
+}
+
+/* Auswahlfeld hängt am Seitenende (Portal), feste Position am Knopf */
+.popover.date-popover {
+  position: fixed;
+  right: auto;
+  width: min(340px, calc(100vw - 16px));
+  z-index: 80;
+}
+
+.date-filter-body {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.date-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-4);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.date-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 28px;
+  font-size: var(--fs-13);
+  cursor: pointer;
+}
+
+.date-mode input {
+  accent-color: var(--accent);
+}
+
+.date-range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-2);
+}
+
+.date-field {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.date-field-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.date-field-row .input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Datumsauswahl des Browsers: unsichtbar unter dem Kalender-Knopf, nur für showPicker() */
+.date-native {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  border: 0;
+  padding: 0;
+}
+
+.date-filter-hint {
+  margin: 0;
+  font-size: var(--fs-12);
+}
+
+.date-filter .field-error {
+  margin: 0;
+}
+
+.date-presets {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.date-filter-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+/* Filter-Symbol im Spaltenkopf; aktiv hervorgehoben */
+.table th .th-filter {
+  margin-left: 6px;
+  padding: 3px;
+  border-radius: var(--r-sm);
+  color: var(--muted);
+  opacity: 0.7;
+  vertical-align: middle;
+}
+
+.table th .th-filter:hover,
+.table th .th-filter[aria-expanded="true"] {
+  opacity: 1;
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+.table th .th-filter[data-active] {
+  opacity: 1;
+  color: var(--on-primary);
+  background: var(--primary-bg);
+}
+
+.table th.th-active {
+  color: var(--text);
+}
+
+/* Aktive Filter als Chips über der Liste */
+.filter-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.filter-chip {
+  cursor: pointer;
+}
+
+.filter-chip svg {
+  opacity: 0.7;
+}
+
+@media (max-width: 480px) {
+  .date-range {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Schnellauswahl im Datumsfilter bricht auch auf schmalen Bildschirmen um (sonst scrollen Chips waagerecht) */
+.date-presets .chips {
+  flex-wrap: wrap;
+  overflow: visible;
+}

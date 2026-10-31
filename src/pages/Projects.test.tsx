@@ -2,7 +2,7 @@
 // Projektliste: Verlauf aufklappen (eigenes Klickziel, lädt erst beim Aufklappen) und "Projekt öffnen".
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDemoRepo } from "../lib/demoRepo";
 import type { Repo } from "../lib/repo";
@@ -33,15 +33,32 @@ async function flush() {
   for (let i = 0; i < 5; i++) await act(() => new Promise((r) => setTimeout(r, 0)));
 }
 
-async function render() {
+function Back() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      Zurück
+    </button>
+  );
+}
+
+async function render(start = START) {
   await act(async () => {
     root.render(
       <SessionProvider auth={null}>
         <DataProvider repo={repo}>
-          <MemoryRouter initialEntries={[START]}>
+          <MemoryRouter initialEntries={[start]}>
             <Routes>
               <Route path="/projekte" element={<Projects tab="alle" />} />
-              <Route path="/projekte/:id" element={<p>Projektseite</p>} />
+              <Route
+                path="/projekte/:id"
+                element={
+                  <>
+                    <p>Projektseite</p>
+                    <Back />
+                  </>
+                }
+              />
             </Routes>
             <Where />
           </MemoryRouter>
@@ -327,5 +344,197 @@ describe("Projektliste: Gruppierung", () => {
     await choose("Keine");
     expect(groupHeads()).toHaveLength(0);
     expect(localStorage.getItem(GROUP_KEY)).toBeNull();
+  });
+});
+
+describe("Projektliste: Datumsfilter", () => {
+  const FILTER_KEY = "abm.projekte.filter.v1.demo-admin";
+  const PG_COL = EXCEL_HEADERS.indexOf("Plan-Gespräch") + 2;
+  const BG_COL = EXCEL_HEADERS.indexOf("Baugenehmigung") + 2;
+  const cells = (col: number) => [...host.querySelectorAll(`tbody tr:not(.row-group):not(.row-detail) td:nth-child(${col})`)].map((td) => td.textContent ?? "");
+  const iso = (de: string) => de.split(".").reverse().join("-");
+  const popover = () => document.body.querySelector<HTMLElement>(".date-popover");
+  const headerFilter = (label: string) => host.querySelector<HTMLButtonElement>(`th button.th-filter[aria-label$="${label} filtern"], th button.th-filter[aria-label^="Filter ${label}:"]`)!;
+  const chips = () => [...host.querySelectorAll(".filter-chip")].map((c) => c.textContent);
+  const treffer = () => host.querySelector('[data-testid="treffer"]')!.textContent;
+  const inPopover = (label: string) => [...popover()!.querySelectorAll<HTMLLabelElement>("label")].find((l) => l.textContent === label)!;
+  const fieldIn = (label: string) => document.getElementById(inPopover(label).htmlFor) as HTMLInputElement;
+  const popoverButton = (text: string) => [...popover()!.querySelectorAll("button")].find((b) => b.textContent?.trim() === text)!;
+
+  async function type(el: HTMLInputElement, value: string) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(el, value);
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
+  async function mode(label: string) {
+    await click(inPopover(label).querySelector("input")!);
+  }
+
+  beforeEach(() => {
+    localStorage.removeItem(COLS_KEY);
+    localStorage.removeItem(GROUP_KEY);
+    localStorage.removeItem(FILTER_KEY);
+  });
+
+  it("Filter-Symbol in jedem Datums-Spaltenkopf; Zeitraum filtert einschließlich der Grenztage, Chip und Trefferzahl", async () => {
+    await render("/projekte");
+    for (const label of ["Plan-Gespräch", "Übergabe Baugesuch", "ABM-Vertrag versendet", "ABM-Vertrag zurück", "Baugenehmigung"]) expect(headerFilter(label)).toBeTruthy();
+    const total = cells(PG_COL).length;
+    const dates = cells(PG_COL).filter((t) => t !== "–").map(iso).sort();
+    // Zeitraum genau vom ersten bis zum dritten vorkommenden Tag: die Grenztage müssen dabei sein
+    const [from, , to] = [...new Set(dates)];
+    const de = (d: string) => d.split("-").reverse().join(".");
+
+    await click(headerFilter("Plan-Gespräch"));
+    expect(popover()).not.toBeNull();
+    await mode("Zeitraum");
+    await type(fieldIn("Von"), de(from));
+    await type(fieldIn("Bis"), de(to));
+    await click(popoverButton("Anwenden"));
+
+    expect(popover()).toBeNull();
+    const shown = cells(PG_COL).map(iso);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown.every((d) => d >= from && d <= to)).toBe(true);
+    expect(shown).toContain(from);
+    expect(shown).toContain(to);
+    expect(shown.length).toBe(dates.filter((d) => d >= from && d <= to).length);
+    expect(chips()).toEqual([`Plan-Gespräch: ${de(from)} bis ${de(to)}`]);
+    expect(treffer()).toBe(`${shown.length} von ${total} Projekten`);
+    expect(headerFilter("Plan-Gespräch").dataset.active).toBeDefined();
+    expect(host.querySelector("th.th-active")?.textContent).toBe("Plan-Gespräch");
+    expect(ort()).toContain(`d_plangespraech=${from}..${to}`);
+  });
+
+  it("genaues Datum, nur von; falsche Eingaben zeigen eine Meldung und lassen die Liste stehen", async () => {
+    await render("/projekte");
+    const total = cells(PG_COL).length;
+    const day = cells(PG_COL).find((t) => t !== "–")!;
+
+    await click(headerFilter("Plan-Gespräch"));
+    await mode("Genau");
+    await type(fieldIn("Datum"), "31.02.2026");
+    await click(popoverButton("Anwenden"));
+    expect(popover()!.querySelector('[role="alert"]')!.textContent).toContain("kein gültiges Datum");
+    expect(cells(PG_COL)).toHaveLength(total);
+    expect(ort()).not.toContain("d_");
+
+    await type(fieldIn("Datum"), day);
+    expect(popover()!.querySelector('[role="alert"]')).toBeNull();
+    await click(popoverButton("Anwenden"));
+    expect(new Set(cells(PG_COL))).toEqual(new Set([day]));
+    expect(chips()).toEqual([`Plan-Gespräch: ${day}`]);
+
+    await click(headerFilter("Plan-Gespräch"));
+    expect(fieldIn("Datum").value).toBe(day);
+    await mode("Zeitraum");
+    await type(fieldIn("Von"), "10.10.2026");
+    await type(fieldIn("Bis"), "01.10.2026");
+    await click(popoverButton("Anwenden"));
+    expect(popover()!.querySelector('[role="alert"]')!.textContent).toBe("„Von“ (10.10.2026) liegt nach „Bis“ (01.10.2026).");
+    expect(chips()).toEqual([`Plan-Gespräch: ${day}`]);
+
+    await type(fieldIn("Von"), day);
+    await type(fieldIn("Bis"), "");
+    await click(popoverButton("Anwenden"));
+    expect(cells(PG_COL).every((t) => t !== "–" && iso(t) >= iso(day))).toBe(true);
+    expect(chips()).toEqual([`Plan-Gespräch: ab ${day}`]);
+  });
+
+  it("Filter-Panel: Datumsfilter je Spalte, Kein Datum und Hat Datum, mehrere zusammen; Chip entfernen und alle zurücksetzen", async () => {
+    await render("/projekte");
+    const total = cells(PG_COL).length;
+    await click(buttonStartingWith("Filter"));
+    const panelButton = (label: string) => [...host.querySelectorAll<HTMLButtonElement>(".filters-dates button")].find((b) => b.textContent?.startsWith(label))!;
+    expect([...host.querySelectorAll(".filters-dates button")]).toHaveLength(5);
+
+    await click(panelButton("Baugenehmigung"));
+    await mode("Kein Datum");
+    await click(popoverButton("Anwenden"));
+    expect(cells(BG_COL).every((t) => t === "–")).toBe(true);
+    const ohneBg = cells(BG_COL).length;
+
+    await click(panelButton("Plan-Gespräch"));
+    await mode("Hat Datum");
+    await click(popoverButton("Anwenden"));
+    expect(cells(PG_COL).every((t) => t !== "–")).toBe(true);
+    expect(cells(BG_COL).every((t) => t === "–")).toBe(true);
+    expect(cells(PG_COL).length).toBeLessThanOrEqual(ohneBg);
+    expect(chips()).toEqual(["Plan-Gespräch: hat Datum", "Baugenehmigung: kein Datum"]);
+    expect(buttonStartingWith("Filter").textContent).toBe("Filter · 2");
+
+    // zusammen mit der Suche
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await type(search, "zzzz-gibt-es-nicht");
+    expect(host.textContent).toContain("Keine Projekte für diese Filter");
+    expect(chips()).toContain("Suche: „zzzz-gibt-es-nicht“");
+
+    await click(host.querySelector('.filter-chip[aria-label^="Filter entfernen: Suche"]')!);
+    await click(host.querySelector('.filter-chip[aria-label="Filter entfernen: Plan-Gespräch: hat Datum"]')!);
+    expect(chips()).toEqual(["Baugenehmigung: kein Datum"]);
+    expect(cells(BG_COL)).toHaveLength(ohneBg);
+
+    await click(buttonStartingWith("Alle Filter zurücksetzen"));
+    expect(chips()).toEqual([]);
+    expect(cells(PG_COL)).toHaveLength(total);
+    expect(treffer()).toBe(`${total} Projekte`);
+    expect(ort()).toBe("/projekte");
+  });
+
+  it("mit Gruppierung: Gruppen zählen nur gefilterte Projekte, keine leeren Gruppen", async () => {
+    localStorage.setItem(GROUP_KEY, JSON.stringify({ mode: "monat", date: "plangespraech" }));
+    await render("/projekte");
+    const day = cells(PG_COL).find((t) => t !== "–")!;
+    await click(headerFilter("Plan-Gespräch"));
+    await mode("Genau");
+    await type(fieldIn("Datum"), day);
+    await click(popoverButton("Anwenden"));
+    const heads = [...host.querySelectorAll("tr.row-group button.group-toggle")].map((b) => b.textContent!);
+    const n = cells(PG_COL).length;
+    expect(heads).toHaveLength(1);
+    expect(heads[0]).toMatch(new RegExp(`\\(${n}\\)$`));
+    expect(heads.some((h) => h.startsWith("Ohne Datum"))).toBe(false);
+  });
+
+  it("bleibt nach dem Neuladen und nach Öffnen eines Projekts und Zurück; Zurücksetzen löscht den gespeicherten Stand", async () => {
+    await render("/projekte");
+    await click(headerFilter("Baugenehmigung"));
+    await mode("Hat Datum");
+    await click(popoverButton("Anwenden"));
+    const n = cells(BG_COL).length;
+    expect(localStorage.getItem(FILTER_KEY)).toBe("d_baugenehmigung=hat");
+
+    // Projekt öffnen und zurück: die gefilterte Liste bleibt
+    await click(openLinks()[0]);
+    expect(host.textContent).toContain("Projektseite");
+    await click(buttonStartingWith("Zurück"));
+    expect(chips()).toEqual(["Baugenehmigung: hat Datum"]);
+    expect(cells(BG_COL)).toHaveLength(n);
+
+    // neu laden ohne Filter in der URL (z. B. über die Navigation): gespeicherte Filter gelten wieder
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render("/projekte");
+    expect(chips()).toEqual(["Baugenehmigung: hat Datum"]);
+    expect(cells(BG_COL)).toHaveLength(n);
+    expect(ort()).toBe("/projekte?d_baugenehmigung=hat");
+
+    await click(buttonStartingWith("Alle Filter zurücksetzen"));
+    expect(localStorage.getItem(FILTER_KEY)).toBeNull();
+    act(() => root.unmount());
+    root = createRoot(host);
+    await render("/projekte");
+    expect(chips()).toEqual([]);
+  });
+
+  it("Schnellauswahl setzt einen Zeitraum relativ zu heute", async () => {
+    await render("/projekte");
+    await click(headerFilter("Plan-Gespräch"));
+    await click(popoverButton("Dieses Jahr"));
+    expect(popover()).toBeNull();
+    const year = new Date().getFullYear();
+    expect(chips()).toEqual([`Plan-Gespräch: Dieses Jahr (01.01.${year} bis 31.12.${year})`]);
+    expect(cells(PG_COL).every((t) => t === "–" ? false : t.endsWith(String(year)))).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, ChevronRight, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronRight, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { DateFilterButton, HeaderDateFilter } from "../components/DateFilterPanel";
 import { ColumnPanel } from "../components/ColumnPanel";
 import { GroupPanel } from "../components/GroupPanel";
 import { DraftsCard } from "../components/DraftsCard";
@@ -11,12 +12,18 @@ import { Button, buttonClass, Card, Checkbox, DataTable, EmptyState, ErrorState,
 import { abmSortKey } from "../lib/abmNr";
 import { isPilot } from "../lib/appMode";
 import { bundeslandName, ortLabel } from "../lib/bundesland";
-import { formatDate } from "../lib/format";
+import { activeDateFilters, DATE_COLUMN_LABEL, DATE_COLUMNS, describeDateFilter, isDateColumn, type DateColumnKey, type DateFilter } from "../lib/dateFilters";
+import { formatDate, todayIso } from "../lib/format";
 import {
+  clearFilters,
   DEFAULT_FILTERS,
   filterProjects,
   filtersFromParams,
+  filtersStorageKey,
   filtersToParams,
+  hasActiveFilters,
+  loadSavedFilters,
+  saveFilters,
   sortProjects,
   tabFilter,
   teamCode,
@@ -51,10 +58,24 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [params, setParams] = useSearchParams();
-  const filters = filtersFromParams(params);
   const openNewProject = useNewProject();
   const staff = user.role !== "freiberufler";
   const pilot = isPilot();
+  // Filter stehen in der URL (Zurück aus dem Projekt, Reiterwechsel). Zusätzlich je Benutzer gespeichert: wer die Liste
+  // ohne Filter in der URL öffnet (Navigation, neuer Tab), bekommt die zuletzt gewählten Filter zurück.
+  const filtersKey = filtersStorageKey(user);
+  const [restore, setRestore] = useState<URLSearchParams | null>(() => (params.toString() ? null : loadSavedFilters(filtersKey)));
+  const filters = filtersFromParams(restore ?? params);
+  useEffect(() => {
+    if (!restore) return;
+    setParams(restore, { replace: true });
+    setRestore(null);
+  }, [restore, setParams]);
+  const filtersParam = filtersToParams(filters).toString();
+  useEffect(() => {
+    if (!restore) saveFilters(filtersKey, filtersFromParams(new URLSearchParams(filtersParam)));
+  }, [filtersKey, filtersParam, restore]);
+  const today = todayIso();
   // Spaltenauswahl und Reihenfolge: je Benutzer im Browser gespeichert (lib/projectColumns)
   const columnsKey = columnsStorageKey(user);
   const [columnState, setColumnState] = useState<ColumnState>(() => loadColumns(columnsKey));
@@ -62,7 +83,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const groupingKey = groupingStorageKey(user);
   const [grouping, setGrouping] = useState<GroupSetting>(() => loadGrouping(groupingKey));
   // Wer mit gesetztem Filter ankommt (z. B. vom Dashboard), sieht die Filterleiste gleich offen
-  const moreFilters = [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.storno].filter(Boolean).length;
+  const moreFilters =
+    [filters.company, filters.architect, filters.phase, filters.sort !== DEFAULT_FILTERS.sort, filters.storno].filter(Boolean).length + activeDateFilters(filters.dates).length;
   const [filtersOpen, setFiltersOpen] = useState(moreFilters > 0);
   // Aufgeklappte Zeilen (Verlauf). Bleibt beim Filtern und Sortieren erhalten; die Seite selbst bleibt stehen.
   const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
@@ -90,6 +112,13 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     (patch: Partial<ProjectFilters>) => setParams(filtersToParams({ ...filters, ...patch }), { replace: true }),
     [filters, setParams],
   );
+  const setDateFilter = (key: DateColumnKey, f: DateFilter | null) => {
+    const dates = { ...filters.dates };
+    if (f) dates[key] = f;
+    else delete dates[key];
+    setFilters({ dates });
+  };
+  const resetFilters = () => setParams(filtersToParams(clearFilters(filters)), { replace: true });
 
   // "Neues Projekt" steht schon in der Kopfzeile, deshalb hier kein zweiter Button
   const head = <PageHead title={TAB_TITLE[tab]} />;
@@ -109,7 +138,9 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const companies = data?.companies ?? [];
   const team = data?.team ?? [];
   const companyName = new Map(companies.map((c) => [c.id, c.name]));
-  const list = data ? sortProjects(filterProjects(data.projects, tab, filters, { steps, companies }), filters.sort, steps) : [];
+  const list = data ? sortProjects(filterProjects(data.projects, tab, filters, { steps, companies, today }), filters.sort, steps) : [];
+  // Bezugsgröße für "12 von 123 Projekten": alle Projekte dieses Reiters (Freiberufler: nur ihre)
+  const total = data ? data.projects.filter(tabFilter(tab, filters.storno)).length : 0;
   // Gruppen aus der gefilterten, sortierten Liste: innerhalb der Gruppe bleibt die Sortierung (Freiberufler: nur ihre Projekte)
   // Gruppen bringen ihre eigene Reihenfolge mit; bei der Standardsortierung ("Neueste zuerst") gilt innen ABM-Nr. numerisch
   const groupRows = grouping.mode !== "keine" && filters.sort === "eingang" ? sortProjects(list, "abm", steps) : list;
@@ -121,7 +152,22 @@ export function Projects({ tab }: { tab: ProjectTab }) {
         abgeschlossen: data.projects.filter(tabFilter("abgeschlossen", false)).length,
       }
     : null;
-  const filtered = Boolean(filters.q || filters.company || filters.architect || filters.phase);
+  const filtered = hasActiveFilters(filters);
+  const phaseLabel = (key: string) => allPhases(steps).find((ph) => ph.key === key)?.label ?? key;
+  // Aktive Filter als entfernbare Chips über der Liste
+  const chips: { key: string; label: string; remove: () => void }[] = [
+    ...(filters.q ? [{ key: "q", label: `Suche: „${filters.q}“`, remove: () => setFilters({ q: "" }) }] : []),
+    ...(filters.company
+      ? [{ key: "firma", label: `Fertighausfirma: ${filters.company === "-" ? "ohne Firma" : (companyName.get(filters.company) ?? "unbekannt")}`, remove: () => setFilters({ company: "" }) }]
+      : []),
+    ...(filters.architect ? [{ key: "architekt", label: `Architekt: ${teamCode(filters.architect, team)}`, remove: () => setFilters({ architect: "" }) }] : []),
+    ...(filters.phase ? [{ key: "phase", label: `Phase: ${phaseLabel(filters.phase)}`, remove: () => setFilters({ phase: "" }) }] : []),
+    ...activeDateFilters(filters.dates).map(([key, f]) => ({
+      key: `d-${key}`,
+      label: `${DATE_COLUMN_LABEL[key]}: ${describeDateFilter(f, today)}`,
+      remove: () => setDateFilter(key, null),
+    })),
+  ];
 
   const salesName = new Map((data?.salespeople ?? []).map((x) => [x.id, x.name]));
   const toggleColumn: Column<Project> = {
@@ -175,6 +221,10 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     className: "nowrap",
     render: (p) => (p.steps[key] ? formatDate(p.steps[key]!) : "–"),
     sortValue: (p) => p.steps[key] ?? null,
+    ...(isDateColumn(key) && {
+      headerAction: <HeaderDateFilter label={DATE_COLUMN_LABEL[key]} value={filters.dates[key]} today={today} onChange={(f) => setDateFilter(key, f)} />,
+      headerActive: Boolean(filters.dates[key]),
+    }),
   });
   // Wählbare Spalten wie in der Excel (Reihenfolge und Sichtbarkeit aus columnState). Leere Werte zeigen "–".
   const selectable: Record<ColumnKey, Column<Project>> = {
@@ -277,19 +327,58 @@ export function Projects({ tab }: { tab: ProjectTab }) {
                   { value: "fortschritt", label: "Fortschritt" },
                 ]}
               />
+              <div className="filters-dates" role="group" aria-label="Datumsfilter">
+                <span className="field-label">Datum</span>
+                {DATE_COLUMNS.map((c) => {
+                  const f = filters.dates[c.key];
+                  return (
+                    <DateFilterButton
+                      key={c.key}
+                      label={c.label}
+                      value={f}
+                      today={today}
+                      onChange={(next) => setDateFilter(c.key, next)}
+                      trigger={(t) => (
+                        <Button size="sm" variant={f ? "secondary" : "outline"} icon={<CalendarDays size={14} />} data-active={Boolean(f) || undefined} {...t}>
+                          <span>
+                            {c.label}
+                            {f && <span className="muted">: {describeDateFilter(f, today)}</span>}
+                          </span>
+                        </Button>
+                      )}
+                    />
+                  );
+                })}
+              </div>
               <div className="filters-checks">
                 {tab === "alle" && <Checkbox label="Stornierte einblenden" checked={filters.storno} onChange={(e) => setFilters({ storno: e.target.checked })} />}
               </div>
             </div>
           )}
           <div className="filters-row2">
+            {chips.length > 0 && (
+              <ul className="chips filter-chips" aria-label="Aktive Filter">
+                {chips.map((c) => (
+                  <li key={c.key}>
+                    <button type="button" className="chip filter-chip" onClick={c.remove} aria-label={`Filter entfernen: ${c.label}`} title="Filter entfernen">
+                      {c.label}
+                      <X size={12} aria-hidden />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
             {filtered && (
-              <Button variant="ghost" size="sm" icon={<X size={14} />} onClick={() => setParams(filtersToParams({ ...DEFAULT_FILTERS, sort: filters.sort, storno: filters.storno }), { replace: true })}>
-                Filter zurücksetzen
+              <Button variant="ghost" size="sm" icon={<X size={14} />} onClick={resetFilters}>
+                Alle Filter zurücksetzen
               </Button>
             )}
-            <span className="muted" aria-live="polite">
-              {loading || !data ? "Lädt …" : `${list.length} ${list.length === 1 ? "Projekt" : "Projekte"}`}
+            <span className="muted" aria-live="polite" data-testid="treffer">
+              {loading || !data
+                ? "Lädt …"
+                : filtered
+                  ? `${list.length} von ${total} ${total === 1 ? "Projekt" : "Projekten"}`
+                  : `${list.length} ${list.length === 1 ? "Projekt" : "Projekte"}`}
             </span>
           </div>
           {loading || !data ? (
@@ -314,8 +403,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
               text={filtered ? "Passe die Suche oder die Filter an." : undefined}
               action={
                 filtered ? (
-                  <Button size="sm" onClick={() => setParams(new URLSearchParams(), { replace: true })}>
-                    Filter zurücksetzen
+                  <Button size="sm" onClick={resetFilters}>
+                    Alle Filter zurücksetzen
                   </Button>
                 ) : staff ? (
                   <Button size="sm" variant="primary" onClick={openNewProject}>
