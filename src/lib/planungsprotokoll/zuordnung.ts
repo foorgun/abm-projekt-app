@@ -5,7 +5,7 @@
 // auf Seite 2 steht), das Rich-Text-Feld von Schwabenhaus und die vier Summenfelder der Flächenberechnung von
 // Living Haus/Bien-Zenker.
 
-import type { ProtokollVorlage } from "../types";
+import type { ProtokollVorlage, StandortWert } from "../types";
 import { nameAnschrift, type Kontakt, type ProtokollDaten, type ProtokollRolle } from "./daten";
 
 type Wert = (d: ProtokollDaten) => string | null;
@@ -113,6 +113,58 @@ export const ZUORDNUNG: Record<ProtokollVorlage, Zuordnung> = {
 /** Werte je Formularfeld (null = leer lassen). */
 export function feldwerte(vorlage: ProtokollVorlage, daten: ProtokollDaten): Record<string, string | null> {
   return Object.fromEntries(Object.entries(ZUORDNUNG[vorlage]).map(([feld, wert]) => [feld, wert(daten)]));
+}
+
+// ---------------------------------------------------------------------------
+// Standortangaben: Ankreuzfelder. Nur übernommene Werte (Tabelle standort_angaben) werden angekreuzt.
+// Schwabenhaus (Seite 3): Radio-Gruppen, in der Datei liegt jede Auswahl dreifach übereinander. `widget` zeigt auf die oberste, zuletzt
+// gezeichnete Lage: Ein Kreuz in einer unteren Lage wäre vom leeren Kästchen darüber verdeckt. Reihenfolge je Lage von links nach
+// rechts. Living Haus/Bien-Zenker (Seite 2): einzelne Kontrollkästchen.
+// Bewusst ohne Ziel: Lärm (die Felder dort sind Lärmpegelbereiche nach DIN 4109, nicht die Lärmkartierung), Hochwasser (kein Feld
+// in den Vorlagen), Geländehöhe („Höhe über NN“ meint RFB/FFB des Gebäudes), Radon bei FB-22 (kein Feld) und das
+// Rich-Text-Feld der Wasserschutz-Auflagen.
+// ---------------------------------------------------------------------------
+
+export interface Ankreuz {
+  feld: string;
+  /** Nur bei Radio-Gruppen */
+  widget?: number;
+}
+
+const kk = (n: string): Ankreuz => ({ feld: `Kontrollkästchen 2.${n}` });
+const sh = (feld: string, widget: number): Ankreuz => ({ feld, widget });
+const FB22_ANKREUZ: Record<string, Record<string, Ankreuz>> = {
+  schneelast: { "1": kk("03"), "1a": kk("04"), "2": kk("05"), "2a": kk("06"), "3": kk("07") },
+  erdbeben: { keine: kk("11"), "0": kk("12"), "1": kk("13"), "2": kk("14"), "3": kk("15") },
+  wasserschutz: { keine: kk("16"), "1": kk("17"), "2": kk("18"), "3": kk("19") },
+};
+export const ANKREUZ: Record<ProtokollVorlage, Record<string, Record<string, Ankreuz>>> = {
+  schwabenhaus: {
+    schneelast: { "1": sh("SLZ", 10), "1a": sh("SLZ", 11), "2": sh("SLZ", 12), "2a": sh("SLZ", 13), "3": sh("SLZ", 14) },
+    erdbeben: { "0": sh("Erdbebenzone", 8), "1": sh("Erdbebenzone", 9), "2": sh("Erdbebenzone", 10), "3": sh("Erdbebenzone", 11) },
+    radon: { ja: sh("Radon", 4), nein: sh("Radon", 5) },
+    // Ein einziger Kreis "Wasserschutzgebiet, Auflagen": angekreuzt, sobald das Grundstück in einem Gebiet liegt
+    wasserschutz: { gebiet: sh("Wasserschutz", 2), "1": sh("Wasserschutz", 2), "2": sh("Wasserschutz", 2), "3": sh("Wasserschutz", 2) },
+  },
+  "living-haus": FB22_ANKREUZ,
+  "bien-zenker": FB22_ANKREUZ,
+};
+
+/** Bei "keine" hat Schwabenhaus kein eigenes Kästchen: Der leere Kreis sagt dort bereits "nein". */
+const OHNE_KREUZ_RICHTIG: Partial<Record<ProtokollVorlage, Record<string, string[]>>> = { schwabenhaus: { wasserschutz: ["keine"] } };
+
+/** Übernommene Werte in Kreuze übersetzen. `offen`: Werte, die diese Vorlage nicht ankreuzen kann (zum Vermerken von Hand). */
+export function ankreuzWerte(vorlage: ProtokollVorlage, angaben: Record<string, StandortWert> | undefined): { kreuze: Ankreuz[]; offen: string[] } {
+  const kreuze: Ankreuz[] = [];
+  const offen: string[] = [];
+  for (const [thema, ziele] of Object.entries(ANKREUZ[vorlage])) {
+    const a = angaben?.[thema];
+    if (!a) continue;
+    const ziel = ziele[a.wert];
+    if (ziel) kreuze.push(ziel);
+    else if (!OHNE_KREUZ_RICHTIG[vorlage]?.[thema]?.includes(a.wert)) offen.push(a.anzeige);
+  }
+  return { kreuze, offen };
 }
 
 /** Kurzer Stand für die Oberfläche: wie viele Felder auf Seite 1 einen Wert bekommen. */

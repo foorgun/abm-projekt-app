@@ -12,6 +12,7 @@ import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
+import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
 import { cleanPrefix } from "./abmNr";
 import { planProjectUpdate } from "./projectEdit";
@@ -65,7 +66,7 @@ import {
   toUrlaubsAnspruch,
   type Row,
 } from "./supabase/mappers";
-import type { ActivityKind, AgentSettings, Dataset, KalenderEintrag, MailboxStatus, StaffMember } from "./types";
+import type { ActivityKind, AgentSettings, Dataset, KalenderEintrag, MailboxStatus, StaffMember, StandortWert } from "./types";
 
 export const BUCKET = "project-documents";
 /** Die Daten-API liefert höchstens 1000 Zeilen je Anfrage: größere Tabellen werden seitenweise geholt. */
@@ -257,7 +258,7 @@ export function createSupabaseRepo(): Repo {
           userNames(),
         ]);
       // Urlaub und Krankheit: nur für Admin und Mitarbeiter (Freiberufler bekämen ohnehin keine Zeile)
-      const [absences, entitlements, staffRows, protokolle, bueroRows] = isStaff()
+      const [absences, entitlements, staffRows, protokolle, bueroRows, standortRows] = isStaff()
         ? await Promise.all([
             all(sb, "abwesenheiten", COLS.abwesenheiten, ["von", "id"]),
             all(sb, "urlaubs_anspruch", COLS.urlaubs_anspruch, ["jahr", "user_id"]),
@@ -266,8 +267,9 @@ export function createSupabaseRepo(): Repo {
             // Planungsprotokoll (Migration 0013/0014): nur Admin und Mitarbeiter
             all(sb, "planungsprotokolle", COLS.planungsprotokolle, ["erstellt_am", "id"]),
             all(sb, "buero_daten", COLS.buero_daten, ["name"]),
+            all(sb, "standort_angaben", "project_id, angaben, geaendert_am", ["project_id"]),
           ])
-        : [[], [], [], [], []];
+        : [[], [], [], [], [], []];
       const mitarbeiter: StaffMember[] = staffRows
         .filter((r) => r.role === "admin" || r.role === "mitarbeiter")
         .map((r) => ({ id: r.user_id, name: (r.full_name as string)?.trim() || "Unbekannt", role: r.role }))
@@ -304,6 +306,7 @@ export function createSupabaseRepo(): Repo {
         buero: bueroRows[0] ? { name: bueroRows[0].name ?? null, anschrift: bueroRows[0].anschrift ?? null, tel: bueroRows[0].tel ?? null, mobil: bueroRows[0].mobil ?? null, email: bueroRows[0].email ?? null } : null,
         // neueste zuerst
         planungsprotokolle: protokolle.map((r) => toPlanungsprotokoll(r, names)).reverse(),
+        standortAngaben: standortRows.map((r) => ({ projectId: r.project_id, angaben: (r.angaben ?? {}) as Record<string, StandortWert>, geaendertAm: r.geaendert_am })),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
       last = data;
@@ -1015,6 +1018,24 @@ export function createSupabaseRepo(): Repo {
     async schornsteinfegerDetails(bsmId) {
       requireStaff();
       return schornsteinfeger<DetailAntwort>({ art: "details", bsmId }, (d) => typeof (d as DetailAntwort).details?.name === "string");
+    },
+
+    async standortAnalyse(projectId) {
+      requireStaff();
+      const nichtErreichbar: StandortFehler = { ok: false, code: "error", message: "Die Standortanalyse ist gerade nicht erreichbar. Ist die Funktion standort-analyse eingerichtet? Sonst bitte später erneut versuchen." };
+      const { data, error } = await sb.functions.invoke("standort-analyse", { body: { projectId } }).catch(() => ({ data: null, error: {} }));
+      if (error) {
+        const res = await (error as { context?: Response }).context?.json?.().catch(() => null);
+        return res && typeof res === "object" && res.ok === false && typeof res.message === "string" ? (res as StandortFehler) : nichtErreichbar;
+      }
+      return data && typeof data === "object" && (data as StandortAntwort).ok === true && Array.isArray((data as StandortAntwort).ergebnisse) ? (data as StandortAntwort) : nichtErreichbar;
+    },
+
+    async saveStandortAngaben(projectId, angaben) {
+      requireStaff();
+      const me = await userId();
+      const { error } = await sb.from("standort_angaben").upsert({ project_id: projectId, angaben, geaendert_von: me, geaendert_am: new Date().toISOString() });
+      if (error) throw new Error(error.message);
     },
   };
 

@@ -6,7 +6,7 @@ import type { Repo } from "../repo";
 import type { Dataset, Project, ProtokollVariante, ProtokollVorlage } from "../types";
 import { protokollDaten } from "./daten";
 import { protokollDateiname } from "./vorlagen";
-import { feldwerte } from "./zuordnung";
+import { ankreuzWerte, feldwerte } from "./zuordnung";
 
 export interface ProtokollDatei {
   blob: Blob;
@@ -27,7 +27,9 @@ export async function protokollErzeugen(repo: Repo, data: Dataset, project: Proj
     }),
   ]);
   const werte = feldwerte(vorlage, protokollDaten(data, project.id));
-  const res = await erzeugeProtokoll({ vorlage: vorlageBytes, schrift, werte, variante });
+  // Nur ausdrücklich übernommene Standortangaben, nie Vorschläge
+  const { kreuze } = ankreuzWerte(vorlage, data.standortAngaben.find((x) => x.projectId === project.id)?.angaben);
+  const res = await erzeugeProtokoll({ vorlage: vorlageBytes, schrift, werte, variante, ankreuzen: kreuze });
   return {
     blob: new Blob([res.bytes as BlobPart], { type: "application/pdf" }),
     fileName: protokollDateiname(vorlage, variante, project.bauherrLabel),

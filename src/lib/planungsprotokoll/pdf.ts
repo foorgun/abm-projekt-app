@@ -1,4 +1,4 @@
-// Planungsprotokoll erzeugen: Formularfelder von Seite 1 füllen (pdf-lib), prüfen, dass sonst nichts verändert wurde,
+// Planungsprotokoll erzeugen: Formularfelder von Seite 1 füllen und übernommene Standortangaben ankreuzen (pdf-lib), prüfen, dass sonst nichts verändert wurde,
 // und auf Wunsch eine flache Fassung erzeugen (Felder eingebrannt, nicht mehr bearbeitbar).
 // Läuft im Browser und in Node (Tests). Wird erst beim Erzeugen nachgeladen (pdf-lib ist groß).
 
@@ -68,11 +68,18 @@ export function feldZustand(doc: PDFDocument): FeldZustand {
  * Vergleich vorher/nachher. Erlaubt sind Änderungen nur an `gesetzt`; dort muss der Wert genau stimmen.
  * Liefert die Abweichungen als lesbare Liste (leer = alles in Ordnung).
  */
-export function abweichungen(vorher: FeldZustand, nachher: FeldZustand, gesetzt: Record<string, string>): string[] {
+export function abweichungen(vorher: FeldZustand, nachher: FeldZustand, gesetzt: Record<string, string>, angekreuzt: Record<string, number | null> = {}): string[] {
   const out: string[] = [];
+  const an = (ap: string) => !ap.startsWith("/Off") && !ap.startsWith("|");
   for (const name of Object.keys(vorher)) {
     if (!(name in nachher)) out.push(`Feld „${name}“ fehlt danach`);
-    else if (name in gesetzt) {
+    else if (name in angekreuzt) {
+      const widget = angekreuzt[name];
+      const zustand = nachher[name];
+      // Kontrollkästchen: angekreuzt. Radio-Gruppe: genau das gewählte Widget ist an
+      const stimmt = widget === null ? zustand.wert === true : zustand.ap.every((ap, i) => an(ap) === (i === widget));
+      if (!stimmt) out.push(`Ankreuzfeld „${name}“ hat nicht den gewählten Zustand`);
+    } else if (name in gesetzt) {
       if (nachher[name].wert !== gesetzt[name]) out.push(`Feld „${name}“ hat nicht den eingetragenen Wert`);
     } else if (JSON.stringify(vorher[name]) !== JSON.stringify(nachher[name])) {
       out.push(`${nachher[name].typ === "PDFTextField" ? "Feld" : "Ankreuzfeld"} „${name}“ wurde verändert`);
@@ -203,7 +210,7 @@ export function einbrennen(doc: PDFDocument): void {
 // Erzeugen
 // ---------------------------------------------------------------------------
 
-export async function erzeugeProtokoll(opts: { vorlage: Bytes; schrift: Bytes; werte: Record<string, string | null>; variante: ProtokollVariante }): Promise<ErzeugtesProtokoll> {
+export async function erzeugeProtokoll(opts: { vorlage: Bytes; schrift: Bytes; werte: Record<string, string | null>; variante: ProtokollVariante; ankreuzen?: { feld: string; widget?: number }[] }): Promise<ErzeugtesProtokoll> {
   let doc: PDFDocument;
   try {
     doc = await PDFDocument.load(opts.vorlage);
@@ -240,10 +247,28 @@ export async function erzeugeProtokoll(opts: { vorlage: Bytes; schrift: Bytes; w
     gesetzt[name] = text;
   }
 
+  const angekreuzt: Record<string, number | null> = {};
+  for (const { feld: name, widget } of opts.ankreuzen ?? []) {
+    const feld = form.getFieldMaybe(name);
+    if (!feld) throw new ProtokollFehler(`Die Vorlage passt nicht zur Zuordnung: Feld „${name}“ fehlt.`);
+    if (widget === undefined) {
+      if (!(feld instanceof PDFCheckBox)) throw new ProtokollFehler(`Die Vorlage passt nicht zur Zuordnung: „${name}“ ist kein Kontrollkästchen.`);
+      feld.check();
+      angekreuzt[name] = null;
+    } else {
+      if (!(feld instanceof PDFRadioGroup)) throw new ProtokollFehler(`Die Vorlage passt nicht zur Zuordnung: „${name}“ ist keine Radio-Gruppe.`);
+      const an = feld.acroField.getWidgets()[widget]?.getOnValue();
+      if (!an) throw new ProtokollFehler(`Die Vorlage passt nicht zur Zuordnung: „${name}“ hat keine Auswahl ${widget + 1}.`);
+      // Über den Zustandsnamen, nicht den Optionstext: in den Vorlagen kommen Optionstexte doppelt vor
+      feld.acroField.setValue(an);
+      angekreuzt[name] = widget;
+    }
+  }
+
   // Nur die gesetzten Felder haben neue Erscheinungsbilder; keine globale Neuberechnung (sonst sähen Ankreuzfelder anders aus)
   const bearbeitbar = await doc.save({ updateFieldAppearances: false });
   const geladen = await PDFDocument.load(bearbeitbar);
-  const fehler = abweichungen(vorher, feldZustand(geladen), gesetzt);
+  const fehler = abweichungen(vorher, feldZustand(geladen), gesetzt, angekreuzt);
   if (geladen.getPageCount() !== seiten) fehler.unshift("Die Seitenzahl hat sich verändert");
   if (fehler.length) {
     throw new ProtokollFehler(`Prüfung nach dem Befüllen fehlgeschlagen, kein PDF erzeugt: ${fehler.slice(0, 5).join("; ")}${fehler.length > 5 ? ` (und ${fehler.length - 5} weitere)` : ""}.`);

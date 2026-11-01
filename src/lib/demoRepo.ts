@@ -16,6 +16,7 @@ import { emptyDraft } from "./extract/types";
 import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
 import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
+import { demoStandort } from "./planungsprotokoll/standort";
 import { isAllowedFolder, templateOf } from "./folders";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
 import { cleanPrefix } from "./abmNr";
@@ -101,6 +102,7 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     urlaubsAnspruch: [],
     buero: null,
     planungsprotokolle: [],
+    standortAngaben: [],
   };
 }
 
@@ -411,6 +413,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.agentRules = keep(db.agentRules);
       for (const x of db.planungsprotokolle.filter((x) => x.projectId === p.id)) protokollBlobs.delete(x.id);
       db.planungsprotokolle = keep(db.planungsprotokolle);
+      db.standortAngaben = keep(db.standortAngaben);
       // im Demo-Modus hängt der Kontakt am Projekt: er geht mit
       db.bauherren = keep(db.bauherren);
       for (const d of db.projectDrafts.filter((x) => x.projectId === p.id)) draftBlobs.delete(d.id);
@@ -961,6 +964,20 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     async schornsteinfegerDetails(bsmId) {
       requireStaff();
       return done(demoDetails(bsmId));
+    },
+
+    async standortAnalyse(projectId) {
+      requireStaff();
+      const p = project(projectId);
+      const c = db.bauherren.find((b) => b.projectId === projectId);
+      return done(demoStandort({ bundesland: p.bundesland, location: p.location, gemarkung: p.gemarkung, siteStreet: c?.siteStreet, sitePostalCode: c?.sitePostalCode, siteCity: c?.siteCity, siteState: c?.siteState, buildingAddress: c?.buildingAddress }));
+    },
+
+    async saveStandortAngaben(projectId, angaben) {
+      requireStaff();
+      project(projectId);
+      db.standortAngaben = [...db.standortAngaben.filter((x) => x.projectId !== projectId), { projectId, angaben: structuredClone(angaben), geaendertAm: now() }];
+      done(undefined);
     },
 
     async saveAgentSettings(settings: AgentSettings) {

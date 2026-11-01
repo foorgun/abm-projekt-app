@@ -7,3 +7,7 @@ verify_jwt = false
 # Gleiche Regel: Anmeldung und Rolle prüft die Funktion selbst (index.ts)
 [functions.schornsteinfeger-suche]
 verify_jwt = false
+
+# Prüft Anmeldung und Rolle selbst (wie schornsteinfeger-suche).
+[functions.standort-analyse]
+verify_jwt = false

@@ -1044,6 +1044,49 @@ select test.expect('Ohne Rolle: kein Zwischenspeicher', (select count(*) from pu
 select test.expect('Ohne Rolle: kein Abruf-Protokoll', (select count(*) from public.schornsteinfeger_abrufe), 0);
 rollback;
 
+-- Standortanalyse (0020): Cache und Abruf-Protokoll schreibt nur die Edge Function, Angaben nur Admin und Mitarbeiter ---
+begin;
+set local role anon;
+select test.throws('anon darf den Standort-Cache nicht ansprechen', $$select count(*) from public.standort_cache$$);
+select test.throws('anon darf das Standort-Abruf-Protokoll nicht ansprechen', $$select count(*) from public.standort_abrufe$$);
+select test.throws('anon darf die Standortangaben nicht ansprechen', $$select count(*) from public.standort_angaben$$);
+rollback;
+
+begin;
+set local role service_role;
+insert into public.standort_cache (schluessel, thema, wert, gueltig_bis) values ('radon|BW|08421000', 'radon', '{"wert": "nein"}', now() + interval '180 days');
+insert into public.standort_abrufe (user_id) values ('00000000-0000-4000-8000-0000000000a2');
+select test.throws('Standort-Cache: unbekanntes Thema wird abgelehnt', $$insert into public.standort_cache (schluessel, thema, wert, gueltig_bis) values ('x', 'alles', '{}', now())$$);
+select test.throws('Standort-Cache: leerer Schlüssel wird abgelehnt', $$insert into public.standort_cache (schluessel, thema, wert, gueltig_bis) values ('', 'radon', '{}', now())$$);
+reset role;
+set local role authenticated;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('Mitarbeiterin sieht den Standort-Cache nicht (nur über die Funktion)', (select count(*) from public.standort_cache), 0);
+select test.expect('Mitarbeiterin sieht das Standort-Abruf-Protokoll nicht', (select count(*) from public.standort_abrufe), 0);
+select test.throws('Mitarbeiterin schreibt nicht in den Standort-Cache', $$insert into public.standort_cache (schluessel, thema, wert, gueltig_bis) values ('y', 'radon', '{}', now())$$);
+select test.throws('Mitarbeiterin umgeht das Tageslimit nicht (Protokoll löschen)', $$delete from public.standort_abrufe$$);
+select test.throws('Mitarbeiterin zählt keine Abrufe für andere', $$insert into public.standort_abrufe (user_id) values (auth.uid())$$);
+insert into public.standort_angaben (project_id, angaben, geaendert_von) values ('a0000000-0000-4000-8000-000000000001', '{"radon": {"wert": "nein"}}', auth.uid());
+select test.expect('Mitarbeiterin liest die übernommenen Angaben', (select count(*) from public.standort_angaben), 1);
+update public.standort_angaben set angaben = '{}', geaendert_von = auth.uid() where project_id = 'a0000000-0000-4000-8000-000000000001';
+select test.throws('Angaben nur im eigenen Namen', $$update public.standort_angaben set geaendert_von = '00000000-0000-4000-8000-0000000000a1' where project_id = 'a0000000-0000-4000-8000-000000000001'$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('Admin liest den Standort-Cache', (select count(*) from public.standort_cache), 1);
+select test.expect('Admin liest das Standort-Abruf-Protokoll', (select count(*) from public.standort_abrufe), 1);
+select test.throws('Admin ändert den Standort-Cache nicht', $$update public.standort_cache set wert = '{}'$$);
+select test.throws('Admin schreibt nicht ins Standort-Abruf-Protokoll', $$insert into public.standort_abrufe (user_id) values (auth.uid())$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('Freiberufler sieht den Standort-Cache nicht', (select count(*) from public.standort_cache), 0);
+select test.expect('Freiberufler sieht die Standortangaben nicht', (select count(*) from public.standort_angaben), 0);
+select test.throws('Freiberufler legt keine Standortangaben an', $$insert into public.standort_angaben (project_id, angaben, geaendert_von) values ('a0000000-0000-4000-8000-000000000002', '{}', auth.uid())$$);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('Ohne Rolle: kein Standort-Cache', (select count(*) from public.standort_cache), 0);
+select test.expect('Ohne Rolle: keine Standortangaben', (select count(*) from public.standort_angaben), 0);
+rollback;
+
 -- ===========================================================================
 -- Migration 0016: Projektverlauf (activities lesen wie das Projekt, schreiben nur über Funktionen und Trigger)
 -- ===========================================================================

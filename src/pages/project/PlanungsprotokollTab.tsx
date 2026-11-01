@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Download, FileCheck2, FilePen, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
+import { StandortAngaben } from "./StandortAngaben";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
 import { protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
@@ -119,6 +120,8 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
           </div>
         </CardBody>
       </Card>
+
+      <StandortAngaben project={project} data={data} vorlage={vorlage} />
 
       <Versionen versionen={versionen} data={data} />
 
