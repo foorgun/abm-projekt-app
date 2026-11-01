@@ -4,27 +4,32 @@ import {
   adressSchluessel,
   analysieren,
   anfrageAusProjekt,
+  ausnahmeTrifft,
   CACHE_TAGE,
   erdbebenZone,
   featureInfoLesen,
   featureInfoUrl,
-  gemeindeLesen,
+  gemeindeFinden,
   nameGleich,
   parseProjektId,
   pegelLesen,
+  photonLesen,
   radonvorsorgegebiet,
   schneelastZone,
+  strasseTeilen,
   tagesbeginn,
+  trefferGuete,
   wasserschutzZone,
   type Anfrage,
   type Dienste,
   type Tabellen,
 } from "../../../supabase/functions/standort-analyse/logic";
+import { GEMEINDEN } from "../../../supabase/functions/standort-analyse/gemeinden";
 import { ERDBEBEN, ERDBEBEN_BY_KREISE, SCHNEELAST } from "../../../supabase/functions/standort-analyse/zonen";
 import { demoStandort, uebernahme, zeilenAus, type Ergebnis } from "./standort";
 import { ANKREUZ, ankreuzWerte } from "./zuordnung";
 
-const TAB: Tabellen = { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE };
+const TAB: Tabellen = { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN };
 
 // ---------------------------------------------------------------------------
 // Zuordnung mit bekannten Orten (Werte aus den Tabellen des DIBt)
@@ -38,6 +43,11 @@ describe("Schneelastzone", () => {
     ["Stuttgart: Stadtkreis", "BW", "08111000", "Stuttgart", "2"],
     ["Heidelberg: Stadtkreis", "BW", "08221000", "Heidelberg", "1"],
     ["Isny: Kurzform der Tabelle", "BW", "08436049", "Isny im Allgäu", "3"],
+    ["Altheim (Alb): namentlich in Zone 2", "BW", "08425005", "Altheim (Alb)", "2"],
+    ["Altheim: Regelzone 1, nicht die Ausnahme „Altheim (Alb)“", "BW", "08425004", "Altheim", "1"],
+    ["Kißlegg: in der Tabelle „Kißleg“ geschrieben", "BW", "08436052", "Kißlegg", "3"],
+    ["Vogtsburg: letzter Name der Breisgau-Liste", "BW", "08315133", "Vogtsburg im Kaiserstuhl", "2"],
+    ["Hinterzarten: Regelzone 2a im Breisgau-Hochschwarzwald", "BW", "08315052", "Hinterzarten", "2a"],
     ["Wangen: „i. Allgäu“ in der Tabelle", "BW", "08436081", "Wangen im Allgäu", "3"],
     ["München: eigene Zeile", "BY", "09162000", "München", "1a"],
     ["Wunsiedel: Kreis „alle“", "BY", "09479169", "Wunsiedel", "3"],
@@ -97,6 +107,79 @@ describe("Erdbebenzone", () => {
   });
 });
 
+describe("Gemeinde aus dem amtlichen Verzeichnis", () => {
+  it.each([
+    ["Ulm", "BW", 48.3985, 9.9925, "08421000"],
+    ["Dornstadt", "BW", 48.463, 9.961, "08425031"],
+    ["Ehingen (Donau)", "BW", 48.283, 9.725, "08425033"],
+    ["München", "BY", 48.137, 11.575, "09162000"],
+    ["Frankfurt am Main", "HE", 50.11, 8.68, "06412000"],
+    ["Wunsiedel", "BY", 50.039, 11.999, "09479169"],
+  ] as const)("%s", (name, land, lat, lon, ags) => {
+    expect(gemeindeFinden(TAB, land, [name], lat, lon)?.ags).toBe(ags);
+  });
+
+  it("gleichnamige Gemeinden: die nächstgelegene; zu weit weg: keine", () => {
+    // Mehrere Gemeinden namens Neustadt-… bzw. Burgau gibt es; Altheim dreimal in BW (Alb-Donau-Kreis, Biberach)
+    const altheim = GEMEINDEN.BW.filter((g) => g[1] === "Altheim");
+    expect(altheim.length).toBeGreaterThan(1);
+    for (const g of altheim) expect(gemeindeFinden(TAB, "BW", ["Altheim"], g[2], g[3])?.ags).toBe(g[0]);
+    expect(gemeindeFinden(TAB, "BW", ["Ulm"], 47.6, 7.8)).toBeNull();
+  });
+
+  it("unbekannter Name oder mehrdeutige Kurzform: kein Treffer, kein Raten", () => {
+    expect(gemeindeFinden(TAB, "BW", ["Gibtsnichthausen"], 48.4, 10)).toBeNull();
+    expect(gemeindeFinden(TAB, "BW", [null, ""], 48.4, 10)).toBeNull();
+    // "Bad" wäre der Anfang vieler Gemeinden
+    expect(gemeindeFinden(TAB, "BW", ["Bad"], 48.4, 10)).toBeNull();
+  });
+
+  it("zweiter Name greift, wenn der erste nicht im Verzeichnis steht (z. B. Ortsteil)", () => {
+    expect(gemeindeFinden(TAB, "BW", ["Gibtsnichthausen", "Dornstadt"], 48.463, 9.961)?.ags).toBe("08425031");
+  });
+
+  it("jede namentliche Ausnahme der Schneelast-Tabelle trifft genau eine Gemeinde ihres Kreises (sonst fiele sie still auf die Regelzone)", () => {
+    const fehlt: string[] = [];
+    for (const land of ["BW", "BY", "HE"] as const) {
+      for (const [kreis, k] of Object.entries(SCHNEELAST[land].kreise)) {
+        // ohne gemeindefreie Gebiete (Schlüssel ab 9xx), die teils so heißen wie die Nachbargemeinde
+        const gemeinden = GEMEINDEN[land].filter((g) => g[0].startsWith(kreis) && g[0][5] !== "9");
+        for (const a of k.ausnahmen) if (gemeinden.filter((g) => ausnahmeTrifft(a.name, g[1])).length !== 1) fehlt.push(`${land} ${k.name}: ${a.name}`);
+      }
+    }
+    expect(fehlt).toEqual([]);
+  });
+
+  it("jede Gemeinde bekommt eine Schneelastzone, außer Ulm und Kassel (fehlen in der Tabelle)", () => {
+    const ohne = (["BW", "BY", "HE"] as const).flatMap((land) => GEMEINDEN[land].filter((g) => schneelastZone(TAB, land, g[0], g[1]).zone === null).map((g) => g[1]));
+    expect(ohne.sort()).toEqual(["Kassel", "Ulm"]);
+  });
+
+  it("Hanau ist seit 2026 kreisfrei und steht unter dem alten Schlüssel in den Tabellen", () => {
+    expect(schneelastZone(TAB, "HE", "06415000", "Hanau")).toEqual({ zone: "1" });
+  });
+});
+
+describe("Adresssuche: Treffer prüfen", () => {
+  const anfrage = (strasse: string): Anfrage => ({ land: "BW", strasse, plz: "88212", ort: "Ravensburg", gemarkung: null });
+  const t = (strasse: string | null, hausnummer: string | null) => ({ lat: 47.78, lon: 9.61, strasse, hausnummer, plz: "88212", ort: "Ravensburg", land: "DE", bundesland: "Baden-Württemberg" });
+
+  it("Straße und Nummer zerlegen", () => {
+    expect(strasseTeilen("Hauptstr. 12 a")).toEqual({ strasse: "hauptstrasse", nummer: "12a" });
+    expect(strasseTeilen("Am Bach 3/1")).toEqual({ strasse: "am bach", nummer: "3/1" });
+    expect(strasseTeilen("Baugebiet Lerchenfeld")).toEqual({ strasse: "baugebiet lerchenfeld", nummer: null });
+  });
+
+  it("nur passende Treffer zählen (Photon sucht unscharf)", () => {
+    expect(trefferGuete(t("Marktplatz", "1"), anfrage("Marktplatz 1"))).toBe("haus");
+    expect(trefferGuete(t("Hauptstraße", "12a"), anfrage("Hauptstr. 12 a"))).toBe("haus");
+    // Beides aus dem echten Test: andere Straße mit gleicher Nummer, gleiche Straße mit anderer Nummer
+    expect(trefferGuete(t("Leonhardstraße", "1"), anfrage("Marktplatz 1"))).toBeNull();
+    expect(trefferGuete(t("Hauptstraße", "50/1"), anfrage("Hauptstraße 1"))).toBe("strasse");
+    expect(trefferGuete(t(null, null), anfrage("Marktplatz 1"))).toBeNull();
+  });
+});
+
 describe("Radon und Wasserschutzzonen", () => {
   it("Radonvorsorgegebiete nach Allgemeinverfügung", () => {
     expect(radonvorsorgegebiet("BW", "08336087")).toBe(true); // Todtnau
@@ -142,10 +225,12 @@ describe("Dienste lesen", () => {
     expect(pegelLesen(undefined)).toBeNull();
   });
 
-  it("Gemeindeschlüssel aus den OSM-Merkmalen", () => {
-    expect(gemeindeLesen({ name: "Dornstadt", extratags: { "de:amtlicher_gemeindeschluessel": "08425031" } })).toEqual({ ags: "08425031", name: "Dornstadt" });
-    expect(gemeindeLesen({ name: "Ulm", extratags: { "de:regionalschluessel": "084210000000" } })).toEqual({ ags: "08421000", name: "Ulm" });
-    expect(gemeindeLesen({ name: "X" }).ags).toBeNull();
+  it("Photon: Felder lesen, Unlesbares ist kein leeres Ergebnis", () => {
+    const roh = JSON.stringify({ features: [{ geometry: { coordinates: [9.99, 48.39] }, properties: { housenumber: "1", street: "Münsterplatz", postcode: "89073", city: "Ulm", countrycode: "DE", state: "Baden-Württemberg" } }] });
+    expect(photonLesen(roh)).toEqual([{ lat: 48.39, lon: 9.99, hausnummer: "1", strasse: "Münsterplatz", plz: "89073", ort: "Ulm", land: "DE", bundesland: "Baden-Württemberg" }]);
+    expect(photonLesen('{"features":[]}')).toEqual([]);
+    expect(photonLesen("<html>Fehler</html>")).toBeNull();
+    expect(photonLesen("{}")).toBeNull();
   });
 
   it("Projekt-ID wird vor jeder Abfrage geprüft", () => {
@@ -210,11 +295,11 @@ describe("Adresse aus dem Projekt", () => {
 const JETZT = new Date("2026-11-01T10:00:00.000Z");
 const WSG = `<FeatureInfoResponse xmlns="x"><FIELDS Gebietsname="Musterried" Status="festgesetzt"></FIELDS></FeatureInfoResponse>`;
 const LEER = `<FeatureInfoResponse xmlns="x"></FeatureInfoResponse>`;
-const ANTWORT_SUCHE = JSON.stringify([{ lat: "48.137", lon: "11.575", address: { house_number: "8", road: "Marienplatz", postcode: "80331" } }]);
+const photon = (p: Record<string, string>, lat = 48.137, lon = 11.575) => JSON.stringify({ features: [{ geometry: { coordinates: [lon, lat] }, properties: { countrycode: "DE", state: "Bayern", city: "München", postcode: "80331", ...p } }] });
+const ANTWORT_SUCHE = photon({ housenumber: "8", street: "Marienplatz" });
 
 function antworten(url: string): string {
-  if (url.includes("/search?")) return ANTWORT_SUCHE;
-  if (url.includes("/reverse?")) return JSON.stringify({ name: "München", extratags: { "de:amtlicher_gemeindeschluessel": "09162000" } });
+  if (url.includes("photon.komoot")) return ANTWORT_SUCHE;
   if (url.includes("opentopodata")) return JSON.stringify({ status: "OK", results: [{ elevation: 519.4 }] });
   if (url.includes("imis.bfs.de")) return JSON.stringify({ features: [{ properties: { rn_max: 93.5 } }] });
   if (url.includes("wasser/wsg")) return WSG;
@@ -292,7 +377,7 @@ describe("Analyse", () => {
     await ergebnis(ANFRAGE, { ...d, jetzt: () => new Date(JETZT.getTime() + 29 * 86400000) });
     const neu = hol.mock.calls.slice(n).map((c) => c[0]);
     expect(neu.some((u) => u.includes("wasser/wsg"))).toBe(true);
-    expect(neu.some((u) => u.includes("nominatim"))).toBe(false);
+    expect(neu.some((u) => u.includes("photon"))).toBe(false);
   });
 
   it("Fehler eines Dienstes bleibt beim Thema und wird nie gespeichert", async () => {
@@ -342,20 +427,44 @@ describe("Analyse", () => {
   });
 
   it("Adresse nicht gefunden und Adresssuche nicht erreichbar sind verschiedene Meldungen, nichts wird gespeichert", async () => {
-    const nichts = aufbau((u) => (u.includes("/search?") ? "[]" : antworten(u)));
+    const nichts = aufbau((u) => (u.includes("photon") ? '{"features":[]}' : antworten(u)));
     expect(await analysieren(ANFRAGE, nichts.d)).toMatchObject({ ok: false, code: "adresse_nicht_gefunden" });
     expect(nichts.cache.size).toBe(0);
     const weg = aufbau((u) => {
-      if (u.includes("nominatim")) throw new Error("Netz");
+      if (u.includes("photon")) throw new Error("HTTP 403");
       return antworten(u);
     });
-    expect(await analysieren(ANFRAGE, weg.d)).toMatchObject({ ok: false, code: "error" });
+    const antwort = await analysieren(ANFRAGE, weg.d);
+    expect(antwort).toMatchObject({ ok: false, code: "error" });
+    expect(!antwort.ok && antwort.message).toContain("HTTP 403");
     expect(weg.cache.size).toBe(0);
   });
 
   it("Adresse liegt in einem anderen Bundesland als am Projekt eingetragen", async () => {
     const { d } = aufbau();
     expect(await analysieren({ ...ANFRAGE, land: "BW" }, d)).toMatchObject({ ok: false, code: "bundesland_passt_nicht" });
+  });
+
+  it("andere Straße trotz gleicher Nummer: nur der Ort zählt, keine Karten an falscher Stelle", async () => {
+    const { d, hol } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "8", street: "Leonhardstraße" }) : antworten(u)));
+    const { r, von } = await ergebnis(ANFRAGE, d);
+    expect(r.genauigkeit).toBe("ort");
+    expect(von("wasserschutz").status).toBe("nicht_ermittelbar");
+    expect(von("schneelast").wert).toBe("1a");
+    expect(hol.mock.calls.some((c) => c[0].includes("wasser/wsg"))).toBe(false);
+  });
+
+  it("Treffer in einem fremden Ort wird nicht genommen", async () => {
+    const { d } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "8", street: "Marienplatz", city: "Passau", postcode: "94032" }, 48.57, 13.46) : antworten(u)));
+    expect(await analysieren(ANFRAGE, d)).toMatchObject({ ok: false, code: "adresse_nicht_gefunden" });
+  });
+
+  it("Gemeinde nicht im Verzeichnis: Zonen und Radon nicht ermittelbar, Karten trotzdem", async () => {
+    const { d } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "8", street: "Marienplatz", city: "Gibtsnichthausen" }) : antworten(u)));
+    const { von } = await ergebnis({ ...ANFRAGE, ort: "Gibtsnichthausen" }, d);
+    expect(von("schneelast")).toMatchObject({ status: "nicht_ermittelbar", grund: expect.stringContaining("Gemeindeverzeichnis") });
+    expect(von("radon").status).toBe("nicht_ermittelbar");
+    expect(von("wasserschutz").status).toBe("ermittelt");
   });
 
   it("nur der Ort gefunden: Zonen ja, Abfragen am Punkt nein", async () => {
@@ -369,7 +478,7 @@ describe("Analyse", () => {
   });
 
   it("nur auf die Straße genau: Kartenwerte sind nicht vorausgewählt, Zonen schon", async () => {
-    const { d } = aufbau((u) => (u.includes("/search?") ? JSON.stringify([{ lat: "48.137", lon: "11.575", address: { road: "Marienplatz", postcode: "80331" } }]) : antworten(u)));
+    const { d } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "50", street: "Marienplatz" }) : antworten(u)));
     const { r, von } = await ergebnis(ANFRAGE, d);
     expect(r.genauigkeit).toBe("strasse");
     expect(von("wasserschutz").vorgewaehlt).toBe(false);
@@ -377,7 +486,7 @@ describe("Analyse", () => {
   });
 
   it("BW: Lärm und Erdbeben nicht ermittelbar mit Grund und Viewer", async () => {
-    const { d, cache } = aufbau((u) => (u.includes("/reverse?") ? JSON.stringify({ name: "Dornstadt", extratags: { "de:amtlicher_gemeindeschluessel": "08425031" } }) : antworten(u)));
+    const { d, cache } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "1", street: "Rathausgasse", city: "Dornstadt", postcode: "89160", state: "Baden-Württemberg" }, 48.463, 9.961) : antworten(u)));
     const { von } = await ergebnis({ land: "BW", strasse: "Rathausgasse 1", plz: "89160", ort: "Dornstadt", gemarkung: null }, d);
     expect(von("schneelast").wert).toBe("1a");
     expect(von("erdbeben")).toMatchObject({ status: "nicht_ermittelbar", viewer: expect.stringContaining("mlw.baden-wuerttemberg") });
@@ -391,7 +500,7 @@ describe("Analyse", () => {
     for (const [u] of hol.mock.calls) expect(u).not.toMatch(/projectId|bauherr/i);
     const adresse = hol.mock.calls.filter(([u]) => u.includes("Marienplatz")).map(([u]) => u);
     expect(adresse.length).toBeGreaterThan(0);
-    expect(adresse.every((u) => u.includes("nominatim"))).toBe(true);
+    expect(adresse.every((u) => u.includes("photon"))).toBe(true);
   });
 
   it("Schreibweise der Adresse ergibt denselben Cache-Schlüssel", () => {

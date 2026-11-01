@@ -3,12 +3,13 @@
 // zurückgegeben; übernommen wird in der App (Tabelle standort_angaben). Ablauf und Zuordnung: logic.ts, Quellen: docs/standort-analyse.md.
 //
 // Schonung der Quellen: Cache in standort_cache (Frist je Thema), Fehler werden nie gespeichert. Höchstens 20 Analysen mit
-// Abfragen je Person und Tag (standort_abrufe), Timeout 12 s, kein zweiter Versuch. Nominatim: eine Anfrage je Sekunde, abschaltbar
-// über das Secret STANDORT_NOMINATIM_AUS=1. An die Dienste gehen nur Adresse bzw. Koordinaten, keine Namen, keine Projektdaten.
+// Abfragen je Person und Tag (standort_abrufe), Timeout 12 s, kein zweiter Versuch. Adresssuche über Photon (Nominatim sperrt die
+// Server von Supabase, Stand 01.11.2026). An die Dienste gehen nur Adresse bzw. Koordinaten, keine Namen, keine Projektdaten.
 // Aufrufen darf nur, wer angemeldet ist und in user_roles die Rolle admin oder mitarbeiter hat.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { analysieren, anfrageAusProjekt, MAX_ANALYSEN_PRO_TAG, parseProjektId, tagesbeginn, TIMEOUT_MS, USER_AGENT, type Dienste, type StandortFehler } from "./logic.ts";
+import { GEMEINDEN } from "./gemeinden.ts";
 import { ERDBEBEN, ERDBEBEN_BY_KREISE, SCHNEELAST } from "./zonen.ts";
 
 const CORS = {
@@ -71,7 +72,6 @@ Deno.serve(async (req) => {
       jetzt: () => new Date(),
       warten: (ms) => new Promise((r) => setTimeout(r, ms)),
       async holen(url) {
-        if (env("STANDORT_NOMINATIM_AUS") === "1" && url.includes("nominatim.openstreetmap.org")) throw new Error("Nominatim abgeschaltet");
         const res = await fetch(url, { headers: { "user-agent": USER_AGENT }, signal: AbortSignal.timeout(TIMEOUT_MS) });
         const text = await res.text();
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
         if (log.error) throw new Error("standort_abrufe nicht schreibbar");
         return true;
       },
-      tabellen: { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE },
+      tabellen: { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN },
     };
 
     const antwort = await analysieren(anfrage, dienste);

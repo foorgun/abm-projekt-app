@@ -30,8 +30,9 @@ Schwabenhaus legt jede Radio-Auswahl dreifach übereinander. Gesetzt wird die ob
 
 | Thema | Quelle | Lizenz, Bedingungen | Genauigkeit |
 |---|---|---|---|
-| Adresse | OpenStreetMap Nominatim (`search`, `reverse`) | ODbL, Namensnennung. Höchstens 1 Anfrage/s, eigener User-Agent, Cache, abschaltbar (Secret `STANDORT_NOMINATIM_AUS=1`), kein Massenabruf. Keine Zusage, Zugang kann entzogen werden. | Hausnummer, Straße oder Ort (wird gemeldet). Gemeindeschlüssel aus OSM-Merkmalen. |
-| Schneelast | DIBt, Zuordnung nach Verwaltungsgrenzen (Stand 07.02.2023), eingebaut als `zonen.ts` | Auf der Seite keine Lizenz genannt. Verbindlich sind laut DIBt die Bekanntmachungen der Länder. | Gemeinde bzw. Kreis. Stadtkreis Ulm steht nicht in der Tabelle. |
+| Adresse | [Photon](https://photon.komoot.io) (komoot), Daten OpenStreetMap | ODbL, Namensnennung. Laut Anbieter Fair Use, „extensive usage will be throttled“, keine Verfügbarkeitszusage, keine Lizenzangabe zum Dienst selbst. | Haus, Straße oder Ort (wird gemeldet). Photon sucht unscharf: Es zählt nur ein Treffer mit gleicher Straße und im Ort des Projekts. |
+| Gemeinde | Statistisches Bundesamt, Gemeindeverzeichnis GV-ISys (Stand 30.09.2026), eingebaut als `gemeinden.ts` | „Vervielfältigung und Verbreitung, auch auszugsweise, mit Quellenangabe gestattet.“ | Über den Namen aus der Adresssuche, bei Namensgleichheit die nächste Gemeinde. Unklar: nicht ermittelbar. |
+| Schneelast | DIBt, Zuordnung nach Verwaltungsgrenzen (Stand 07.02.2023), eingebaut als `zonen.ts` | Auf der Seite keine Lizenz genannt. Verbindlich sind laut DIBt die Bekanntmachungen der Länder. | Gemeinde bzw. Kreis. Die Städte Ulm und Kassel stehen nicht in der Tabelle. |
 | Erdbeben | DIBt, Zuordnung (Stand 02.06.2022), BY und HE | wie oben | Gemarkung. BW fehlt: Das Land verweist nur auf die Karte 1:350 000. |
 | Höhe | EU-DEM 25 m über Open Topo Data | Copernicus, Quellenangabe nötig. Öffentliche API: 1 Anfrage/s, 1000/Tag, keine Nutzungsbedingungen und keine Verfügbarkeitszusage. | ±7 m RMSE |
 | Radon | BW: Liste des Umweltministeriums (15.06.2021). BY: BayMBl. 2021 Nr. 63. HE: laut BfS keine Gebiete. Dazu BfS-WMS Radon-222 in der Bodenluft. | Festlegungen sind Amtsblatt bzw. Ministeriumsliste. BfS-Dienst: Gebühren und Zugriff „NONE“, keine Lizenz genannt. | Gemeinde bzw. Kreis; Bodenluft als Rasterwert (Übersicht). |
@@ -43,7 +44,10 @@ Nicht automatisch:
 
 - **Lärm BW:** Einen LUBW-Dienst gibt es nicht. Die Straßenlärm-Ebenen des UBA-WMS (`VeLa/LK`) haben im Test (01.11.2026) innerhalb von 40 bis 60 s nicht geantwortet.
 - **Stromversorger:** Es gibt keine amtliche, frei nutzbare Zuordnung von Standort zu Netzbetreiber. Das Marktstammdatenregister führt Betreiber, aber keine Netzgebiete.
-- **BKG (VG250, DGM200):** wäre die amtliche Wahl für Gemeindeschlüssel und Höhe, war beim Bau aber von hier nicht erreichbar und ist deshalb nicht eingebaut.
+- **BKG (VG250, DGM200):** wäre die amtliche Wahl für Gemeindeschlüssel und Höhe, antwortet aber weder von hier noch von Supabase aus (Test 01.11.2026).
+- **Nominatim:** sperrt die Server von Supabase („Access denied“, HTTP 403). Deshalb Photon. **Overpass:** Die Regeln nennen eine App als Backend auf den öffentlichen Servern problematisch.
+
+Grenze der Adresssuche: Fehlt die Straße in den OSM-Daten oder ist sie anders geschrieben, gilt der Standort nur als Ort. Zonen und Radon gehen dann, Kartenabfragen nicht.
 
 ## Cache und Limit
 
@@ -54,9 +58,10 @@ Fristen je Thema stehen in `logic.ts` (`CACHE_TAGE`): Adresse, Zonen und Höhe 3
 
 ```
 python3 scripts/standort/zonen_erzeugen.py Schneelastzonen_nach_Verwaltungsgrenzen.xlsx Erdbebenzonen_Formular_Untergrundklassen.xlsx
+python3 scripts/standort/gemeinden_erzeugen.py AuszugGV3QAktuell.xlsx
 ```
 
-Das Skript bricht ab, wenn die Tabellen nicht zur erwarteten Form passen. Danach `ZONEN_VERSION` in `logic.ts` hochsetzen.
+Das Skript bricht ab, wenn die Tabellen nicht zur erwarteten Form passen. Danach `ZONEN_VERSION` in `logic.ts` hochsetzen und die Tests laufen lassen: Sie prüfen, dass jede namentliche Ausnahme genau eine Gemeinde des Kreises trifft.
 
 ## Einrichten
 
