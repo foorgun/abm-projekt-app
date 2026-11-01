@@ -402,7 +402,7 @@ function SchornsteinfegerVorschlag({
   onUebernehmen,
 }: {
   adresse: Parameters<typeof bauadresseFuerSuche>[0];
-  /** Link auf die Übersicht des Projekts, wo Bauadresse (Projektbeteiligte) und Bauort (Projektdaten) bearbeitet werden */
+  /** Link auf die Übersicht des Projekts, wo Bauadresse und Bauort (Projektdaten) bearbeitet werden */
   uebersicht: string;
   onUebernehmen: (k: ReturnType<typeof kontaktAusDetails>) => void;
 }) {

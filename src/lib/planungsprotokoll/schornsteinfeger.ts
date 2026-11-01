@@ -80,8 +80,8 @@ export function bauadresseFuerSuche(a: { siteStreet?: string | null; sitePostalC
     fehlt.push({
       feld: "bauadresse",
       text: a.buildingAddress?.trim()
-        ? `In der Bauadresse („${a.buildingAddress.trim()}“) steht keine Straße. Bitte in der Übersicht bei „Projektbeteiligte“ über den Stift Straße und Hausnummer eintragen.`
-        : "Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektbeteiligte“ eintragen (z. B. „Vogelsangstraße 4“).",
+        ? `In der Bauadresse („${a.buildingAddress.trim()}“) steht keine Straße. Bitte in der Übersicht bei „Projektdaten“ über den Stift Straße und Hausnummer eintragen.`
+        : "Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektdaten“ eintragen (z. B. „Vogelsangstraße 4“).",
     });
   }
   if (!/^\d{5}$/.test(plzRoh)) {
