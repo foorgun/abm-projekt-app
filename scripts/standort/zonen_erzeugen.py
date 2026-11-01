@@ -72,8 +72,14 @@ def zone(v):
     return z
 
 
+# Schreibfehler in den Gemeindelisten der Schneelast-Tabelle (sonst fiele die Gemeinde still auf die Regelzone)
+SCHNEE_TIPPFEHLER = {"Kißleg": "Kißlegg"}
+
+
 def namen(text):
     """Gemeindeliste einer Zelle: Namen, Teilgebiete werden als solche markiert."""
+    # In einer Zelle (Breisgau-Hochschwarzwald) hängt der Text der Folgezeile direkt am letzten Namen
+    text = re.sub(r"\s*Alle Gemeinden.*$", "", text, flags=re.S)
     text = re.sub(r"\s+", " ", text.replace("\n", " ")).strip()
     # Kommas in Klammern gehören zum Namen
     # Trenner (Komma, "und") in Klammern gehören zum Namen
@@ -97,7 +103,8 @@ def namen(text):
         if not n or n.startswith("gemeindefreier"):
             continue
         teilweise = re.search(r"\((nur|ohne) Gemeindeteile?", n) is not None
-        out.append({"name": re.sub(r"\s*\((nur|ohne) Gemeindeteile?.*\)$", "", n), **({"teilweise": True} if teilweise else {})})
+        name = re.sub(r"\s*\((nur|ohne) Gemeindeteile?.*\)$", "", n)
+        out.append({"name": SCHNEE_TIPPFEHLER.get(name, name), **({"teilweise": True} if teilweise else {})})
     return out
 
 

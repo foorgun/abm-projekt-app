@@ -103,7 +103,7 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
                   Verwerfen
                 </Button>
               </div>
-              <p className="field-hint">Amtliche Übersichtsdaten ohne Gewähr, bitte prüfen. Adresssuche: © OpenStreetMap-Mitwirkende (ODbL), Nominatim. Daten aus dem Umweltinformationssystem der LUBW, des Bayerischen Landesamts für Umwelt (www.lfu.bayern.de) und des HLNUG.</p>
+              <p className="field-hint">Amtliche Übersichtsdaten ohne Gewähr, bitte prüfen. Adresssuche: © OpenStreetMap-Mitwirkende (ODbL), Photon. Gemeinden: Statistisches Bundesamt (Destatis). Daten aus dem Umweltinformationssystem der LUBW, des Bayerischen Landesamts für Umwelt (www.lfu.bayern.de) und des HLNUG.</p>
             </>
           )}
           {speicherFehler && (

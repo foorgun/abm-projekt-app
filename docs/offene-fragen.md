@@ -112,8 +112,9 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 
 ## Zu den Standortangaben (Planungsprotokoll)
 
-- **Schneelast Ulm:** Der Stadtkreis Ulm fehlt in der DIBt-Tabelle. Die App meldet „nicht ermittelbar“. Beim DIBt nachfragen (dibt@dibt.de)?
+- **Schneelast Ulm und Kassel:** Beide Städte fehlen in der DIBt-Tabelle. Die App meldet „nicht ermittelbar“. Beim DIBt nachfragen (dibt@dibt.de)?
 - **Erdbeben BW:** Es gibt nur die amtliche Karte. Der LUBW-Datensatz „Erdbebenzone und Geologische Untergrundklasse“ ist zugangsgeschützt, laut Metadaten kostenlos oder nach Aufwand bestellbar. Bestellen und einbauen?
 - **Radon Schwabenhaus:** Die Frage im PDF lautet „Maßnahmen erforderlich“. Annahme: „ja“ genau im Radonvorsorgegebiet. Stimmt das so?
 - **Lizenz:** Lärmdienst HLNUG (`laerm_oden`) und die UIS-Nutzungsvereinbarung der LUBW regeln automatische Abfragen nicht ausdrücklich. Bei HLNUG und LUBW nachfragen?
+- **Adresssuche:** Photon läuft ohne Zusage (Fair Use). Reicht das, oder später ein Dienst mit Vertrag?
 - **Höhe:** Öffentliche API von Open Topo Data ohne Zusage und ohne Nutzungsbedingungen. Reicht das, oder später auf das DGM des BKG wechseln?

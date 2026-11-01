@@ -6,8 +6,10 @@ export const USER_AGENT = "ABM-Projekt-App/1.0 (Planungsprotokoll, Architekturbu
 export const TIMEOUT_MS = 12_000;
 /** Höchstens so viele Analysen mit Abfragen an die Dienste je Person und Tag (Antworten aus dem Cache zählen nicht). */
 export const MAX_ANALYSEN_PRO_TAG = 20;
-/** Nominatim erlaubt höchstens eine Anfrage je Sekunde. */
-export const NOMINATIM_PAUSE_MS = 1_100;
+/** Pause zwischen den Suchen einer Adresse (Photon bittet um faire Nutzung). */
+export const SUCH_PAUSE_MS = 1_000;
+/** Weiter darf der Mittelpunkt einer Gemeinde nicht vom Treffer entfernt sein, sonst ist es eine gleichnamige andere. */
+export const MAX_GEMEINDE_KM = 35;
 
 export const THEMEN = ["schneelast", "erdbeben", "hoehe", "radon", "wasserschutz", "hochwasser", "laerm", "strom"] as const;
 export type Thema = (typeof THEMEN)[number];
@@ -156,6 +158,8 @@ export interface Tabellen {
   SCHNEELAST: Record<Land, SchneeLand>;
   ERDBEBEN: Record<"BY" | "HE", Record<string, ErdbebenEintrag>>;
   ERDBEBEN_BY_KREISE: Record<string, string | null>;
+  /** Gemeindeverzeichnis: Schlüssel, Name, Breite, Länge */
+  GEMEINDEN: Record<Land, [string, string, number, number][]>;
 }
 
 /** Gemeindenamen vergleichbar machen: "Wangen i. Allgäu" = "Wangen im Allgäu", "Rot a. d. Rot" = "Rot an der Rot". */
@@ -176,24 +180,38 @@ export function nameGleich(a: string, b: string): boolean {
   return !!x && !!y && (x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `));
 }
 
+/**
+ * Trifft eine namentliche Ausnahme der Tabelle diese Gemeinde? Gleicher Name, oder die Tabelle nennt eine Kurzform ("Isny" für "Isny im
+ * Allgäu"). Nie umgekehrt: Im Alb-Donau-Kreis gibt es "Altheim" und "Altheim (Alb)" mit verschiedenen Zonen.
+ */
+export function ausnahmeTrifft(ausnahme: string, gemeinde: string): boolean {
+  const [x, y] = [nameSchluessel(ausnahme), nameSchluessel(gemeinde)];
+  return !!x && (x === y || y.startsWith(`${x} `));
+}
+
+/** Gemeinden, deren Schlüssel sich nach Stand der DIBt-Tabellen geändert hat: Hanau ist seit 2026 kreisfrei. */
+const AGS_IN_TABELLEN: Record<string, string> = { "06415000": "06435014" };
+
 export type Zuordnung = { zone: string; unsicher?: string } | { zone: null; grund: string };
 
 const SCHNEE_STAND = "DIBt, Zuordnung der Schneelastzonen nach Verwaltungsgrenzen (Stand 07.02.2023)";
 const ERDBEBEN_STAND = "DIBt, Zuordnung der Erdbebenzonen (Stand 02.06.2022)";
 
-export function schneelastZone(t: Tabellen, land: Land, ags: string, gemeinde: string): Zuordnung {
+export function schneelastZone(t: Tabellen, land: Land, agsAktuell: string, gemeinde: string): Zuordnung {
+  const ags = AGS_IN_TABELLEN[agsAktuell] ?? agsAktuell;
   const tab = t.SCHNEELAST[land];
   const direkt = tab.gemeinden[ags];
   if (direkt) return { zone: direkt };
   const kreis = tab.kreise[ags.slice(0, 5)];
   if (!kreis) return { zone: null, grund: `Die DIBt-Tabelle nennt diese Gemeinde und diesen Kreis nicht (Schlüssel ${ags}).` };
-  const treffer = kreis.ausnahmen.find((a) => nameGleich(a.name, gemeinde));
+  const treffer = kreis.ausnahmen.find((a) => ausnahmeTrifft(a.name, gemeinde));
   if (treffer?.teilweise) return { zone: treffer.zone, unsicher: `Gilt laut Tabelle nur für Teile von ${treffer.name}, sonst Zone ${kreis.zone}. Bitte prüfen.` };
   return { zone: treffer?.zone ?? kreis.zone };
 }
 
 /** Erdbebenzone. Bayern und Hessen führen sie je Gemarkung: ohne passende Gemarkung am Projekt wird bei gemischten Gemeinden nicht geraten. */
-export function erdbebenZone(t: Tabellen, land: Land, ags: string, gemarkung: string | null): Zuordnung {
+export function erdbebenZone(t: Tabellen, land: Land, agsAktuell: string, gemarkung: string | null): Zuordnung {
+  const ags = AGS_IN_TABELLEN[agsAktuell] ?? agsAktuell;
   if (land === "BW") {
     return { zone: null, grund: "Baden-Württemberg verweist nur auf die amtliche Karte 1:350 000. Eine Tabelle oder einen offenen Dienst gibt es nicht (der LUBW-Datensatz ist zugangsgeschützt)." };
   }
@@ -246,7 +264,7 @@ const LFU = "https://www.lfu.bayern.de/gdi/wms";
 const HLNUG = "https://geodienste-umwelt.hessen.de/arcgis/services/inspire";
 const HE_LAERM = "https://umweltatlas.hessen.de/arcgis/rest/services/laerm/laerm_oden/MapServer/identify";
 const BFS_WMS = "https://www.imis.bfs.de/ogc/opendata/wms";
-const NOMINATIM = "https://nominatim.openstreetmap.org";
+const PHOTON = "https://photon.komoot.io/api/";
 const HOEHE = "https://api.opentopodata.org/v1/eudem25m";
 
 const KARTEN: Record<"wasserschutz" | "hochwasser", Record<Land, { url: string; layer: string; quelle: string }>> = {
@@ -304,23 +322,67 @@ export function pegelLesen(attribute: Treffer | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export interface Gemeinde { ags: string | null; name: string | null }
+const km = (lat1: number, lon1: number, lat2: number, lon2: number) => Math.hypot((lat1 - lat2) * 111, (lon1 - lon2) * 111 * Math.cos((lat1 * Math.PI) / 180));
 
-/** Reverse-Antwort von Nominatim (zoom=10, extratags): Gemeindeschlüssel aus den OSM-Merkmalen. */
-export function gemeindeLesen(j: unknown): Gemeinde {
-  const o = (j ?? {}) as { name?: string; extratags?: Record<string, string> };
-  const x = o.extratags ?? {};
-  const ags = x["de:amtlicher_gemeindeschluessel"];
-  const rs = x["de:regionalschluessel"];
-  const geprueft = ags && /^\d{8}$/.test(ags) ? ags : rs && /^\d{12}$/.test(rs) ? rs.slice(0, 5) + rs.slice(9) : null;
-  return { ags: geprueft, name: typeof o.name === "string" ? o.name : null };
+/**
+ * Gemeinde samt Schlüssel im amtlichen Verzeichnis: gleicher Name, bei gleichnamigen Gemeinden die nächstgelegene. Nur eine Kurzform
+ * ("Lahr" für "Lahr/Schwarzwald") zählt, wenn sie eindeutig ist. Was zu weit weg liegt oder unklar bleibt, ergibt keinen Treffer.
+ */
+export function gemeindeFinden(t: Tabellen, land: Land, namen: (string | null | undefined)[], lat: number, lon: number): { ags: string; name: string } | null {
+  const liste = t.GEMEINDEN[land];
+  for (const name of namen) {
+    const key = nameSchluessel(name ?? "");
+    if (!key) continue;
+    const genau = liste.filter((g) => nameSchluessel(g[1]) === key);
+    const kurz = genau.length ? [] : liste.filter((g) => nameGleich(g[1], key));
+    const auswahl = genau.length ? genau : kurz.length === 1 ? kurz : [];
+    const naechste = [...auswahl].sort((x, y) => km(lat, lon, x[2], x[3]) - km(lat, lon, y[2], y[3]))[0];
+    if (naechste && km(lat, lon, naechste[2], naechste[3]) <= MAX_GEMEINDE_KM) return { ags: naechste[0], name: naechste[1] };
+  }
+  return null;
+}
+
+export interface PhotonTreffer { lat: number; lon: number; hausnummer: string | null; strasse: string | null; plz: string | null; ort: string | null; land: string | null; bundesland: string | null }
+
+/** Antwort von Photon lesen. Nicht lesbar: null (das ist ein Fehler, nicht "nichts gefunden"). */
+export function photonLesen(roh: string): PhotonTreffer[] | null {
+  let j: { features?: { geometry?: { coordinates?: number[] }; properties?: Record<string, unknown> }[] };
+  try {
+    j = JSON.parse(roh);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(j?.features)) return null;
+  const txt = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return j.features.flatMap((f) => {
+    const [lon, lat] = f.geometry?.coordinates ?? [];
+    const p = f.properties ?? {};
+    if (typeof lat !== "number" || typeof lon !== "number") return [];
+    return [{ lat, lon, hausnummer: txt(p.housenumber), strasse: txt(p.street) ?? (p.osm_key === "highway" ? txt(p.name) : null), plz: txt(p.postcode), ort: txt(p.city), land: txt(p.countrycode), bundesland: txt(p.state) }];
+  });
+}
+
+/** "Hauptstr. 12 a" → Straße und Nummer, beide vergleichbar. Ohne Nummer: nummer null. */
+export function strasseTeilen(s: string): { strasse: string; nummer: string | null } {
+  const t = text(s);
+  const m = t.match(/^(.*\D)\s+(\d+\s*[a-z]?(?:\s*[-/]\s*\d*[a-z]?)?)$/i);
+  const roh = m ? m[1] : t;
+  return { strasse: nameSchluessel(roh.replace(/str\.?$/i, "strasse")), nummer: m ? m[2].replace(/\s+/g, "").toLowerCase() : null };
+}
+
+/** Passt der Treffer zur gesuchten Straße? "haus": Straße und Nummer, "strasse": nur die Straße. Photon sucht unscharf, deshalb diese Prüfung. */
+export function trefferGuete(t: PhotonTreffer, a: Anfrage): "haus" | "strasse" | null {
+  if (!a.strasse || !t.strasse) return null;
+  const soll = strasseTeilen(a.strasse);
+  if (strasseTeilen(t.strasse).strasse !== soll.strasse) return null;
+  return soll.nummer && t.hausnummer?.replace(/\s+/g, "").toLowerCase() === soll.nummer ? "haus" : "strasse";
 }
 
 // ---------------------------------------------------------------------------
 // Ablauf
 // ---------------------------------------------------------------------------
 
-export interface Standort { lat: number; lon: number; genauigkeit: Genauigkeit; gemeinde: string | null; ags: string | null; hinweis: string | null }
+export interface Standort { lat: number; lon: number; genauigkeit: Genauigkeit; gemeinde: string | null; ags: string | null; bundesland: string | null; hinweis: string | null }
 
 export interface Dienste {
   jetzt: () => Date;
@@ -335,7 +397,7 @@ export interface Dienste {
 }
 
 /** Teil des Cache-Schlüssels der Zonen: neue Tabellen gelten sofort, nicht erst nach Ablauf der Frist. */
-export const ZONEN_VERSION = "2023-02-07";
+export const ZONEN_VERSION = "2023-02-07-b";
 const rund = (n: number) => n.toFixed(5);
 export const adressSchluessel = (a: Anfrage) => `geokodierung|${nameSchluessel([a.strasse, a.plz, a.ort].filter(Boolean).join(" "))}`;
 const themaSchluessel = (t: Thema, land: Land, s: Standort, gemarkung: string | null) =>
@@ -349,36 +411,42 @@ const nichtErreichbar = "Der Dienst hat nicht geantwortet oder einen Fehler geme
 
 type Wertteil = Pick<Ergebnis, "wert" | "anzeige" | "quelle"> & { hinweis?: string | null; unsicher?: boolean };
 
-/** Geokodieren über Nominatim: Adresse suchen, dann den Gemeindeschlüssel am Punkt. Eine Anfrage je Sekunde. */
+/**
+ * Geokodieren über Photon, höchstens drei Suchen: ganze Adresse, Straße ohne Nummer, Ort. Es zählt nur ein Treffer im Ort bzw. in der
+ * PLZ des Projekts. Der Gemeindeschlüssel kommt aus dem amtlichen Verzeichnis.
+ */
 async function geokodieren(a: Anfrage, d: Dienste): Promise<Standort | null> {
-  const suche = async (mitStrasse: boolean) => {
-    const q = new URLSearchParams({ format: "jsonv2", addressdetails: "1", limit: "1", countrycodes: "de" });
-    if (mitStrasse && a.strasse) q.set("street", a.strasse);
-    if (a.plz) q.set("postalcode", a.plz);
-    if (a.ort) q.set("city", a.ort);
-    const treffer = JSON.parse(await d.holen(`${NOMINATIM}/search?${q}`)) as { lat: string; lon: string; address?: Record<string, string> }[];
-    return treffer[0] ?? null;
+  const ortsteil = [a.plz, a.ort].filter(Boolean).join(" ");
+  const suche = async (q: string) => {
+    const t = photonLesen(await d.holen(`${PHOTON}?${new URLSearchParams({ q, limit: "5", lang: "de" })}`));
+    if (!t) throw new Error("Antwort nicht lesbar");
+    // Im Ort des Projekts: gleiche PLZ oder gleicher Ort (ein Ort kann mehrere PLZ haben)
+    return t.filter((x) => (!x.land || x.land === "DE") && ((a.plz && x.plz === a.plz) || (a.ort && x.ort && nameGleich(x.ort, a.ort))));
   };
-  let treffer = await suche(true);
+  let treffer: PhotonTreffer | undefined;
+  let genauigkeit: Genauigkeit = "ort";
   let hinweis: string | null = null;
-  if (!treffer && a.strasse) {
-    await d.warten(NOMINATIM_PAUSE_MS);
-    treffer = await suche(false);
-    if (treffer) hinweis = `Die Straße „${a.strasse}“ wurde nicht gefunden, verwendet wurde der Ort.`;
+  if (a.strasse) {
+    const erste = await suche(`${a.strasse} ${ortsteil}`);
+    const haus = erste.find((x) => trefferGuete(x, a) === "haus");
+    let strasse = erste.find((x) => trefferGuete(x, a) === "strasse");
+    if (!haus && !strasse) {
+      await d.warten(SUCH_PAUSE_MS);
+      strasse = (await suche(`${strasseTeilen(a.strasse).strasse} ${ortsteil}`)).find((x) => trefferGuete(x, a) !== null);
+    }
+    treffer = haus ?? strasse;
+    if (treffer) genauigkeit = haus ? "haus" : "strasse";
+    else hinweis = `Die Straße „${a.strasse}“ wurde nicht gefunden, verwendet wurde der Ort.`;
+    if (!treffer) await d.warten(SUCH_PAUSE_MS);
   }
+  treffer ??= (await suche(ortsteil))[0];
   if (!treffer) return null;
-  const adr = treffer.address ?? {};
-  let genauigkeit: Genauigkeit = !a.strasse || hinweis ? "ort" : adr.house_number ? "haus" : adr.road ? "strasse" : "ort";
-  if (a.plz && adr.postcode && adr.postcode !== a.plz && genauigkeit === "haus") {
+  if (a.plz && treffer.plz && treffer.plz !== a.plz && genauigkeit === "haus") {
     genauigkeit = "strasse";
-    hinweis = `Gefunden wurde die PLZ ${adr.postcode} statt ${a.plz}. Bitte die Adresse prüfen.`;
+    hinweis = `Gefunden wurde die PLZ ${treffer.plz} statt ${a.plz}. Bitte die Adresse prüfen.`;
   }
-  const [lat, lon] = [Number(treffer.lat), Number(treffer.lon)];
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Geokodierung: Antwort nicht lesbar");
-  await d.warten(NOMINATIM_PAUSE_MS);
-  const rev = new URLSearchParams({ format: "jsonv2", lat: String(lat), lon: String(lon), zoom: "10", extratags: "1", addressdetails: "0" });
-  const g = gemeindeLesen(JSON.parse(await d.holen(`${NOMINATIM}/reverse?${rev}`)));
-  return { lat, lon, genauigkeit, gemeinde: g.name, ags: g.ags, hinweis };
+  const g = gemeindeFinden(d.tabellen, a.land, [treffer.ort, a.ort], treffer.lat, treffer.lon);
+  return { lat: treffer.lat, lon: treffer.lon, genauigkeit, gemeinde: g?.name ?? treffer.ort, ags: g?.ags ?? null, bundesland: treffer.bundesland, hinweis };
 }
 
 async function karteAbfragen(thema: "wasserschutz" | "hochwasser", land: Land, s: Standort, d: Dienste): Promise<Wertteil> {
@@ -477,17 +545,19 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
     let neu: Standort | null;
     try {
       neu = await geokodieren(a, d);
-    } catch {
-      return { ok: false, code: "error", message: "Die Adresssuche (OpenStreetMap Nominatim) ist gerade nicht erreichbar. Bitte später erneut versuchen." };
+    } catch (e) {
+      const grund = e instanceof Error ? e.message : "unbekannt";
+      console.error(`standort-analyse: Geokodierung: ${grund}`);
+      return { ok: false, code: "error", message: `Die Adresssuche (Photon, OpenStreetMap) ist gerade nicht erreichbar (${grund}). Bitte später erneut versuchen.` };
     }
     if (!neu) return { ok: false, code: "adresse_nicht_gefunden", message: `Die Adresse „${adresseText(a)}“ wurde nicht gefunden. Bitte Bauort und Bauadresse in der Übersicht prüfen.` };
     standort = neu;
     await d.cacheSchreiben({ schluessel: adrKey, thema: "geokodierung", wert: standort, abgerufenAm: iso, gueltigBis: gueltigBis("geokodierung") });
   }
   const s = standort;
-  const LAND_PREFIX: Record<Land, string> = { BW: "08", BY: "09", HE: "06" };
-  if (s.ags && !s.ags.startsWith(LAND_PREFIX[land])) {
-    return { ok: false, code: "bundesland_passt_nicht", message: `Die Adresse liegt nicht in ${land} (Gemeinde ${s.gemeinde ?? s.ags}). Bitte Bundesland und Bauort am Projekt prüfen.` };
+  const gefunden = s.bundesland ? LAND_NAMEN[umlaute(s.bundesland.toLowerCase())] : null;
+  if (gefunden && gefunden !== land) {
+    return { ok: false, code: "bundesland_passt_nicht", message: `Die Adresse liegt laut Adresssuche in ${s.bundesland}, am Projekt steht ${land}. Bitte Bundesland und Bauort prüfen.` };
   }
 
   const keys = Object.fromEntries(THEMEN.filter((t) => t !== "strom").map((t) => [t, themaSchluessel(t, land, s, a.gemarkung)])) as Record<Exclude<Thema, "strom">, string>;
@@ -516,7 +586,7 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
   };
 
   const zonenErgebnis = async (thema: "schneelast" | "erdbeben"): Promise<Ergebnis> => {
-    if (!s.ags) return leer(thema, land, "nicht_ermittelbar", "Der Gemeindeschlüssel ließ sich aus der Adresse nicht bestimmen.");
+    if (!s.ags) return leer(thema, land, "nicht_ermittelbar", `Die Gemeinde „${s.gemeinde ?? a.ort ?? ""}“ steht so nicht im amtlichen Gemeindeverzeichnis. Bitte den Bauort prüfen.`);
     const c = ausCache(thema, keys[thema]);
     if (c) return c;
     const z = thema === "schneelast" ? schneelastZone(d.tabellen, land, s.ags, s.gemeinde ?? "") : erdbebenZone(d.tabellen, land, s.ags, a.gemarkung);
@@ -547,7 +617,7 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
     zonenErgebnis("schneelast"),
     zonenErgebnis("erdbeben"),
     genau ? mitDienst("hoehe", () => hoeheAbfragen(s, d)) : nurOrt("hoehe"),
-    s.ags ? mitDienst("radon", () => radonAbfragen(land, s, d)) : leer("radon", land, "nicht_ermittelbar", "Der Gemeindeschlüssel ließ sich aus der Adresse nicht bestimmen."),
+    s.ags ? mitDienst("radon", () => radonAbfragen(land, s, d)) : leer("radon", land, "nicht_ermittelbar", `Die Gemeinde „${s.gemeinde ?? a.ort ?? ""}“ steht so nicht im amtlichen Gemeindeverzeichnis. Bitte den Bauort prüfen.`),
     genau ? mitDienst("wasserschutz", () => karteAbfragen("wasserschutz", land, s, d)) : nurOrt("wasserschutz"),
     genau ? mitDienst("hochwasser", () => karteAbfragen("hochwasser", land, s, d)) : nurOrt("hochwasser"),
     land === "BW"
@@ -560,7 +630,7 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
   const ungenau = s.genauigkeit === "strasse";
   const fertig = ergebnisse.map((e) =>
     ungenau && e.status === "ermittelt" && ["hoehe", "wasserschutz", "hochwasser", "laerm"].includes(e.thema)
-      ? { ...e, vorgewaehlt: false, hinweis: [s.hinweis ?? "Ohne Hausnummer ist der Standort nur auf die Straße genau.", e.hinweis].filter(Boolean).join(" ") }
+      ? { ...e, vorgewaehlt: false, hinweis: [s.hinweis ?? "Die Hausnummer wurde nicht gefunden, der Standort ist nur auf die Straße genau.", e.hinweis].filter(Boolean).join(" ") }
       : e,
   );
   return { ok: true, adresse: adresseText(a), bundesland: land, gemeinde: s.gemeinde, genauigkeit: s.genauigkeit, ergebnisse: fertig };
