@@ -6,7 +6,8 @@ import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAnfrage, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
-import type {
+import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
+import type { StandortWert,
   Abwesenheit,
   Activity,
   AgentRule,
@@ -327,6 +328,13 @@ export interface Repo {
   schornsteinfegerSuchen(anfrage: SuchAnfrage): Promise<SuchAntwort | SchornsteinfegerFehler>;
   /** Kontaktdaten des gewählten Kandidaten (nur nach einer Suche). */
   schornsteinfegerDetails(bsmId: string): Promise<DetailAntwort | SchornsteinfegerFehler>;
+  /**
+   * Standortangaben zur Bauadresse vorschlagen (Echtbetrieb: Edge Function standort-analyse, Demo: feste Beispielantwort).
+   * Schreibt nichts ins Projekt. Wirft nie wegen der Dienste: Fehler kommen als { ok: false } bzw. als Status je Thema zurück.
+   */
+  standortAnalyse(projectId: string): Promise<StandortAntwort | StandortFehler>;
+  /** Übernommene Standortangaben speichern (ersetzt die bisherigen des Projekts). Nur diese landen im PDF. */
+  saveStandortAngaben(projectId: string, angaben: Record<string, StandortWert>): Promise<void>;
 
   /** Nur Demo-Modus: alle Änderungen verwerfen und die erfundenen Ausgangsdaten neu laden. */
   resetDemo?(): Promise<void>;

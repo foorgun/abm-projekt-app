@@ -9,7 +9,7 @@ import type { BauherrContact, BueroDaten, Dataset, ProjectParty, Project, Protok
 import { architektKontakt, istMobil, protokollDaten, splitAnschrift, splitKontaktzeile, type ProtokollDaten } from "./daten";
 import { abweichungen, einbrennen, erzeugeProtokoll, feldZustand, passendeGroesse, ProtokollFehler, SCHRIFT_MIN_PT, SCHRIFT_PT } from "./pdf";
 import { protokollDateiname, VORLAGEN, VORLAGEN_ORDNER, vorlageFuerFirma } from "./vorlagen";
-import { feldStand, feldwerte, ZUORDNUNG } from "./zuordnung";
+import { ankreuzWerte, feldStand, feldwerte, ZUORDNUNG } from "./zuordnung";
 
 interface InventarFeld {
   name: string;
@@ -280,6 +280,32 @@ describe("PDF erzeugen", () => {
   beforeAll(async () => {
     for (const v of ALLE) vorlagen[v] = await nachbau(v);
   }, 30_000);
+
+  it("Standortangaben: Kontrollkästchen werden angekreuzt, alles andere bleibt unverändert, auch in der flachen Fassung", async () => {
+    const t = vorlagen["living-haus"];
+    const kreuze = ankreuzWerte("living-haus", { schneelast: { wert: "2a", anzeige: "Zone 2a", quelle: null, abgerufenAm: null, geaendert: false } }).kreuze;
+    const r = await erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "bearbeitbar", ankreuzen: kreuze });
+    const form = (await PDFDocument.load(r.bytes)).getForm();
+    expect(form.getCheckBox("Kontrollkästchen 2.06").isChecked()).toBe(true);
+    expect(form.getCheckBox("Kontrollkästchen 2.05").isChecked()).toBe(t.angekreuzt.includes("Kontrollkästchen 2.05"));
+    const flach = await erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "flach", ankreuzen: kreuze });
+    expect((await PDFDocument.load(flach.bytes)).getForm().getFields()).toHaveLength(0);
+  });
+
+  it("Standortangaben: in der Radio-Gruppe ist danach genau die gewählte Auswahl an", async () => {
+    const t = vorlagen.schwabenhaus;
+    const r = await erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "bearbeitbar", ankreuzen: [{ feld: "Erdbebenzone", widget: 2 }] });
+    const widgets = (await PDFDocument.load(r.bytes)).getForm().getRadioGroup("Erdbebenzone").acroField.getWidgets();
+    const an = widgets.map((w, i) => (String(w.getAppearanceState()) !== "/Off" ? i : -1)).filter((i) => i >= 0);
+    expect(an).toEqual([2]);
+  });
+
+  it("Standortangaben: unbekanntes Feld oder falscher Feldtyp ergibt kein PDF", async () => {
+    const t = vorlagen["living-haus"];
+    await expect(erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "bearbeitbar", ankreuzen: [{ feld: "Gibt es nicht" }] })).rejects.toBeInstanceOf(ProtokollFehler);
+    await expect(erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "bearbeitbar", ankreuzen: [{ feld: "Textfeld 1.01" }] })).rejects.toBeInstanceOf(ProtokollFehler);
+    await expect(erzeugeProtokoll({ vorlage: t.bytes, schrift: SCHRIFT, werte: {}, variante: "bearbeitbar", ankreuzen: [{ feld: "Kontrollkästchen 2.03", widget: 0 }] })).rejects.toBeInstanceOf(ProtokollFehler);
+  });
 
   for (const v of ALLE) {
     it(`${v}: bearbeitbare Fassung setzt Seite 1 mit Umlauten und lässt alles andere unverändert`, async () => {

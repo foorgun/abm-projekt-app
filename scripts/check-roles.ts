@@ -74,6 +74,8 @@ const KEY: Record<string, string> = {
   agent_settings: "id",
   schornsteinfeger_suche: "plz",
   schornsteinfeger_details: "bsm_id",
+  standort_cache: "schluessel",
+  standort_angaben: "project_id",
 };
 
 async function count(sb: SupabaseClient, tableName: string, filter?: (q: any) => any, column?: string): Promise<Outcome> {
@@ -144,6 +146,18 @@ const SCHORNSTEINFEGER_SCHREIBEN: Record<string, Record<string, unknown>> = {
   schornsteinfeger_abrufe: { user_id: NIL, art: "rollenpruefung" },
 };
 
+/** Edge Function standort-analyse aufrufen, ohne dass etwas an die Dienste geht: die Projekt-ID ist ungültig. Zuerst prüft sie die Rolle. */
+async function standortStatus(sb: SupabaseClient): Promise<number | "nicht erreichbar"> {
+  const { error, response } = (await sb.functions.invoke("standort-analyse", { body: { projectId: "x" } })) as { error: { context?: Response } | null; response?: Response };
+  return error?.context?.status ?? response?.status ?? (error ? "nicht erreichbar" : 200);
+}
+const STANDORT_TABELLEN = ["standort_cache", "standort_abrufe"];
+/** Schreibversuche mit ungültigen Werten: es entsteht in keinem Fall eine Zeile. */
+const STANDORT_SCHREIBEN: Record<string, Record<string, unknown>> = {
+  standort_cache: { schluessel: "", thema: "rollenpruefung", wert: [], gueltig_bis: "2000-01-01" },
+  standort_abrufe: { user_id: NIL },
+};
+
 /** Datei-Ablage im Speicher versuchen. Eine wider Erwarten angelegte Datei wird gleich wieder entfernt. */
 async function uploadAttempt(sb: SupabaseClient, path: string, bucket = "project-documents"): Promise<Outcome> {
   const up = await sb.storage.from(bucket).upload(path, new Blob(["Rollenprüfung"], { type: "text/plain" }), { upsert: false });
@@ -174,6 +188,7 @@ expectDenied("nicht angemeldet", "Projekt löschen", await attempt(anon.rpc("del
 for (const t of ["abwesenheiten", "urlaubs_anspruch"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t, undefined, "user_id"));
 for (const t of ["buero_daten", "planungsprotokolle"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 for (const t of SCHORNSTEINFEGER_TABELLEN) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
+for (const t of [...STANDORT_TABELLEN, "standort_angaben"]) expectDenied("nicht angemeldet", `${t} lesen`, await count(anon, t));
 expectRows("nicht angemeldet", "Vorlagen im Speicher (Bucket vorlagen)", 0, await vorlagenAnzahl(anon));
 expectDenied("nicht angemeldet", "Abwesenheitskalender aufrufen", await attempt(anon.rpc("kalender_abwesenheiten", { p_von: "2026-01-01", p_bis: "2026-12-31" })));
 
@@ -230,6 +245,22 @@ for (const k of mitPasswort) {
   if (feger === 404 || feger === "nicht erreichbar") rows.push([who, "Schornsteinfeger-Vorschlag (Edge Function)", "–", "übersprungen: Funktion schornsteinfeger-suche ist nicht deployt", "–"]);
   else if (k.rolle === "freiberufler") expectText(who, "Schornsteinfeger-Vorschlag (Edge Function) aufrufen", "403 abgewiesen", feger === 403 ? "403 abgewiesen" : `Status ${feger}`);
   else expectText(who, "Schornsteinfeger-Vorschlag (Edge Function): Rolle zugelassen", "400 (ungültige Eingabe, nichts an die Quelle)", feger === 400 ? "400 (ungültige Eingabe, nichts an die Quelle)" : `Status ${feger}`);
+
+  // ---- Standortanalyse (Migration 0020): Cache und Protokoll lesen nur Admins, schreiben nur die Funktion; Function nur Admin/Mitarbeiter
+  for (const t of STANDORT_TABELLEN) {
+    const n = await count(sb, t);
+    if (k.rolle === "admin") record(who, `${t} lesen (nur Admin)`, "lesbar", show(n), n.kind === "zeilen");
+    else expectRows(who, `${t}: sieht keine Zeile`, 0, n);
+    expectDenied(who, `${t} beschreiben`, await attempt(sb.from(t).insert(STANDORT_SCHREIBEN[t]).select()));
+  }
+  if (k.rolle === "freiberufler") {
+    expectRows(who, "standort_angaben: sieht keine Zeile", 0, await count(sb, "standort_angaben"));
+    expectDenied(who, "standort_angaben anlegen", await attempt(sb.from("standort_angaben").insert({ project_id: NIL, angaben: {}, geaendert_von: NIL }).select()));
+  }
+  const standort = await standortStatus(sb);
+  if (standort === 404 || standort === "nicht erreichbar") rows.push([who, "Standortanalyse (Edge Function)", "–", "übersprungen: Funktion standort-analyse ist nicht deployt", "–"]);
+  else if (k.rolle === "freiberufler") expectText(who, "Standortanalyse (Edge Function) aufrufen", "403 abgewiesen", standort === 403 ? "403 abgewiesen" : `Status ${standort}`);
+  else expectText(who, "Standortanalyse (Edge Function): Rolle zugelassen", "400 (ungültige Eingabe, nichts an die Dienste)", standort === 400 ? "400 (ungültige Eingabe, nichts an die Dienste)" : `Status ${standort}`);
 
   // ---- Projekt löschen (Migration 0011): nur Admin. Geprüft wird mit einer ID, die es nicht gibt: die Funktion prüft
   // zuerst die Berechtigung und meldet erst danach "Projekt nicht gefunden". Es wird in keinem Fall etwas gelöscht.

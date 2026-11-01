@@ -109,3 +109,11 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Hausnummernbereiche wie „96-104“ gelten als unsicher (nur gleiche Parität wie der Startwert) und werden nie vorgewählt.
 - Zwischenspeicher: Treffer 90 Tage, „nicht gefunden“ nur 24 Stunden (neue Straßen im Neubaugebiet tauchen so bald auf),
   „Quelle nicht erreichbar“ gar nicht. Passen diese Fristen?
+
+## Zu den Standortangaben (Planungsprotokoll)
+
+- **Schneelast Ulm:** Der Stadtkreis Ulm fehlt in der DIBt-Tabelle. Die App meldet „nicht ermittelbar“. Beim DIBt nachfragen (dibt@dibt.de)?
+- **Erdbeben BW:** Es gibt nur die amtliche Karte. Der LUBW-Datensatz „Erdbebenzone und Geologische Untergrundklasse“ ist zugangsgeschützt, laut Metadaten kostenlos oder nach Aufwand bestellbar. Bestellen und einbauen?
+- **Radon Schwabenhaus:** Die Frage im PDF lautet „Maßnahmen erforderlich“. Annahme: „ja“ genau im Radonvorsorgegebiet. Stimmt das so?
+- **Lizenz:** Lärmdienst HLNUG (`laerm_oden`) und die UIS-Nutzungsvereinbarung der LUBW regeln automatische Abfragen nicht ausdrücklich. Bei HLNUG und LUBW nachfragen?
+- **Höhe:** Öffentliche API von Open Topo Data ohne Zusage und ohne Nutzungsbedingungen. Reicht das, oder später auf das DGM des BKG wechseln?

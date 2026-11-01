@@ -165,6 +165,23 @@ export type ProtokollVorlage = "schwabenhaus" | "living-haus" | "bien-zenker";
 /** "bearbeitbar": Felder bleiben ausfüllbar. "flach": Felder eingebrannt (Fassung zum Versand). */
 export type ProtokollVariante = "bearbeitbar" | "flach";
 
+/** Ein übernommener Standortwert: nur solche Werte landen im PDF (Migration 0020). */
+export interface StandortWert {
+  wert: string;
+  anzeige: string;
+  quelle: string | null;
+  abgerufenAm: string | null;
+  /** Der vorgeschlagene Wert wurde vor dem Übernehmen geändert */
+  geaendert: boolean;
+}
+
+export interface StandortAngabenZeile {
+  projectId: string;
+  /** Schlüssel: Thema (schneelast, erdbeben, …) */
+  angaben: Record<string, StandortWert>;
+  geaendertAm: string;
+}
+
 export interface Planungsprotokoll {
   id: string;
   projectId: string;
@@ -391,6 +408,8 @@ export interface Dataset extends Snapshot {
   buero: BueroDaten | null;
   /** Erzeugte Planungsprotokolle (neueste zuerst). Leer für Freiberufler (RLS). */
   planungsprotokolle: Planungsprotokoll[];
+  /** Übernommene Standortangaben je Projekt. Leer für Freiberufler (RLS). */
+  standortAngaben: StandortAngabenZeile[];
 }
 
 // ---------------------------------------------------------------------------
