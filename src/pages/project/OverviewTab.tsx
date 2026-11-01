@@ -144,21 +144,12 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
           <EditableCard
             title="Projektbeteiligte"
             canEdit={staff}
-            form={(close) => <PartiesForm project={project} data={data} contact={contact} onClose={close} />}
+            form={(close) => <PartiesForm project={project} data={data} onClose={close} />}
             view={
               <>
                 <dl className="dl">
                   {/* ABM-Nr., Hausbau-Nr. und Bauherr stehen im Seitenkopf; hier nur, wenn die Hausbau-Nr. noch fehlt */}
                   {!project.hausbauNr && project.kind === "neubau" && <Row label="Hausbau-Nr.">{null}</Row>}
-                  <Row label="Bauadresse">
-                    {staff ? (
-                      contact?.buildingAddress
-                    ) : (
-                      <span className="muted locked">
-                        <Lock size={12} aria-hidden /> nur für Mitarbeiter
-                      </span>
-                    )}
-                  </Row>
                   <Row label="Verkäufer">{sales ? `${sales.name}${company ? ` (${company.name})` : ""}` : null}</Row>
                 </dl>
                 <details className="dl-more">
@@ -225,6 +216,15 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
               <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
               {project.kind === "neubau" && <Row label="ABM-Nr.">{project.abmNr}</Row>}
               <Row label="Hausbaufirma">{company?.name}</Row>
+              <Row label="Bauadresse">
+                {staff ? (
+                  contact?.buildingAddress
+                ) : (
+                  <span className="muted locked">
+                    <Lock size={12} aria-hidden /> nur für Mitarbeiter
+                  </span>
+                )}
+              </Row>
               <Row label="Bauort">{project.location}</Row>
               <Row label="Bundesland">{project.bundesland ? `${project.bundesland} · ${bundeslandName(project.bundesland) ?? ""}` : null}</Row>
               <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
@@ -249,14 +249,13 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
 
 const contactOf = (c: BauherrContact | null) => ({ name: c?.name ?? null, phone: c?.phone ?? null, email: c?.email ?? null, address: c?.address ?? null, buildingAddress: c?.buildingAddress ?? null });
 
-function PartiesForm({ project, data, contact, onClose }: { project: Project; data: Dataset; contact: BauherrContact | null; onClose: () => void }) {
+function PartiesForm({ project, data, onClose }: { project: Project; data: Dataset; onClose: () => void }) {
   const { mutate } = useData();
   const { save, busy, error, clearError } = useProjectSave(project, data);
   const current = data.parties.filter((p) => p.projectId === project.id);
   const [v, setV] = useState({
     hausbauNr: project.hausbauNr ?? "",
     bauherrLabel: project.bauherrLabel,
-    buildingAddress: contact?.buildingAddress ?? "",
     salespersonId: project.salespersonId ?? "",
   });
   const [parties, setParties] = useState(() => Object.fromEntries(ROLES.map((r) => [r, { name: current.find((x) => x.role === r)?.name ?? "", contact: current.find((x) => x.role === r)?.contact ?? "" }])) as Record<PartyRole, { name: string; contact: string }>);
@@ -268,8 +267,6 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
     void save(
       {
         project: { hausbauNr: v.hausbauNr, bauherrLabel: v.bauherrLabel, salespersonId: v.salespersonId || null },
-        // Die Bauadresse gehört zu den Kontaktdaten: die übrigen Felder bleiben, wie sie sind
-        bauherr: { ...contactOf(contact), buildingAddress: v.buildingAddress },
         parties: Object.fromEntries(ROLES.map((r) => [r, parties[r].name.trim() ? { name: parties[r].name, contact: parties[r].contact || null } : null])),
       },
       onClose,
@@ -283,9 +280,6 @@ function PartiesForm({ project, data, contact, onClose }: { project: Project; da
       </Field>
       <Field label="Bauherr (Nachname) *" htmlFor={`${id}-bh`}>
         <Input id={`${id}-bh`} value={v.bauherrLabel} onChange={(e) => setV({ ...v, bauherrLabel: e.target.value })} />
-      </Field>
-      <Field label="Bauadresse" htmlFor={`${id}-ba`}>
-        <Input id={`${id}-ba`} value={v.buildingAddress} onChange={(e) => setV({ ...v, buildingAddress: e.target.value })} placeholder="Straße, PLZ Ort oder Flurstück" autoComplete="off" />
       </Field>
       {project.kind === "neubau" && (
         <Field label="Verkäufer" htmlFor={`${id}-sales`} hint={project.companyId ? undefined : "Erst unter „Projektdaten“ die Hausbaufirma wählen."}>
@@ -344,6 +338,7 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
   const [v, setV] = useState({
     abmNr: project.abmNr ?? "",
     companyId: project.companyId ?? "",
+    buildingAddress: contact?.buildingAddress ?? "",
     location: project.location ?? "",
     bundesland: project.bundesland ?? "",
     architectId: project.architectId ?? "",
@@ -395,6 +390,8 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           flurstueck: v.flurstueck,
           gemarkung: v.gemarkung,
         },
+        // Die Bauadresse gehört zu den Kontaktdaten: die übrigen Felder bleiben, wie sie sind
+        bauherr: { ...contactOf(contact), buildingAddress: v.buildingAddress },
       },
       onClose,
     );
@@ -423,6 +420,9 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           {suggestion && v.abmNr === suggestion && v.abmNr !== project.abmNr && <span className="field-hint">Vorschlag: nächste freie Nummer dieser Hausbaufirma, änderbar.</span>}
         </Field>
       )}
+      <Field label="Bauadresse" htmlFor={`${id}-ba`}>
+        <Input id={`${id}-ba`} value={v.buildingAddress} onChange={(e) => setV({ ...v, buildingAddress: e.target.value })} placeholder="Straße, PLZ Ort oder Flurstück" autoComplete="off" />
+      </Field>
       <div className="dialog-row">
         <Field label="Bauort" htmlFor={`${id}-ort`}>
           <Input id={`${id}-ort`} value={v.location} onChange={(e) => setV({ ...v, location: e.target.value })} placeholder="z. B. Ulm" />
@@ -489,7 +489,7 @@ function ContactForm({ project, data, contact, onClose }: { project: Project; da
   const id = `pc-${project.id}`;
 
   function submit() {
-    // Die Bauadresse steht in der Kachel "Projektbeteiligte" und bleibt hier unverändert
+    // Die Bauadresse steht in der Kachel "Projektdaten" und bleibt hier unverändert
     void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, name2: v.name2, phone2: v.phone2, email2: v.email2 } }, onClose);
   }
 

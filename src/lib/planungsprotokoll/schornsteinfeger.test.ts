@@ -228,7 +228,7 @@ describe("Bauadresse für die Suche", () => {
   it("nennt genau, was fehlt und wo es einzutragen ist", () => {
     const leer = bauadresseFuerSuche({});
     expect(leer.fehlt.map((f) => f.feld)).toEqual(["bauadresse", "plz"]);
-    expect(leer.fehlt[0].text).toBe("Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektbeteiligte“ eintragen (z. B. „Vogelsangstraße 4“).");
+    expect(leer.fehlt[0].text).toBe("Bauadresse fehlt, bitte in der Übersicht über den Stift bei „Projektdaten“ eintragen (z. B. „Vogelsangstraße 4“).");
     expect(leer.fehlt[1].text).toContain("PLZ des Bauorts fehlt");
     expect(leer.fehlt[1].text).toContain("„Projektdaten“");
 
