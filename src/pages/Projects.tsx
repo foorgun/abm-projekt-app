@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowRight, CalendarDays, ChevronRight, FolderSearch, Search, SlidersHorizontal, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronRight, FolderSearch, Plus, Search, SlidersHorizontal, X } from "lucide-react";
 import { DateFilterButton, HeaderDateFilter } from "../components/DateFilterPanel";
 import { ColumnPanel } from "../components/ColumnPanel";
 import { GroupPanel } from "../components/GroupPanel";
 import { DraftsCard } from "../components/DraftsCard";
 import { ProjectHistory } from "../components/ProjectHistory";
 import { PageHead } from "../components/layout/PageHead";
-import { useNewProject } from "../components/NewProjectDialog";
+import { useNewProject, useNewRequest } from "../components/NewProjectDialog";
+import { StatusPill } from "../components/ProjectBits";
 import { Button, buttonClass, Card, Checkbox, DataTable, EmptyState, ErrorState, Input, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import { abmSortKey } from "../lib/abmNr";
 import { isPilot } from "../lib/appMode";
@@ -47,8 +48,8 @@ import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { Project } from "../lib/types";
 
-const TAB_PATH: Record<ProjectTab, string> = { alle: "/projekte", aktiv: "/projekte/aktiv", abgeschlossen: "/projekte/abgeschlossen" };
-const TAB_TITLE: Record<ProjectTab, string> = { alle: "Alle Projekte", aktiv: "Aktive Projekte", abgeschlossen: "Abgeschlossene Projekte" };
+const TAB_PATH: Record<ProjectTab, string> = { anfragen: "/projekte/anfragen", alle: "/projekte", aktiv: "/projekte/aktiv", abgeschlossen: "/projekte/abgeschlossen" };
+const TAB_TITLE: Record<ProjectTab, string> = { anfragen: "Projektanfragen", alle: "Alle Projekte", aktiv: "Aktive Projekte", abgeschlossen: "Abgeschlossene Projekte" };
 
 const historyId = (projectId: string) => `verlauf-${projectId}`;
 
@@ -59,6 +60,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const openNewProject = useNewProject();
+  const openNewRequest = useNewRequest();
   const staff = user.role !== "freiberufler";
   const pilot = isPilot();
   // Filter stehen in der URL (Zurück aus dem Projekt, Reiterwechsel). Zusätzlich je Benutzer gespeichert: wer die Liste
@@ -120,8 +122,19 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   };
   const resetFilters = () => setParams(filtersToParams(clearFilters(filters)), { replace: true });
 
-  // "Neues Projekt" steht schon in der Kopfzeile, deshalb hier kein zweiter Button
-  const head = <PageHead title={TAB_TITLE[tab]} />;
+  // "Neues Projekt" steht schon in der Kopfzeile, deshalb hier kein zweiter Button; "Neue Anfrage" nur bei den Anfragen
+  const head = (
+    <PageHead
+      title={TAB_TITLE[tab]}
+      actions={
+        tab === "anfragen" && staff ? (
+          <Button variant="primary" icon={<Plus size={15} />} onClick={openNewRequest}>
+            Neue Anfrage
+          </Button>
+        ) : undefined
+      }
+    />
+  );
 
   if (error) {
     return (
@@ -147,6 +160,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
   const groups = data ? groupProjects(groupRows, grouping, { companies, team, salespeople: data.salespeople }) : null;
   const counts = data
     ? {
+        anfragen: data.projects.filter(tabFilter("anfragen", false)).length,
         alle: data.projects.filter(tabFilter("alle", filters.storno)).length,
         aktiv: data.projects.filter(tabFilter("aktiv", false)).length,
         abgeschlossen: data.projects.filter(tabFilter("abgeschlossen", false)).length,
@@ -240,7 +254,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
       // numerisch: erst Nummernkreis, dann Nummer (8185-633 vor 8185-1588)
       sortValue: (p) => abmSortKey(p.abmNr),
     },
-    bauherr: { key: "bauherr", header: COLUMN_LABEL.bauherr, render: (p) => p.bauherrLabel, sortValue: (p) => p.bauherrLabel },
+    bauherr: { key: "bauherr", header: COLUMN_LABEL.bauherr, render: (p) => (p.status === "anfrage" && tab !== "anfragen" ? <>{p.bauherrLabel} <StatusPill status={p.status} /></> : p.bauherrLabel), sortValue: (p) => p.bauherrLabel },
     bl_ort: {
       key: "bl_ort",
       header: COLUMN_LABEL.bl_ort,
@@ -277,9 +291,9 @@ export function Projects({ tab }: { tab: ProjectTab }) {
           label="Projektstatus"
           value={tab}
           onChange={(t) => navigate({ pathname: TAB_PATH[t], search: location.search })}
-          items={(["alle", "aktiv", "abgeschlossen"] as ProjectTab[]).map((t) => ({
+          items={(["anfragen", "alle", "aktiv", "abgeschlossen"] as ProjectTab[]).map((t) => ({
             key: t,
-            label: t === "alle" ? "Alle" : t === "aktiv" ? "Aktiv" : "Abgeschlossen",
+            label: { anfragen: "Anfragen", alle: "Alle", aktiv: "Aktiv", abgeschlossen: "Abgeschlossen" }[t],
             count: counts?.[t],
           }))}
         />
@@ -377,8 +391,8 @@ export function Projects({ tab }: { tab: ProjectTab }) {
               {loading || !data
                 ? "Lädt …"
                 : filtered
-                  ? `${list.length} von ${total} ${total === 1 ? "Projekt" : "Projekten"}`
-                  : `${list.length} ${list.length === 1 ? "Projekt" : "Projekte"}`}
+                  ? `${list.length} von ${total} ${tab === "anfragen" ? (total === 1 ? "Anfrage" : "Anfragen") : total === 1 ? "Projekt" : "Projekten"}`
+                  : `${list.length} ${tab === "anfragen" ? (list.length === 1 ? "Anfrage" : "Anfragen") : list.length === 1 ? "Projekt" : "Projekte"}`}
             </span>
           </div>
           {loading || !data ? (
@@ -399,16 +413,16 @@ export function Projects({ tab }: { tab: ProjectTab }) {
           ) : (
             <EmptyState
               icon={<FolderSearch size={18} />}
-              title={filtered ? "Keine Projekte für diese Filter" : "Noch keine Projekte"}
-              text={filtered ? "Passe die Suche oder die Filter an." : undefined}
+              title={filtered ? "Keine Projekte für diese Filter" : tab === "anfragen" ? "Keine offenen Anfragen" : "Noch keine Projekte"}
+              text={filtered ? "Passe die Suche oder die Filter an." : tab === "anfragen" ? "Hier landen Projektanfragen der Verkäufer, bis daraus ein aktives Projekt wird." : undefined}
               action={
                 filtered ? (
                   <Button size="sm" onClick={resetFilters}>
                     Alle Filter zurücksetzen
                   </Button>
                 ) : staff ? (
-                  <Button size="sm" variant="primary" onClick={openNewProject}>
-                    Neues Projekt
+                  <Button size="sm" variant="primary" onClick={tab === "anfragen" ? openNewRequest : openNewProject}>
+                    {tab === "anfragen" ? "Neue Anfrage" : "Neues Projekt"}
                   </Button>
                 ) : undefined
               }

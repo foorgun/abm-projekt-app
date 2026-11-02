@@ -231,6 +231,11 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
               <Row label="Bundesland">{project.bundesland ? `${project.bundesland} · ${bundeslandName(project.bundesland) ?? ""}` : null}</Row>
               <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
               <Row label="Planer">{planer ? `${planer.name}${planer.code ? ` (${planer.code})` : ""}` : null}</Row>
+              {project.anfrageText && (
+                <Row label="Nachricht zur Anfrage">
+                  <span className="preline">{project.anfrageText}</span>
+                </Row>
+              )}
               <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
               <Row label="Baubegleitung">{project.baubegleitung === false ? "Nein, Prozess endet bei der Baufreigabe" : baubegleitungText(project)}</Row>
             </dl>
@@ -347,6 +352,7 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
     planerId: project.planerId ?? "",
     intakeMonth: project.intakeMonth?.slice(0, 7) ?? "",
     baubetreuung: project.baubetreuung ?? "",
+    anfrageText: project.anfrageText ?? "",
     baubegleitung: project.baubegleitung ?? true,
     flurstueck: project.flurstueck ?? "",
     gemarkung: project.gemarkung ?? "",
@@ -390,6 +396,7 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           planerId: v.planerId || null,
           intakeMonth: v.intakeMonth ? `${v.intakeMonth}-01` : null,
           baubetreuung: v.baubetreuung,
+          anfrageText: v.anfrageText,
           flurstueck: v.flurstueck,
           gemarkung: v.gemarkung,
         },
@@ -464,6 +471,11 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           <Select id={`${id}-planer`} value={v.planerId} onChange={(e) => setV({ ...v, planerId: e.target.value })} options={[{ value: "", label: "Noch offen" }, ...planers.map((t) => ({ value: t.id, label: t.name }))]} />
         </Field>
       </div>
+      {(project.status === "anfrage" || project.anfrageText) && (
+        <Field label="Nachricht zur Anfrage" htmlFor={`${id}-anfrage`}>
+          <textarea id={`${id}-anfrage`} className="input textarea" rows={6} value={v.anfrageText} onChange={(e) => setV({ ...v, anfrageText: e.target.value })} />
+        </Field>
+      )}
       <BaubegleitungField
         name={`${id}-baubegleitung`}
         value={v.baubegleitung}

@@ -19,6 +19,7 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
   planerId: "Planer",
   intakeMonth: "Eingangsmonat",
   baubetreuung: "Leistungen Baubegleitung",
+  anfrageText: "Nachricht zur Anfrage",
   flurstueck: "Flurstück",
   gemarkung: "Gemarkung",
   flur: "Flur",
@@ -133,7 +134,8 @@ export function planProjectUpdate(
   const project: Partial<ProjectFields> = {};
   const next: Project = { ...p };
   for (const key of Object.keys(patch.project ?? {}) as (keyof ProjectFields)[]) {
-    const value = clean(patch.project![key]);
+    // Die Nachricht zur Anfrage ist mehrzeilig: Zeilenumbrüche bleiben
+    const value = key === "anfrageText" ? patch.project![key]?.trim() || null : clean(patch.project![key]);
     if (value === (p[key] ?? null)) continue;
     (project as Record<string, string | null>)[key] = value;
     (next as unknown as Record<string, string | null>)[key] = value;

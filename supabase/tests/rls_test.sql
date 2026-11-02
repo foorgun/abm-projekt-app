@@ -1384,6 +1384,29 @@ select test.throws('0021: Freiberufler ändert die Baubegleitung nicht',
   $$select public.update_project('a0000000-0000-4000-8000-000000000001', '{"baubegleitung": false}')$$);
 rollback;
 
+-- Migration 0022: Projektanfragen
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.create_project('{"bauherr_label": "Testanfrage", "status": "anfrage", "anfrage_text": "Termine:\nMittwoch"}');
+select public.create_project('{"bauherr_label": "Kurzweg", "status": "abgeschlossen"}');
+select test.expect('0022: Anlegen als Anfrage',
+  (select count(*) from public.projects where bauherr_label = 'Testanfrage' and status = 'anfrage' and anfrage_text like 'Termine:%'), 1);
+select test.expect('0022: Anlegen kann nur Anfrage oder aktiv',
+  (select count(*) from public.projects where bauherr_label = 'Kurzweg' and status = 'aktiv'), 1);
+select test.expect('0022: Verlauf nennt die Anfrage',
+  (select count(*) from public.activities a join public.projects p on p.id = a.project_id where p.bauherr_label = 'Testanfrage' and a.text = 'Anfrage angelegt'), 1);
+update public.projects set status = 'aktiv' where bauherr_label = 'Testanfrage';
+select test.expect('0022: Annehmen steht im Verlauf',
+  (select count(*) from public.activities a join public.projects p on p.id = a.project_id where p.bauherr_label = 'Testanfrage' and a.text = 'Anfrage als Projekt angenommen'), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Testanfrage'), '{"anfrage_text": "Neu"}');
+select test.expect('0022: Nachricht ändern',
+  (select count(*) from public.projects where bauherr_label = 'Testanfrage' and anfrage_text = 'Neu'), 1);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.throws('0022: Freiberufler legt keine Anfrage an',
+  $$select public.create_project('{"bauherr_label": "Unzulässig", "status": "anfrage"}')$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 18 Schritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions), 18);
 select test.expect('0021: Baubegleitung in Ordnerreihenfolge',

@@ -9,6 +9,7 @@ import {
   Files,
   FolderCheck,
   FolderOpen,
+  Inbox,
   Folders,
   LayoutDashboard,
   ListTodo,
@@ -48,6 +49,7 @@ export const NAV: NavGroup[] = [
   {
     label: "Projekte",
     items: [
+      { to: "/projekte/anfragen", label: "Projektanfragen", icon: Inbox, hiddenFor: ["freiberufler"] },
       { to: "/projekte", label: "Alle Projekte", icon: Folders, end: true },
       { to: "/projekte/aktiv", label: "Aktive Projekte", icon: FolderOpen },
       { to: "/projekte/abgeschlossen", label: "Abgeschlossene Projekte", icon: FolderCheck },

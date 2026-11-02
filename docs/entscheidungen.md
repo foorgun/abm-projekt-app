@@ -148,6 +148,16 @@ Neueste Einträge unten.
 - **Freiberufler** sehen nur Übersicht und Dokumente, keine Aktionen, Stepper nur lesend, dürfen aber hochladen.
   Nicht freigegebene Projekte erscheinen als "nicht gefunden" (verrät nicht, dass es sie gibt).
 
+## Projektanfragen (Migration 0022)
+
+- **Eigener Status `anfrage`** statt eigener Tabelle: Eine Anfrage hat dieselben Felder, Dokumente und Regeln wie ein Projekt und wird
+  durch einen Statuswechsel zum aktiven Projekt. Ablauf: Anfrage, aktiv, abgeschlossen; Absage über "storno".
+- **Anlegen:** "Neue Anfrage" im Reiter Anfragen nutzt den Dialog "Neues Projekt" mit Dokumenten und Prüfmaske. Die Mail des
+  Verkäufers mit den Terminvorschlägen steht als Freitext in `projects.anfrage_text`; die Termine werden nicht ausgewertet.
+- **Warnungen, Dashboard und Pipeline** zählen weiter nur aktive Projekte. Der Reiter "Alle" zeigt Anfragen mit Kennzeichen.
+- **Zurück zur Anfrage** geht nur bei aktiven Projekten ohne erledigten Schritt (für versehentliches Annehmen).
+- **Ablage:** Dokumente der Art "Sonstiges" (z. B. Bebauungsplan, Exposé) landen wie bisher vorläufig in "00 Verträge".
+
 ## Baubegleitung als Wahl je Projekt (Migration 0021)
 
 - **Reihenfolge:** Die Stufe Baubegleitung folgt den Ordnern in `11 Baubegleitung`: Ausschreibung, Hausanschlüsse,

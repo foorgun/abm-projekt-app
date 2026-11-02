@@ -47,21 +47,30 @@ import { AiSpinner, Button, Checkbox, Dialog, Field, Input, Pill, Select, type T
 /** Öffnet den Dialog "Neues Projekt"; mit der ID eines Entwurfs wird dieser fortgesetzt. */
 // Als Klick-Handler bekommt die Funktion ein Ereignis statt einer ID, deshalb "unknown": nur Zeichenketten zählen
 const NewProjectContext = createContext<(draftId?: unknown) => void>(() => {});
+/** Öffnet denselben Dialog für eine Projektanfrage vom Verkäufer. */
+const NewRequestContext = createContext<() => void>(() => {});
 
 /** Stellt den Dialog "Neues Projekt" bereit (Kopfzeile, Projektliste, leere Zustände, Prüfliste). */
 export function NewProjectProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<{ open: boolean; draftId: string | null }>({ open: false, draftId: null });
-  const openDialog = useCallback((draftId?: unknown) => setState({ open: true, draftId: typeof draftId === "string" ? draftId : null }), []);
+  const [state, setState] = useState<{ open: boolean; draftId: string | null; request: boolean }>({ open: false, draftId: null, request: false });
+  const openDialog = useCallback((draftId?: unknown) => setState({ open: true, draftId: typeof draftId === "string" ? draftId : null, request: false }), []);
+  const openRequest = useCallback(() => setState({ open: true, draftId: null, request: true }), []);
   return (
     <NewProjectContext.Provider value={openDialog}>
-      {children}
-      {state.open && <NewProjectDialog key={state.draftId ?? "neu"} draftId={state.draftId} onClose={() => setState({ open: false, draftId: null })} />}
+      <NewRequestContext.Provider value={openRequest}>
+        {children}
+        {state.open && <NewProjectDialog key={state.draftId ?? "neu"} draftId={state.draftId} request={state.request} onClose={() => setState({ open: false, draftId: null, request: false })} />}
+      </NewRequestContext.Provider>
     </NewProjectContext.Provider>
   );
 }
 
 export function useNewProject() {
   return useContext(NewProjectContext);
+}
+
+export function useNewRequest() {
+  return useContext(NewRequestContext);
 }
 
 const SICHERHEIT_TONE: Record<Sicherheit, Tone> = { hoch: "ok", mittel: "neutral", niedrig: "warn" };
@@ -157,7 +166,7 @@ function displayDraft(docs: DocEntry[], merged: MergedDraft): ProjectDraft {
   };
 }
 
-function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: string | null }) {
+function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; draftId: string | null; request: boolean }) {
   const { data, mutate, today, repo, reload } = useData();
   const { user } = useSession();
   const navigate = useNavigate();
@@ -186,6 +195,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
         architectId: architects[0]?.id ?? null,
         planerId: null,
         intakeMonth: monthStart(today),
+        ...(request ? { status: "anfrage" as const, anfrageText: null } : {}),
         baubegleitung: true,
         vermesser: null,
         flurstueck: null,
@@ -255,6 +265,10 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     if (step === "form" && draft) document.querySelector(".dialog-xwide .dialog-body")?.scrollTo(0, 0);
   }, [step, draft]);
 
+  /** Anfrage statt Projekt (bleibt auch beim Fortsetzen eines gespeicherten Entwurfs erhalten) */
+  const isRequest = v.status === "anfrage";
+  const noun = isRequest ? "Anfrage" : "Projekt";
+  const dialogTitle = isRequest ? "Neue Anfrage" : "Neues Projekt";
   const errors = validateNewProject(v, projects);
   const show = (k: keyof ProjectFormErrors) => (touched ? errors[k] : undefined);
   const markEdited = (keys: string[]) => draft && setEdited((old) => new Set([...old, ...keys]));
@@ -489,7 +503,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     const { filed, errors: filingErrors } = await fileInto(res.value.id);
     setBusy(false);
     if (filed.length) notes.push(`Abgelegt: ${filed.join(", ")}.`);
-    toast(`Projekt ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
+    toast(`${noun} ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
     if (filingErrors.length)
       toast(
         filingErrors.length === 1 ? "Ein Dokument nicht abgelegt" : `${filingErrors.length} Dokumente nicht abgelegt`,
@@ -617,7 +631,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
     const ready = stored.length > 0 && !running;
     return (
       <Dialog
-        title="Neues Projekt"
+        title={dialogTitle}
         wide
         onClose={closeStable}
         footer={
@@ -754,7 +768,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
 
   return (
     <Dialog
-      title={draft ? "Neues Projekt prüfen" : "Neues Projekt"}
+      title={draft ? `${dialogTitle} prüfen` : dialogTitle}
       wide={!draft}
       xwide={Boolean(draft)}
       onClose={closeStable}
@@ -769,7 +783,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
             {draft && savedId ? "Später weitermachen" : "Abbrechen"}
           </Button>
           <Button variant="primary" type="submit" form="new-project" disabled={busy}>
-            {busy ? "Wird angelegt …" : draft ? "Bestätigen und anlegen" : "Projekt anlegen"}
+            {busy ? "Wird angelegt …" : draft ? "Bestätigen und anlegen" : `${noun} anlegen`}
           </Button>
         </>
       }
@@ -866,6 +880,12 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
                 .join(", ")}
               {similar.length > 3 ? " …" : ""}). Vor dem Anlegen kannst du wählen, ob das Dokument dorthin soll.
             </p>
+          )}
+
+          {isRequest && (
+            <Field label="Nachricht des Verkäufers" htmlFor="np-anfrage" hint="Zum Beispiel die Mail mit den Terminvorschlägen hier einfügen. Optional.">
+              <textarea id="np-anfrage" className="input textarea" rows={6} value={v.anfrageText ?? ""} onChange={(e) => set({ anfrageText: e.target.value || null })} />
+            </Field>
           )}
 
           <div className="dialog-row">

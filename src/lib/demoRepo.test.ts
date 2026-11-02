@@ -8,6 +8,34 @@ const admin = { name: "Mehmet Cetin", role: "admin" as const };
 const freelancer = { name: "Frei", role: "freiberufler" as const };
 const repo = () => createDemoRepo(TODAY, { delayMs: 0 });
 
+describe("Projektanfragen", () => {
+  it("Anfrage anlegen, annehmen und zurücknehmen; die Nachricht bleibt mehrzeilig", async () => {
+    const r = repo();
+    await r.load(admin);
+    const base = { kind: "neubau", abmNr: null, hausbauNr: null, location: null, companyId: null, salespersonId: null, architectId: null, planerId: null, intakeMonth: null, createFolders: false } as const;
+    const a = await r.createProject({ ...base, bauherrLabel: "Testanfrage", status: "anfrage", anfrageText: " Termine:\nMittwoch\nFreitag " });
+    expect(a.status).toBe("anfrage");
+    expect(a.anfrageText).toBe("Termine:\nMittwoch\nFreitag");
+    expect((await r.createProject({ ...base, bauherrLabel: "Testprojekt" })).status).toBe("aktiv");
+
+    await r.setProjectStatus(a.id, "aktiv");
+    await r.setProjectStatus(a.id, "anfrage");
+    await r.updateProject(a.id, { project: { anfrageText: "Zeile 1\nZeile 2" } });
+    const d = await r.load(admin);
+    expect(d.projects.find((p) => p.id === a.id)).toMatchObject({ status: "anfrage", anfrageText: "Zeile 1\nZeile 2" });
+    const texts = d.activities.filter((x) => x.projectId === a.id).map((x) => x.text);
+    for (const t of ["Anfrage angelegt", "Anfrage als Projekt angenommen", "Zurück zu den Anfragen"]) expect(texts).toContain(t);
+  });
+
+  it("zählen nicht als aktive Projekte: keine Warnungen", async () => {
+    const d = await repo().load(admin);
+    const anfragen = d.projects.filter((p) => p.status === "anfrage");
+    expect(anfragen.length).toBeGreaterThan(0);
+    const alerts = computeAlerts(d, TODAY);
+    expect(alerts.some((x) => anfragen.some((p) => p.id === x.projectId))).toBe(false);
+  });
+});
+
 describe("Baubegleitung", () => {
   it("wird beim Anlegen gespeichert, gilt ohne Angabe als ja und lässt sich ändern", async () => {
     const r = repo();

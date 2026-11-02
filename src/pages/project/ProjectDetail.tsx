@@ -80,6 +80,12 @@ export function ProjectDetail() {
   const activities = data.activities.filter((a) => a.projectId === p.id);
   const contact = data.bauherren.find((b) => b.projectId === p.id) ?? null;
 
+  const listPath = p.status === "anfrage" ? "/projekte/anfragen" : p.status === "aktiv" ? "/projekte/aktiv" : "/projekte";
+  const setStatus = async (st: Project["status"], message: string) => {
+    const res = await mutate((r) => r.setProjectStatus(p.id, st));
+    toast(res.ok ? message : res.error, res.ok ? "ok" : "danger");
+  };
+
   const pilot = isPilot();
   const visibleTabs = TABS.filter(
     (t) => (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll")) && (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)),
@@ -102,7 +108,7 @@ export function ProjectDetail() {
   return (
     <>
       <nav className="breadcrumb" aria-label="Brotkrumen">
-        <Link to={p.status === "aktiv" ? "/projekte/aktiv" : "/projekte"}>Projekte</Link>
+        <Link to={listPath}>{p.status === "anfrage" ? "Anfragen" : "Projekte"}</Link>
         <ChevronRight size={14} aria-hidden />
         <span aria-current="page">{projectTitle(p)}</span>
       </nav>
@@ -123,6 +129,11 @@ export function ProjectDetail() {
         </div>
         {staff && (
           <div className="page-head-actions">
+            {p.status === "anfrage" && (
+              <Button variant="primary" icon={<Check size={15} />} onClick={() => void setStatus("aktiv", "Anfrage ist jetzt ein aktives Projekt")}>
+                Als Projekt annehmen
+              </Button>
+            )}
             {/* Seltene Aktionen im Menü; die häufige (nächster Schritt erledigt) steht in der Prozesskarte */}
             <Menu
               items={[
@@ -140,15 +151,14 @@ export function ProjectDetail() {
                       },
                       "sep",
                     ] as (MenuEntry | "sep")[])),
-                ...(["aktiv", "abgeschlossen", "storno"] as Project["status"][])
-                  .filter((st) => st !== p.status)
-                  .map((st) => ({
-                    label: st === "aktiv" ? "Wieder aktiv setzen" : st === "abgeschlossen" ? "Als abgeschlossen markieren" : "Stornieren",
-                    onSelect: async () => {
-                      const res = await mutate((r) => r.setProjectStatus(p.id, st));
-                      toast(res.ok ? "Status geändert" : res.error, res.ok ? "ok" : "danger");
-                    },
-                  })),
+                // Eine Anfrage wird angenommen (Knopf oben) oder abgesagt; ein versehentlich angenommenes Projekt ohne erledigte Schritte kann zurück
+                ...(p.status === "anfrage"
+                  ? (["storno"] as Project["status"][])
+                  : ([...(p.status === "aktiv" && progress.done === 0 ? ["anfrage"] : []), "aktiv", "abgeschlossen", "storno"] as Project["status"][]).filter((st) => st !== p.status)
+                ).map((st) => ({
+                  label: st === "anfrage" ? "Zurück zu den Anfragen" : st === "aktiv" ? "Wieder aktiv setzen" : st === "abgeschlossen" ? "Als abgeschlossen markieren" : p.status === "anfrage" ? "Anfrage absagen (stornieren)" : "Stornieren",
+                  onSelect: () => setStatus(st, "Status geändert"),
+                })),
                 // Endgültig löschen: nur Admin (die Datenbank prüft das ebenfalls)
                 ...(admin ? (["sep", { label: "Projekt löschen …", icon: <Trash2 size={15} />, onSelect: () => setDeleteOpen(true) }] as (MenuEntry | "sep")[]) : []),
               ]}
@@ -167,7 +177,7 @@ export function ProjectDetail() {
           project={p}
           counts={{ documents: documents.length, tasks: tasks.length, invoices: invoices.length }}
           onClose={() => setDeleteOpen(false)}
-          onDeleted={() => navigate(p.status === "aktiv" ? "/projekte/aktiv" : "/projekte")}
+          onDeleted={() => navigate(listPath)}
         />
       )}
 
