@@ -10,7 +10,7 @@ import { formatDate } from "../lib/format";
 import { matchesQuery, teamCode } from "../lib/projectFilters";
 import { allStages, phaseOf, stageMoveTarget, stageOf, type Stage } from "../lib/projects";
 import { useSession } from "../lib/session";
-import type { StepDefinition } from "../lib/steps";
+import { BAUBEGLEITUNG_STAGE, type StepDefinition } from "../lib/steps";
 import { useData } from "../lib/store";
 import type { Project } from "../lib/types";
 
@@ -82,6 +82,10 @@ export function Pipeline() {
   function requestMove(project: Project, toIndex: number) {
     const from = stageOf(project, steps).index;
     if (toIndex === from) return;
+    if (project.baubegleitung === false && stages[toIndex]?.name === BAUBEGLEITUNG_STAGE) {
+      toast("Dieses Projekt hat keine Baubegleitung, der Prozess endet bei der Baufreigabe.", "danger");
+      return;
+    }
     const target = stageMoveTarget(project, steps);
     if (toIndex !== from + 1 || !target) {
       toast(MOVE_HINT, "danger");

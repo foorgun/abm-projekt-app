@@ -148,9 +148,24 @@ Neueste Einträge unten.
 - **Freiberufler** sehen nur Übersicht und Dokumente, keine Aktionen, Stepper nur lesend, dürfen aber hochladen.
   Nicht freigegebene Projekte erscheinen als "nicht gefunden" (verrät nicht, dass es sie gibt).
 
+## Baubegleitung als Wahl je Projekt (Migration 0021)
+
+- **Reihenfolge:** Die Stufe Baubegleitung folgt den Ordnern in `11 Baubegleitung`: Ausschreibung, Hausanschlüsse,
+  Ausführungspläne, Bauanlaufgespräch, Vermesser, Straßensperrung, BP-Kellerbaufirma, Hausanschlüsse nach der
+  Hausaufstellung, Baustellentermine. Damit gibt es 18 statt 12 Schritte; die Schritte 1 bis 9 bleiben unverändert.
+- **Schlüssel bleiben:** Der Schritt "Hausaufstellung" heißt jetzt wie Ordner 09, der Schlüssel `hausaufstellung` bleibt,
+  damit erfasste Termine und Rechnungsauslöser erhalten bleiben.
+- **Ohne Baubegleitung** (`projects.baubegleitung = false`) endet der Prozess bei Schritt 9, der Baufreigabe. `stepsFor`
+  in `src/lib/projects.ts` ist die eine Stelle dafür; Phase, Fortschritt, Stufe und Stepper rechnen damit. Schon erfasste
+  Termine der Baubegleitung bleiben beim Abwählen gespeichert und zählen erst wieder, wenn sie erneut gewählt wird.
+  Der Bestand steht auf "ja". Die Ordnervorlage bleibt für alle Projekte gleich.
+- **Getrennt von "Baubetreuung":** Das Feld bleibt der Freitext aus der Excel ("3.1+3.2").
+- **Stepper:** Mit mehr als 9 Schritten läuft er in Zeilen zu 9 Schritten, damit bei 1280 px nichts hinter dem Scrollen
+  verschwindet (Abschnitt "Stepper" oben gilt damit nur noch für die einzelne Zeile).
+
 ## Rückmeldung zu Schritt 5
 
-- **Stufen (Migration 0003):** `step_definitions.stage` fasst die 12 Schritte zu 4 Stufen zusammen:
+- **Stufen (Migration 0003):** `step_definitions.stage` fasst die damals 12 Schritte (heute 18, siehe Migration 0021) zu 4 Stufen zusammen:
   Anbahnung (Plangespräch, Vertrag versendet, Vertrag zurück) · Planung (Vermesser, Entwurf, Vorabzug) ·
   Genehmigung (Übergabe Baugesuch, Genehmigung, Baufreigabe) · Baubegleitung (Bauanlaufgespräch, Anschlüsse, Hausaufstellung).
   **Stufe eines Projekts = Stufe des Schritts, der nach der aktuellen Phase ansteht** (dort wird gearbeitet); ein Projekt mit

@@ -25,6 +25,7 @@ import type {
   Task,
   TeamMember,
 } from "../lib/types";
+import { BAUBEGLEITUNG_STAGE } from "../lib/steps";
 import { allStepDefinitions, buildFolderTemplates } from "./templates";
 
 export const DEMO_SEED = 20261009;
@@ -129,9 +130,15 @@ const GAPS: Record<string, number> = {
   baugesuch_uebergabe: 16,
   baugenehmigung: 85,
   baufreigabe: 14,
-  bauanlaufgespraech: 20,
-  hausanschluesse_beantragt: 12,
-  hausaufstellung: 55,
+  ausschreibung: 10,
+  hausanschluesse_beantragt: 8,
+  ausfuehrungsplaene: 7,
+  bauanlaufgespraech: 7,
+  vermesser_baubegleitung: 6,
+  strassensperrung: 5,
+  bp_kellerbaufirma: 12,
+  hausaufstellung: 40,
+  baustellentermine: 7,
 };
 
 interface ProjectSpec {
@@ -143,6 +150,8 @@ interface ProjectSpec {
   intakeAgo?: number;
   status?: Project["status"];
   kind?: Project["kind"];
+  /** false: Projekt ohne Baubegleitung, der Prozess endet bei der Baufreigabe. */
+  baubegleitung?: boolean;
   /** Schritt-Keys, die trotz späterer Schritte fehlen ("fehlt noch"). */
   skip?: string[];
   name?: string;
@@ -173,11 +182,13 @@ const SPECIAL: ProjectSpec[] = [
   // 7: zweite dringende Rechnung (kleiner, kürzer überfällig)
   { stage: 9, lastAgo: 30, name: "Lorenz", town: "Senden", companyId: "c-sh" },
   // 8, 9: abgeschlossen
-  { stage: 12, lastAgo: 38, status: "abgeschlossen", name: "Brandner", town: "Blaustein", companyId: "c-bz" },
-  { stage: 12, lastAgo: 96, status: "abgeschlossen", name: "Gruber", town: "Laupheim", companyId: "c-lh" },
+  { stage: 18, lastAgo: 38, status: "abgeschlossen", name: "Brandner", town: "Blaustein", companyId: "c-bz" },
+  { stage: 18, lastAgo: 96, status: "abgeschlossen", name: "Gruber", town: "Laupheim", companyId: "c-lh" },
   // 10, 11: gleicher Nachname in zwei Orten (für mehrdeutige Mails an den Agenten)
   { stage: 5, lastAgo: 6, name: "Vogel", town: "Ulm", companyId: "c-bz" },
   { stage: 4, lastAgo: 3, name: "Vogel", town: "Senden", companyId: "c-lh" },
+  // 12: ohne Baubegleitung, Prozess bis zur Baufreigabe durchlaufen
+  { stage: 9, lastAgo: 12, name: "Haas", town: "Ulm", companyId: "c-bz", baubegleitung: false },
 ];
 
 const RANDOM_COUNT = 34;
@@ -212,14 +223,14 @@ export const TASK_TEMPLATES: TaskTemplate[] = [
   { title: "Vorabzug an Bauherrschaft senden", due: -3, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "vorabzug_versendet") },
   { title: "Rückfrage Landratsamt zu Stellplätzen beantworten", due: -1, fits: (p) => has(p, "baugesuch_uebergabe") && !has(p, "baugenehmigung") },
   { title: "Unterschriften Bauantragspläne einholen", due: -6, fits: (p) => has(p, "vorabzug_versendet") && !has(p, "baugesuch_uebergabe") },
-  { title: "Bauanlaufgespräch terminieren", due: 0, fits: (p) => has(p, "baufreigabe") && !has(p, "bauanlaufgespraech") },
+  { title: "Bauanlaufgespräch terminieren", due: 0, fits: (p) => p.baubegleitung !== false && has(p, "baufreigabe") && !has(p, "bauanlaufgespraech") },
   { title: "Wohnflächenberechnung prüfen", due: 0, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "baugesuch_uebergabe") },
   { title: "Entwässerungsantrag vorbereiten", due: 2, fits: (p) => has(p, "vorabzug_versendet") && !has(p, "baugesuch_uebergabe") },
   { title: "Statik beim Tragwerksplaner anfragen", due: 3, fits: (p) => has(p, "entwurf_freigegeben") && !has(p, "baugesuch_uebergabe") },
-  { title: "Hausanschlüsse Strom und Wasser beantragen", due: 4, fits: (p) => has(p, "baufreigabe") && !has(p, "hausanschluesse_beantragt") },
+  { title: "Hausanschlüsse Strom und Wasser beantragen", due: 4, fits: (p) => p.baubegleitung !== false && has(p, "baufreigabe") && !has(p, "hausanschluesse_beantragt") },
   { title: "Amtlichen Lageplan beim Vermesser bestellen", due: 6, fits: (p) => has(p, "vermesser_beauftragt") && !has(p, "baugesuch_uebergabe") },
-  { title: "Baustellentermin mit Kellerbaufirma abstimmen", due: 12, fits: (p) => has(p, "bauanlaufgespraech") && !has(p, "hausaufstellung") },
-  { title: "Preisspiegel Erdarbeiten erstellen", due: 18, fits: (p) => has(p, "baufreigabe") && !has(p, "hausaufstellung") },
+  { title: "Baustellentermin mit Kellerbaufirma abstimmen", due: 12, fits: (p) => p.baubegleitung !== false && has(p, "bauanlaufgespraech") && !has(p, "hausaufstellung") },
+  { title: "Preisspiegel Erdarbeiten erstellen", due: 18, fits: (p) => p.baubegleitung !== false && has(p, "baufreigabe") && !has(p, "hausaufstellung") },
   { title: "Entwurf mit Bauherrschaft besprechen", due: 5, fits: (p) => has(p, "vertrag_zurueck") && !has(p, "entwurf_freigegeben") },
   { title: "Team-Besprechung Projektliste", due: 5 },
   { title: "Eingangsbestätigung ablegen", due: -8, done: true, fits: (p) => has(p, "baugesuch_uebergabe") },
@@ -250,6 +261,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       intakeAgo: Math.round(((i + r.next()) / RANDOM_COUNT) * 360),
       status: r.chance(0.04) ? "storno" : undefined,
       kind: r.chance(0.05) ? "bauvoranfrage" : "neubau",
+      baubegleitung: i % 4 !== 0,
     });
   }
 
@@ -282,7 +294,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       // Vorwärts: ab Eingang, solange der nächste Schritt nicht in der Zukunft liegt
       cursor = -spec.intakeAgo;
       done = [];
-      for (const s of steps) {
+      for (const s of spec.baubegleitung === false ? steps.filter((x) => x.stage !== BAUBEGLEITUNG_STAGE) : steps) {
         const next = cursor + Math.max(1, Math.round((GAPS[s.key] ?? 10) * (0.7 + r.next() * 0.5))) + (s.key === "plangespraech" ? r.int(3, 12) : 0);
         if (next > 0) break;
         cursor = next;
@@ -309,12 +321,15 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
           ? `${company.numberPrefix}-${numberCounters[company.numberPrefix]++}`
           : null;
 
+    const lastDate = spec.baubegleitung === false ? dates.baufreigabe : dates.baustellentermine;
+
     projects.push({
       id,
       abmNr,
       hausbauNr: company ? `HB-${firstDate.slice(2, 4)}${pad(r.int(100, 999))}` : null,
       kind,
-      status: spec.status ?? (dates.hausaufstellung && daysAgo(today, dates.hausaufstellung) > 21 ? "abgeschlossen" : "aktiv"),
+      // Abgeschlossen: letzter Schritt des Projekts liegt länger zurück (ohne Baubegleitung die Baufreigabe, Sonderfälle bleiben aktiv)
+      status: spec.status ?? (lastDate && daysAgo(today, lastDate) > 21 && spec.intakeAgo !== undefined ? "abgeschlossen" : "aktiv"),
       companyId,
       salespersonId: sales.length ? r.pick(sales).id : null,
       bauherrLabel: name!,
@@ -323,6 +338,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       architectId: r.pick(["t-be", "t-mc"]),
       planerId: spec.planerId !== undefined ? spec.planerId : r.pick(["t-tb", "t-sk", null]),
       baubetreuung: r.chance(0.3) ? "3.1+3.2" : null,
+      baubegleitung: spec.baubegleitung ?? true,
       intakeMonth: monthStart(firstDate),
       notes: null,
       steps: dates,
@@ -403,6 +419,9 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
 
     if (idx === 7) {
       inv(p, "Abschlag Baubegleitung", 2400, "baufreigabe", "faellig", addDays(today, -12), null, null);
+    } else if (p.baubegleitung === false) {
+      // Ohne Baubegleitung ist die Baufreigabe der letzte Schritt
+      if (p.steps.baufreigabe) billed(p, "Schlussrechnung", r.pick([2500, 3200, 4000]), "baufreigabe", p.steps.baufreigabe, p.status === "abgeschlossen");
     } else if (p.steps.hausaufstellung) {
       billed(p, "Schlussrechnung", r.pick([2500, 3200, 4000]), "hausaufstellung", p.steps.hausaufstellung, p.status === "abgeschlossen");
     } else if (p.status === "aktiv" && p.steps.baufreigabe) {

@@ -49,6 +49,8 @@ export interface NewProject {
   planerId: string | null;
   /** Erster Tag des Eingangsmonats */
   intakeMonth: string | null;
+  /** Baubegleitung beauftragt? Nicht genannt gilt als ja (ältere Entwürfe). */
+  baubegleitung?: boolean;
   /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */
   vermesser?: string | null;
   flurstueck?: string | null;
@@ -112,6 +114,8 @@ export type ProjectFields = Pick<
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */
 export interface ProjectPatch {
   project?: Partial<ProjectFields>;
+  /** Ja/Nein statt Text, deshalb nicht in den Projektfeldern. */
+  baubegleitung?: boolean;
   /** Alle Kontaktfelder auf einmal (die Kachel wird als Ganzes gespeichert). */
   bauherr?: BauherrInput;
   /** Beteiligte je Rolle; null trägt den Beteiligten aus. */

@@ -8,7 +8,7 @@ import { Button, buttonClass, Card, CardBody, CardHead, Dialog, EmptyState, Erro
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { isPilot, PILOT_PROJECT_TABS } from "../../lib/appMode";
 import { formatDate } from "../../lib/format";
-import { missingSteps, nextStep, phaseOf, progressOf, projectTitle } from "../../lib/projects";
+import { missingSteps, nextStep, phaseOf, progressOf, projectTitle, stepsFor } from "../../lib/projects";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
 import type { Project, Task } from "../../lib/types";
@@ -196,7 +196,7 @@ export function ProjectDetail() {
             }
           />
           <CardBody>
-            <Stepper items={steps.map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))} onChangeDate={staff ? (k, d) => void changeDate(k, d) : undefined} />
+            <Stepper items={stepsFor(p, steps).map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))} onChangeDate={staff ? (k, d) => void changeDate(k, d) : undefined} />
           </CardBody>
         </Card>
 

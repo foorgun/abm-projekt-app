@@ -39,7 +39,7 @@ export const COLS = {
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, intake_month, notes, flurstueck, gemarkung, flur, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, baubegleitung, intake_month, notes, flurstueck, gemarkung, flur, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
   bauherren:
@@ -119,6 +119,7 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   architectId: r.architect_id ?? null,
   planerId: r.planer_id ?? null,
   baubetreuung: r.baubetreuung ?? null,
+  baubegleitung: r.baubegleitung ?? true,
   intakeMonth: r.intake_month ?? null,
   notes: r.notes ?? null,
   flurstueck: r.flurstueck ?? null,

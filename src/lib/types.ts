@@ -47,6 +47,8 @@ export interface Project {
   architectId: string | null;
   planerId: string | null;
   baubetreuung: string | null;
+  /** Baubegleitung beauftragt? Nicht genannt gilt als ja; bei nein endet der Prozess bei der Baufreigabe (Migration 0021). */
+  baubegleitung?: boolean;
   intakeMonth: string | null;
   notes: string | null;
   /** Flurstück und Gemarkung des Baugrundstücks (optional; dienen auch der Duplikatprüfung). */

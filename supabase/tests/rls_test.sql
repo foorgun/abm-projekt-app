@@ -106,7 +106,7 @@ select test.expect('Freiberufler sieht Schritte seines Projekts', (select count(
 select test.expect('Freiberufler sieht KEINE Rechnungen',         (select count(*) from public.invoices), 0);
 select test.expect('Freiberufler sieht KEINE Bauherren-Kontakte', (select count(*) from public.bauherren), 0);
 select test.expect('Freiberufler sieht keine Firmenstammdaten',   (select count(*) from public.companies), 0);
-select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 12);
+select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 18);
 select test.expect('Alle Schritte haben eine Stufe (0003)',       (select count(*) from public.step_definitions where stage is null), 0);
 select test.expect('Freiberufler sieht nur Dateien seines Projekts', (select count(*) from storage.objects), 1);
 select test.throws('Freiberufler darf kein Projekt anlegen',
@@ -1363,8 +1363,34 @@ select test.throws('0019: anon spricht Dateien eines Entwurfs nicht an', $$selec
 select test.throws('0019: anon spricht die Kostenübersicht nicht an', $$select count(*) from public.extraction_costs_by_month$$);
 rollback;
 
+-- Migration 0021: Baubegleitung je Projekt
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.create_project('{"bauherr_label": "Mitbegleitung"}');
+select public.create_project('{"bauherr_label": "Ohnebegleitung", "baubegleitung": false}');
+select test.expect('0021: ohne Angabe gilt Baubegleitung ja',
+  (select count(*) from public.projects where bauherr_label = 'Mitbegleitung' and baubegleitung), 1);
+select test.expect('0021: Anlegen ohne Baubegleitung',
+  (select count(*) from public.projects where bauherr_label = 'Ohnebegleitung' and not baubegleitung), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Ohnebegleitung'), '{"baubegleitung": true}');
+select test.expect('0021: Baubegleitung nachträglich ändern',
+  (select count(*) from public.projects where bauherr_label = 'Ohnebegleitung' and baubegleitung), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Ohnebegleitung'), '{"location": "Ulm"}');
+select test.expect('0021: andere Änderung lässt die Baubegleitung stehen',
+  (select count(*) from public.projects where bauherr_label = 'Ohnebegleitung' and baubegleitung), 1);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.throws('0021: Freiberufler ändert die Baubegleitung nicht',
+  $$select public.update_project('a0000000-0000-4000-8000-000000000001', '{"baubegleitung": false}')$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
-select test.expect('Seed: 12 Schritte definiert (5 aus Excel + 7 aus 0002)', (select count(*) from public.step_definitions), 12);
+select test.expect('Seed: 18 Schritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions), 18);
+select test.expect('0021: Baubegleitung in Ordnerreihenfolge',
+  (select count(*) from (select string_agg(key, ',' order by sort_order) as keys from public.step_definitions where stage = 'Baubegleitung') x
+   where keys = 'ausschreibung,hausanschluesse_beantragt,ausfuehrungsplaene,bauanlaufgespraech,vermesser_baubegleitung,strassensperrung,bp_kellerbaufirma,hausaufstellung,baustellentermine'), 1);
+select test.expect('0021: Baufreigabe ist der neunte Schritt',
+  (select count(*) from public.step_definitions where sort_order < (select sort_order from public.step_definitions where key = 'baufreigabe')), 8);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',
   (select count(*) from public.invoices where status = 'faellig' and sent_on is null), 1);
 

@@ -36,6 +36,7 @@ import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { ContractMeta, DraftFileRecord, Project, ProjectDraftRecord } from "../lib/types";
 import { AbmHinweise } from "./AbmHinweise";
+import { BaubegleitungField } from "./BaubegleitungField";
 import { BundeslandSelect } from "./BundeslandSelect";
 import { DocumentCards, pagesText, UploadList, type DocEntry } from "./DraftDocuments";
 import { DocumentPreview } from "./DocumentPreview";
@@ -185,6 +186,7 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
         architectId: architects[0]?.id ?? null,
         planerId: null,
         intakeMonth: monthStart(today),
+        baubegleitung: true,
         vermesser: null,
         flurstueck: null,
         gemarkung: null,
@@ -967,6 +969,8 @@ function NewProjectDialog({ onClose, draftId }: { onClose: () => void; draftId: 
               <Err k="intakeMonth" />
             </Field>
           </div>
+
+          <BaubegleitungField name="np-baubegleitung" value={v.baubegleitung ?? true} onChange={(baubegleitung) => set({ baubegleitung })} />
 
           <div className="dialog-row">
             <Field label="Architekt" htmlFor="np-arch">

@@ -283,6 +283,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         architectId: input.architectId,
         planerId: input.planerId,
         baubetreuung: null,
+        baubegleitung: input.baubegleitung ?? true,
         intakeMonth: input.intakeMonth,
         notes: null,
         flurstueck: input.flurstueck?.trim() || null,
@@ -332,6 +333,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const first = Object.values(plan.errors)[0];
       if (first) throw new Error(first);
       Object.assign(p, plan.project);
+      if (plan.baubegleitung !== undefined) p.baubegleitung = plan.baubegleitung;
       if (plan.bauherr) {
         const row = { projectId, ...plan.bauherr, name: plan.bauherr.name ?? p.bauherrLabel };
         const cur = db.bauherren.find((b) => b.projectId === projectId);
