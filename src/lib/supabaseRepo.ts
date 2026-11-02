@@ -355,6 +355,7 @@ export function createSupabaseRepo(): Repo {
             flur: input.flur ?? null,
           }),
           kind: input.kind,
+          baubegleitung: input.baubegleitung ?? true,
         },
         p_bauherr: input.bauherr ? bauherrJson(input.bauherr) : null,
         p_vermesser: input.vermesser?.trim() || null,
@@ -378,7 +379,7 @@ export function createSupabaseRepo(): Repo {
       // Eine Funktion in der Datenbank ändert Projekt, Bauherr, Beteiligte, Aufgabe und Protokoll in einer Transaktion (Migration 0008)
       const { error } = await sb.rpc("update_project", {
         p_id: projectId,
-        p_project: projectJson(plan.project),
+        p_project: { ...projectJson(plan.project), ...(plan.baubegleitung !== undefined ? { baubegleitung: plan.baubegleitung } : {}) },
         p_bauherr: plan.bauherr ? bauherrJson(plan.bauherr) : null,
         p_parties: Object.keys(plan.parties).length ? plan.parties : null,
         p_activity: plan.activity,

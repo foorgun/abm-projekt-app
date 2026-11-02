@@ -7,7 +7,7 @@
 
 import { checkFile, extension } from "../lib/files";
 import { compactText } from "../lib/projectFilters";
-import { concretePath } from "../lib/folders";
+import { concretePath, isBaubegleitungFolder } from "../lib/folders";
 import type { AgentRule, Project } from "../lib/types";
 import type { AiAdvisor, AiRequest, AiSuggestion, AttachmentDecision, ClassifyContext, MailAttachment, MailDecision, MailMessage } from "./types";
 
@@ -360,6 +360,11 @@ export function classify(mail: MailMessage, ctx: ClassifyContext, ai?: AiAdvisor
       const v = validateAi(ai(req), req);
       notes.push(...v.notes);
       if (v.folderTemplate) folder = { template: v.folderTemplate, confidence: v.confidence, reason: "KI-Vorschlag aus der Ordnervorlage" };
+    }
+
+    // Ordner der Baubegleitung nie automatisch bei einem Projekt ohne Baubegleitung: das soll ein Mensch ansehen
+    if (folder.template && isBaubegleitungFolder(folder.template) && ctx.projects.find((p) => p.id === project.projectId)?.baubegleitung === false) {
+      folder = { template: null, confidence: 0, reason: `${folder.reason}, aber das Projekt hat keine Baubegleitung` };
     }
 
     const confidence = project.projectId && folder.template ? Math.min(project.confidence, folder.confidence) : 0;

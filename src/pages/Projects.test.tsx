@@ -186,7 +186,7 @@ const EXCEL_HEADERS = [
   "ABM-Vertrag – versendet",
   "ABM-Vertrag – zurück",
   "Baugenehmigung",
-  "Baubetreuung",
+  "Baubegleitung",
   "Fertighausfirma-Nr.",
 ];
 const COLS_KEY = "abm.projekte.spalten.v3.demo-admin";
@@ -268,7 +268,7 @@ describe("Projektliste: Spalten wählen und sortieren", () => {
   it("Termin-Spalten zeigen das Datum oder –", async () => {
     localStorage.setItem(COLS_KEY, JSON.stringify([{ key: "bauherr", visible: true }, { key: "plangespraech", visible: true }, { key: "baubetreuung", visible: true }]));
     await render();
-    expect(headers()).toEqual(["Verlauf", "Bauherrschaft", "Plan-Gespräch", "Baubetreuung", "Aktion"]);
+    expect(headers()).toEqual(["Verlauf", "Bauherrschaft", "Plan-Gespräch", "Baubegleitung", "Aktion"]);
     const cells = [...host.querySelectorAll("tbody tr td:nth-child(3)")].map((td) => td.textContent);
     expect(cells.every((t) => t === "–" || /^\d{2}\.\d{2}\.\d{4}$/.test(t ?? ""))).toBe(true);
     expect(cells.some((t) => t !== "–")).toBe(true);

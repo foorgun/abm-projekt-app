@@ -18,7 +18,7 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
   architectId: "Architekt",
   planerId: "Planer",
   intakeMonth: "Eingangsmonat",
-  baubetreuung: "Baubetreuung",
+  baubetreuung: "Leistungen Baubegleitung",
   flurstueck: "Flurstück",
   gemarkung: "Gemarkung",
   flur: "Flur",
@@ -103,6 +103,8 @@ export interface ProjectUpdatePlan {
   errors: ProjectFormErrors;
   /** Nur Felder, die sich wirklich ändern (bereinigt). */
   project: Partial<ProjectFields>;
+  /** Neuer Wert, wenn sich die Baubegleitung ändert. */
+  baubegleitung?: boolean;
   /** Kontaktdaten nach der Änderung, oder null, wenn sie gleich bleiben. */
   bauherr: Required<BauherrInput> | null;
   /** Nur Beteiligte, die sich ändern, vollständig; null = austragen. */
@@ -144,6 +146,8 @@ export function planProjectUpdate(
     if (!changed.includes(FIELD_LABEL.salespersonId)) changed.push(FIELD_LABEL.salespersonId);
   }
   if (project.bauherrLabel === null) project.bauherrLabel = ""; // Pflichtfeld: leer wird unten als Fehler gemeldet
+  const baubegleitung = patch.baubegleitung !== undefined && patch.baubegleitung !== (p.baubegleitung ?? true) ? patch.baubegleitung : undefined;
+  if (baubegleitung !== undefined) changed.push("Baubegleitung");
 
   // --- Kontaktdaten
   const before: Required<BauherrInput> = {
@@ -227,5 +231,5 @@ export function planProjectUpdate(
     today,
   );
 
-  return { errors, project, bauherr, parties: partyPatch, changed, activity: changed.length ? `Projektdaten geändert: ${changed.join(", ")}` : null, followup };
+  return { errors, project, ...(baubegleitung !== undefined ? { baubegleitung } : {}), bauherr, parties: partyPatch, changed, activity: changed.length ? `Projektdaten geändert: ${changed.join(", ")}` : null, followup };
 }

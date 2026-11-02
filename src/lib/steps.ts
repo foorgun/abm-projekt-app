@@ -22,6 +22,9 @@ export const CORE_STEPS: StepDefinition[] = [
   { key: "baugenehmigung", label: "Genehmigung", sortOrder: 50, stage: "Genehmigung" },
 ];
 
+/** Stufe, die nur Projekte mit Baubegleitung durchlaufen; ohne endet der Prozess mit der Stufe davor (Baufreigabe). */
+export const BAUBEGLEITUNG_STAGE = "Baubegleitung";
+
 let definitions: StepDefinition[] = CORE_STEPS;
 
 export function setStepDefinitions(defs: StepDefinition[]): void {

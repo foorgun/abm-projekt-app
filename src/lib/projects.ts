@@ -1,6 +1,6 @@
 // Phasen und Fortschritt. Liest ausschließlich die Schrittdefinitionen aus den Daten (keine feste Liste).
 
-import type { StepDefinition } from "./steps";
+import { BAUBEGLEITUNG_STAGE, type StepDefinition } from "./steps";
 import type { Project } from "./types";
 
 export const INTAKE_PHASE = { key: "eingang", label: "Eingang" } as const;
@@ -12,10 +12,19 @@ export interface Phase {
   index: number;
 }
 
+/**
+ * Schritte, die ein Projekt durchläuft: ohne Baubegleitung ohne deren Stufe. Bereits erfasste Termine bleiben gespeichert,
+ * zählen aber nicht, solange die Baubegleitung abgewählt ist.
+ */
+export function stepsFor(project: Pick<Project, "baubegleitung">, steps: StepDefinition[]): StepDefinition[] {
+  return project.baubegleitung === false ? steps.filter((s) => s.stage !== BAUBEGLEITUNG_STAGE) : steps;
+}
+
 /** Phase = letzter erledigter Schritt in Reihenfolge; ohne erledigten Schritt "Eingang". */
 export function phaseOf(project: Project, steps: StepDefinition[]): Phase {
-  for (let i = steps.length - 1; i >= 0; i--) {
-    if (project.steps[steps[i].key]) return { key: steps[i].key, label: steps[i].label, index: i };
+  const own = stepsFor(project, steps);
+  for (let i = own.length - 1; i >= 0; i--) {
+    if (project.steps[own[i].key]) return { key: own[i].key, label: own[i].label, index: i };
   }
   return { ...INTAKE_PHASE, index: -1 };
 }
@@ -26,18 +35,19 @@ export function allPhases(steps: StepDefinition[]): Phase[] {
 }
 
 export function progressOf(project: Project, steps: StepDefinition[]): { done: number; total: number } {
-  return { done: steps.filter((s) => project.steps[s.key]).length, total: steps.length };
+  const own = stepsFor(project, steps);
+  return { done: own.filter((s) => project.steps[s.key]).length, total: own.length };
 }
 
 /** Erster offener Schritt (auch wenn spätere schon erledigt sind). */
 export function nextStep(project: Project, steps: StepDefinition[]): StepDefinition | null {
-  return steps.find((s) => !project.steps[s.key]) ?? null;
+  return stepsFor(project, steps).find((s) => !project.steps[s.key]) ?? null;
 }
 
 /** Offene Schritte vor dem letzten erledigten ("fehlt noch"). */
 export function missingSteps(project: Project, steps: StepDefinition[]): StepDefinition[] {
   const last = phaseOf(project, steps).index;
-  return steps.slice(0, Math.max(0, last)).filter((s) => !project.steps[s.key]);
+  return stepsFor(project, steps).slice(0, Math.max(0, last)).filter((s) => !project.steps[s.key]);
 }
 
 // ---------------------------------------------------------------------------
@@ -66,11 +76,12 @@ export function allStages(steps: StepDefinition[]): Stage[] {
 
 /**
  * Stufe eines Projekts = Stufe des Schritts, der nach der aktuellen Phase ansteht (dort wird gerade gearbeitet).
- * Ohne erledigten Schritt die erste Stufe, mit allen Schritten erledigt die letzte.
+ * Ohne erledigten Schritt die erste Stufe, mit allen Schritten erledigt die letzte des Projekts.
  */
 export function stageOf(project: Project, steps: StepDefinition[]): Stage {
-  const stages = allStages(steps);
-  const upcoming = steps[phaseOf(project, steps).index + 1];
+  const own = stepsFor(project, steps);
+  const stages = allStages(own);
+  const upcoming = own[phaseOf(project, own).index + 1];
   return upcoming ? stages.find((s) => s.name === upcoming.stage)! : stages[stages.length - 1];
 }
 
@@ -79,15 +90,22 @@ export function stageOf(project: Project, steps: StepDefinition[]): Stage {
  * `skipped` nennt offene Schritte davor, die danach als "fehlt" erscheinen.
  */
 export function stageMoveTarget(project: Project, steps: StepDefinition[]): { stage: Stage; step: StepDefinition; skipped: StepDefinition[] } | null {
-  const stages = allStages(steps);
-  const current = stageOf(project, steps);
+  const own = stepsFor(project, steps);
+  const stages = allStages(own);
+  const current = stageOf(project, own);
   const next = stages[current.index + 1];
   if (!next) return null;
   const step = next.steps.find((s) => !project.steps[s.key]);
   if (!step) return null;
-  const idx = steps.indexOf(step);
-  const skipped = steps.slice(0, idx).filter((s) => !project.steps[s.key]);
+  const idx = own.indexOf(step);
+  const skipped = own.slice(0, idx).filter((s) => !project.steps[s.key]);
   return { stage: next, step, skipped };
+}
+
+/** Anzeige "Baubegleitung": Ja/Nein, bei ja mit den Leistungen aus der Excel-Spalte (projects.baubetreuung), z. B. "Ja · 3.1+3.2". */
+export function baubegleitungText(p: Pick<Project, "baubegleitung" | "baubetreuung">): string {
+  if (p.baubegleitung === false) return "Nein";
+  return p.baubetreuung ? `Ja · ${p.baubetreuung}` : "Ja";
 }
 
 export function projectTitle(p: Pick<Project, "abmNr" | "bauherrLabel">): string {

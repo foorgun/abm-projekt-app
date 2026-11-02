@@ -127,6 +127,26 @@ export function isAllowedFolder(path: string, templates: FolderTemplate[]): bool
   return templateOf(path, templates) !== null;
 }
 
+/** Hauptordner, den nur Projekte mit Baubegleitung brauchen. */
+export const BAUBEGLEITUNG_FOLDER = "11 Baubegleitung";
+
+export function isBaubegleitungFolder(path: string): boolean {
+  return path === BAUBEGLEITUNG_FOLDER || path.startsWith(`${BAUBEGLEITUNG_FOLDER}${PATH_SEP}`);
+}
+
+/**
+ * Ordnervorlage eines Projekts: ohne Baubegleitung ohne deren Ordner. Liegen dort schon Dateien, bleibt er sichtbar,
+ * damit nichts verschwindet.
+ */
+export function foldersFor(
+  project: { baubegleitung?: boolean } | null | undefined,
+  templates: FolderTemplate[],
+  documents: { folderPath: string }[] = [],
+): FolderTemplate[] {
+  if (project?.baubegleitung !== false || documents.some((d) => isBaubegleitungFolder(d.folderPath))) return templates;
+  return templates.filter((t) => !isBaubegleitungFolder(t.path));
+}
+
 /** Anzeige eines Pfads mit " › " statt "/". */
 export function displayPath(path: string): string {
   return path.split(PATH_SEP).join(" › ");

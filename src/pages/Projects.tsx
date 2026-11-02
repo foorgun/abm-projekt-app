@@ -42,7 +42,7 @@ import {
   type ColumnState,
 } from "../lib/projectColumns";
 import { groupingStorageKey, groupProjects, loadGrouping, saveGrouping, DEFAULT_GROUPING, type GroupSetting } from "../lib/projectGrouping";
-import { allPhases } from "../lib/projects";
+import { allPhases, baubegleitungText } from "../lib/projects";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { Project } from "../lib/types";
@@ -255,7 +255,7 @@ export function Projects({ tab }: { tab: ProjectTab }) {
     vertrag_versendet: stepColumn("vertrag_versendet"),
     vertrag_zurueck: stepColumn("vertrag_zurueck"),
     baugenehmigung: stepColumn("baugenehmigung"),
-    baubetreuung: { key: "baubetreuung", header: COLUMN_LABEL.baubetreuung, render: (p) => dash(p.baubetreuung), sortValue: (p) => p.baubetreuung },
+    baubetreuung: { key: "baubetreuung", header: COLUMN_LABEL.baubetreuung, render: (p) => baubegleitungText(p), sortValue: (p) => baubegleitungText(p) },
     hausbau_nr: { key: "hausbau_nr", header: COLUMN_LABEL.hausbau_nr, className: "nowrap", render: (p) => dash(p.hausbauNr), sortValue: (p) => p.hausbauNr ?? null },
     bundesland: { key: "bundesland", header: COLUMN_LABEL.bundesland, render: (p) => <span title={bundeslandName(p.bundesland) ?? undefined}>{dash(p.bundesland)}</span>, sortValue: (p) => p.bundesland ?? null },
     ort: { key: "ort", header: COLUMN_LABEL.ort, render: (p) => dash(p.location), sortValue: (p) => p.location },

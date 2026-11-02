@@ -8,6 +8,27 @@ const admin = { name: "Mehmet Cetin", role: "admin" as const };
 const freelancer = { name: "Frei", role: "freiberufler" as const };
 const repo = () => createDemoRepo(TODAY, { delayMs: 0 });
 
+describe("Baubegleitung", () => {
+  it("wird beim Anlegen gespeichert, gilt ohne Angabe als ja und lässt sich ändern", async () => {
+    const r = repo();
+    await r.load(admin);
+    const base = { kind: "neubau", abmNr: null, hausbauNr: null, location: null, companyId: null, salespersonId: null, architectId: null, planerId: null, intakeMonth: null, createFolders: false } as const;
+    const ohne = await r.createProject({ ...base, bauherrLabel: "Ohnebegleitung", baubegleitung: false });
+    const mit = await r.createProject({ ...base, bauherrLabel: "Mitbegleitung" });
+    expect(ohne.baubegleitung).toBe(false);
+    expect(mit.baubegleitung).toBe(true);
+
+    await r.updateProject(ohne.id, { baubegleitung: false });
+    let d = await r.load(admin);
+    expect(d.activities.some((a) => a.projectId === ohne.id && a.text.includes("Baubegleitung"))).toBe(false);
+
+    await r.updateProject(ohne.id, { baubegleitung: true });
+    d = await r.load(admin);
+    expect(d.projects.find((p) => p.id === ohne.id)?.baubegleitung).toBe(true);
+    expect(d.activities.some((a) => a.projectId === ohne.id && a.text === "Projektdaten geändert: Baubegleitung")).toBe(true);
+  });
+});
+
 describe("demoRepo: Projektverlauf (wie RLS, Migration 0016)", () => {
   it("neueste zuerst, höchstens so viele wie verlangt, nur dieses Projekt", async () => {
     const r = repo();

@@ -1101,6 +1101,20 @@ kbd {
   overflow-x: auto;
 }
 
+/* Lange Abläufe in Zeilen zu 9 Schritten (STEPS_PER_ROW); reicht die Breite nicht, scrollt der Stepper wie oben */
+@media (min-width: 641px) {
+  .stepper[data-rows] {
+    display: grid;
+    grid-template-columns: repeat(9, minmax(min-content, 1fr));
+    row-gap: var(--sp-5);
+  }
+
+  .stepper[data-rows] .step:nth-child(9n)::after,
+  .stepper[data-rows] .step:nth-child(9n + 1)::before {
+    display: none;
+  }
+}
+
 .step {
   position: relative;
   flex: 1 1 0;
@@ -5341,6 +5355,26 @@ li:first-child > .doc-card {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* Auswahl ja/nein in Formularen */
+.choice-field {
+  display: grid;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.choice-field legend {
+  padding: 0;
+  margin-bottom: var(--sp-1);
+}
+
+.choice-row {
+  display: flex;
+  gap: var(--sp-4);
 }
 
 /* ---------------------------------------------------------------- Neues Projekt aus einem Vertrag */

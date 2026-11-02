@@ -1,6 +1,7 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
 import { AbmHinweise } from "../../components/AbmHinweise";
+import { BaubegleitungField } from "../../components/BaubegleitungField";
 import { BundeslandSelect } from "../../components/BundeslandSelect";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
@@ -10,6 +11,7 @@ import { bundeslandName, suggestBundesland } from "../../lib/bundesland";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
+import { baubegleitungText } from "../../lib/projects";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
 import type { ProjectPatch } from "../../lib/repo";
 import { useData } from "../../lib/store";
@@ -230,7 +232,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
               <Row label="Architekt">{architect ? `${architect.name}${architect.code ? ` (${architect.code})` : ""}` : null}</Row>
               <Row label="Planer">{planer ? `${planer.name}${planer.code ? ` (${planer.code})` : ""}` : null}</Row>
               <Row label="Eingang">{project.intakeMonth ? formatMonth(project.intakeMonth) : null}</Row>
-              <Row label="Baubetreuung">{project.baubetreuung}</Row>
+              <Row label="Baubegleitung">{project.baubegleitung === false ? "Nein, Prozess endet bei der Baufreigabe" : baubegleitungText(project)}</Row>
             </dl>
             <details className="dl-more">
               <summary>Weitere Angaben{project.flurstueck || project.gemarkung ? "" : " · noch leer"}</summary>
@@ -345,6 +347,7 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
     planerId: project.planerId ?? "",
     intakeMonth: project.intakeMonth?.slice(0, 7) ?? "",
     baubetreuung: project.baubetreuung ?? "",
+    baubegleitung: project.baubegleitung ?? true,
     flurstueck: project.flurstueck ?? "",
     gemarkung: project.gemarkung ?? "",
   });
@@ -390,6 +393,7 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           flurstueck: v.flurstueck,
           gemarkung: v.gemarkung,
         },
+        baubegleitung: v.baubegleitung,
         // Die Bauadresse gehört zu den Kontaktdaten: die übrigen Felder bleiben, wie sie sind
         bauherr: { ...contactOf(contact), buildingAddress: v.buildingAddress },
       },
@@ -460,9 +464,12 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
           <Select id={`${id}-planer`} value={v.planerId} onChange={(e) => setV({ ...v, planerId: e.target.value })} options={[{ value: "", label: "Noch offen" }, ...planers.map((t) => ({ value: t.id, label: t.name }))]} />
         </Field>
       </div>
-      <Field label="Baubetreuung" htmlFor={`${id}-bb`} hint="Freitext wie in der Projektliste, z. B. 3.1+3.2">
-        <Input id={`${id}-bb`} value={v.baubetreuung} onChange={(e) => setV({ ...v, baubetreuung: e.target.value })} />
-      </Field>
+      <BaubegleitungField
+        name={`${id}-baubegleitung`}
+        value={v.baubegleitung}
+        onChange={(baubegleitung) => setV((old) => ({ ...old, baubegleitung }))}
+        detail={{ value: v.baubetreuung, onChange: (baubetreuung) => setV((old) => ({ ...old, baubetreuung })) }}
+      />
       <div className="dialog-row">
         <Field label="Flurstück" htmlFor={`${id}-flst`}>
           <Input id={`${id}-flst`} value={v.flurstueck} onChange={(e) => setV({ ...v, flurstueck: e.target.value })} placeholder="z. B. 412/3" autoComplete="off" />

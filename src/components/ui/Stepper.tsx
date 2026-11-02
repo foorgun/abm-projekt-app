@@ -27,6 +27,9 @@ export function stepStates(items: StepperItem[]): ("done" | "current" | "missing
   });
 }
 
+/** Längere Abläufe laufen in Zeilen dieser Länge: die erste endet bei der Baufreigabe, die Baubegleitung steht darunter. */
+const STEPS_PER_ROW = 9;
+
 export function Stepper({
   items,
   onChangeDate,
@@ -39,7 +42,7 @@ export function Stepper({
   const states = stepStates(items);
 
   return (
-    <ol className="stepper" aria-label="Projektablauf">
+    <ol className="stepper" data-rows={items.length > STEPS_PER_ROW || undefined} aria-label="Projektablauf">
       {items.map((it, i) => {
         const state = states[i];
         const stateText = { done: "erledigt", current: "aktueller Schritt", missing: "fehlt noch", open: "offen" }[state];

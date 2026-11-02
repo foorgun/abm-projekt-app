@@ -7,8 +7,9 @@ import { useToast } from "../../components/Toast";
 import { Button, buttonClass, Card, CardBody, CardHead, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, Skeleton, Stepper, Tabs, type MenuEntry } from "../../components/ui";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { isPilot, PILOT_PROJECT_TABS } from "../../lib/appMode";
+import { foldersFor } from "../../lib/folders";
 import { formatDate } from "../../lib/format";
-import { missingSteps, nextStep, phaseOf, progressOf, projectTitle } from "../../lib/projects";
+import { missingSteps, nextStep, phaseOf, progressOf, projectTitle, stepsFor } from "../../lib/projects";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
 import type { Project, Task } from "../../lib/types";
@@ -196,7 +197,7 @@ export function ProjectDetail() {
             }
           />
           <CardBody>
-            <Stepper items={steps.map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))} onChangeDate={staff ? (k, d) => void changeDate(k, d) : undefined} />
+            <Stepper items={stepsFor(p, steps).map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))} onChangeDate={staff ? (k, d) => void changeDate(k, d) : undefined} />
           </CardBody>
         </Card>
 
@@ -250,7 +251,7 @@ export function ProjectDetail() {
 
         <div role="tabpanel" aria-label={tab}>
           {tab === "uebersicht" && <OverviewTab project={p} data={data} contact={contact} staff={staff} pilot={pilot} />}
-          {tab === "dokumente" && <DocumentsTab projectId={p.id} templates={data.folderTemplates} documents={documents} />}
+          {tab === "dokumente" && <DocumentsTab projectId={p.id} templates={foldersFor(p, data.folderTemplates, documents)} documents={documents} />}
           {tab === "aufgaben" && (
             <Card>
               <CardHead

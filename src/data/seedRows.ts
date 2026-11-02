@@ -94,6 +94,7 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
         architect_id: team(p.architectId),
         planer_id: team(p.planerId),
         baubetreuung: p.baubetreuung,
+        baubegleitung: p.baubegleitung ?? true,
         intake_month: p.intakeMonth,
         notes: p.notes,
         flur: p.flur ?? null,
