@@ -93,6 +93,15 @@ describe("ohne Baubegleitung", () => {
   });
 });
 
+describe("Anzeige Baubegleitung", () => {
+  it("zeigt ja mit Leistungen oder nein", async () => {
+    const { baubegleitungText } = await import("./projects");
+    expect(baubegleitungText({ baubegleitung: false, baubetreuung: "3.1+3.2" })).toBe("Nein");
+    expect(baubegleitungText({ baubetreuung: "3.1+3.2" })).toBe("Ja · 3.1+3.2");
+    expect(baubegleitungText({ baubegleitung: true, baubetreuung: null })).toBe("Ja");
+  });
+});
+
 describe("Projekttitel", () => {
   it("ohne ABM-Nr. nur der Name, nicht „Bauvoranfrage“", async () => {
     const { projectTitle } = await import("./projects");

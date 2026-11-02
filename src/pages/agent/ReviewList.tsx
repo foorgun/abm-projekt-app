@@ -6,7 +6,7 @@ import { FolderPicker } from "../../components/FolderPicker";
 import { PageHead } from "../../components/layout/PageHead";
 import { useToast } from "../../components/Toast";
 import { Button, buttonClass, Card, EmptyState, ErrorState, Field, Input, Select, Skeleton } from "../../components/ui";
-import { concretePath, DATE_TOKEN, displayPath } from "../../lib/folders";
+import { concretePath, DATE_TOKEN, displayPath, foldersFor } from "../../lib/folders";
 import { formatBytes, formatDate, formatRelative } from "../../lib/format";
 import { projectTitle } from "../../lib/projects";
 import type { ReviewResolution } from "../../lib/repo";
@@ -250,7 +250,7 @@ function ReviewCard({ att, item }: { att: InboxAttachment; item: InboxItem }) {
                 )}
               </Field>
               <Field label="Ordner" htmlFor={`folder-${att.id}`}>
-                <FolderPicker templates={data!.folderTemplates} value={template} onChange={setTemplate} />
+                <FolderPicker templates={foldersFor(data!.projects.find((x) => x.id === projectId), data!.folderTemplates)} value={template} onChange={setTemplate} />
               </Field>
               {template?.includes(DATE_TOKEN) && (
                 <Field label="Datum für den Ordner" htmlFor={`date-${att.id}`} hint={finalPath ? `Ordner: ${displayPath(finalPath).split(" › ").pop()}` : undefined}>

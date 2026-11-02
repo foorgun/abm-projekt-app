@@ -45,6 +45,19 @@ function mail(over: Partial<MailMessage> = {}): MailMessage {
 const reinhardt = db.projects.find((p) => p.bauherrLabel === "Reinhardt")!;
 const scholz = db.projects.find((p) => p.bauherrLabel === "Scholz")!; // Baugesuch übergeben, Genehmigung fehlt
 
+describe("Projekt ohne Baubegleitung", () => {
+  it("legt nichts automatisch in deren Ordner, sondern fragt nach", () => {
+    const p = db.projects.find((x) => x.abmNr && x.status === "aktiv")!;
+    const m = mail({ subject: `Straßensperrung ${p.abmNr}`, attachments: [{ fileName: "Strassensperrung.pdf", mime: "application/pdf", sizeBytes: 300_000 }] });
+    const mit = classify(m, ctx({ projects: [{ ...p, baubegleitung: true }] }));
+    expect(mit.attachments[0].folderTemplate).toContain("11 Baubegleitung");
+    const ohne = classify({ ...m, messageId: "<ohne@example.com>" }, ctx({ projects: [{ ...p, baubegleitung: false }] }));
+    expect(ohne.attachments[0].status).toBe("pruefen");
+    expect(ohne.attachments[0].folderPath).toBeNull();
+    expect(ohne.attachments[0].reason).toContain("keine Baubegleitung");
+  });
+});
+
 describe("Nummern erkennen", () => {
   it("ABM-Nr. in Varianten", () => {
     const re = abmPattern("8161-101")!;

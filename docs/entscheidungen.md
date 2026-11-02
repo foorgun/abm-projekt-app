@@ -158,8 +158,14 @@ Neueste Einträge unten.
 - **Ohne Baubegleitung** (`projects.baubegleitung = false`) endet der Prozess bei Schritt 9, der Baufreigabe. `stepsFor`
   in `src/lib/projects.ts` ist die eine Stelle dafür; Phase, Fortschritt, Stufe und Stepper rechnen damit. Schon erfasste
   Termine der Baubegleitung bleiben beim Abwählen gespeichert und zählen erst wieder, wenn sie erneut gewählt wird.
-  Der Bestand steht auf "ja". Die Ordnervorlage bleibt für alle Projekte gleich.
-- **Getrennt von "Baubetreuung":** Das Feld bleibt der Freitext aus der Excel ("3.1+3.2").
+  Der Bestand steht auf "ja".
+- **"Baubetreuung" ist dasselbe wie Baubegleitung** (Angabe von ABM): In der Oberfläche gibt es nur noch "Baubegleitung"
+  (Ja/Nein). Die Spalte `projects.baubetreuung` bleibt als Angabe der Leistungen ("3.1+3.2"), die Spalte der Projektliste
+  heißt "Baubegleitung" und zeigt z. B. "Ja · 3.1+3.2". Bestehende Texte werden nicht umgedeutet: alle Projekte bleiben auf "ja".
+- **Ordner:** Ohne Baubegleitung entfällt `11 Baubegleitung` im Projekt und bei der Ordnerwahl (`foldersFor`). Liegen dort
+  schon Dateien, bleibt er sichtbar. Der Agent legt für solche Projekte nichts dorthin ab, sondern fragt in der Prüfliste nach.
+- **"Fehlt noch" im Bestand:** Sind spätere Schritte schon erfasst, erscheinen neue Schritte davor als fehlend. Termine werden
+  bewusst nicht erfunden; wer sie nicht braucht, trägt das Datum nach.
 - **Stepper:** Mit mehr als 9 Schritten läuft er in Zeilen zu 9 Schritten, damit bei 1280 px nichts hinter dem Scrollen
   verschwindet (Abschnitt "Stepper" oben gilt damit nur noch für die einzelne Zeile).
 

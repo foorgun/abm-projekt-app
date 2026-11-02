@@ -1,7 +1,7 @@
 -- ABM Projekt-App: Baubegleitung als Wahl je Projekt, Schritte der Stufe Baubegleitung wie die Ordner in "11 Baubegleitung"
 --   * projects.baubegleitung: ohne Baubegleitung endet der Prozess bei der Baufreigabe (Schritt 9). Der Bestand bleibt
 --     "ja" und damit unverändert. Zugriff wie bei den übrigen Projektfeldern (Tabellenrechte aus 0004, Zeilenregeln aus 0001).
---     Getrennt von projects.baubetreuung: das ist der Freitext aus der Excel ("3.1+3.2").
+--     projects.baubetreuung bleibt als Angabe der Leistungen ("3.1+3.2", Freitext aus der Excel) bestehen.
 --   * Schritte: Reihenfolge der Ordner 01 bis 10 (08 gibt es in der Vorlage nicht). Vorhandene Schlüssel bleiben, damit
 --     erfasste Termine und Rechnungsauslöser erhalten bleiben: "hausaufstellung" heißt jetzt wie Ordner 09.
 --   * create_project und update_project wie in 0018, zusätzlich mit "baubegleitung".

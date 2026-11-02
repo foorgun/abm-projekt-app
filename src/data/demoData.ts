@@ -25,6 +25,7 @@ import type {
   Task,
   TeamMember,
 } from "../lib/types";
+import { isBaubegleitungFolder } from "../lib/folders";
 import { BAUBEGLEITUNG_STAGE } from "../lib/steps";
 import { allStepDefinitions, buildFolderTemplates } from "./templates";
 
@@ -645,7 +646,7 @@ function buildAgentHistory(r: Rng, today: string, projects: Project[], mailboxes
       const mailbox = r.pick(mailboxes.slice(0, 2));
       if (kind === "auto") {
         const [from, subj, file, folder, needs] = r.pick(FILED);
-        const fitting = active.filter((x) => x.steps[needs] && x.steps[needs]! <= date);
+        const fitting = active.filter((x) => x.steps[needs] && x.steps[needs]! <= date && (x.baubegleitung !== false || !isBaubegleitungFolder(folder)));
         if (fitting.length) p = r.pick(fitting);
         const [fromName, fromEmail] = splitFrom(from);
         const subject = subj.replace("{nr}", p.abmNr!).replace("{name}", p.bauherrLabel).replace("{n}", String(r.int(100, 999)));

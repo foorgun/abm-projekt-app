@@ -102,6 +102,12 @@ export function stageMoveTarget(project: Project, steps: StepDefinition[]): { st
   return { stage: next, step, skipped };
 }
 
+/** Anzeige "Baubegleitung": Ja/Nein, bei ja mit den Leistungen aus der Excel-Spalte (projects.baubetreuung), z. B. "Ja · 3.1+3.2". */
+export function baubegleitungText(p: Pick<Project, "baubegleitung" | "baubetreuung">): string {
+  if (p.baubegleitung === false) return "Nein";
+  return p.baubetreuung ? `Ja · ${p.baubetreuung}` : "Ja";
+}
+
 export function projectTitle(p: Pick<Project, "abmNr" | "bauherrLabel">): string {
   // Ohne ABM-Nr. (beim Anlegen oft noch unbekannt) steht nur der Name; "Bauvoranfrage" nur, wenn es wirklich eine ist
   if (p.abmNr === "Bauvoranfrage") return `${p.bauherrLabel} (Bauvoranfrage)`;

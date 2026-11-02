@@ -5,7 +5,8 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - Welche Phasen und Schritte gelten wirklich, und in welcher Reihenfolge? (Vorschlag in BUILD.md Abschnitt 6, im Demo so umgesetzt)
 - Wann wird welche Rechnung gestellt (Meilensteine, Beträge)? Ab wann gilt sie als überfällig?
 - Warn-Schwellen 7 / 21 / 42 / 120 Tage sind Annahmen. Passen sie?
-- Was bedeuten "3.1+3.2" und die Werte in "Baubetreuung" aus der Excel-Liste?
+- Was bedeuten "3.1+3.2" und die Werte in der Spalte Baubegleitung (früher "Baubetreuung") aus der Excel-Liste? Heißt ein leeres Feld "keine Baubegleitung"? Bisher stehen alle Projekte auf "ja".
+- Schritt "Hausanschlüsse nach der Hausaufstellung": Reicht das, oder soll die Hausaufstellung ein eigener Schritt bleiben? Vorläufig umbenannt, frühere Termine der Hausaufstellung stehen unter diesem Namen.
 - Planer: intern oder freiberuflich? Volle Namen der Architekten (BE, MC)?
 - Wer ist "Clayton" (Ordner "Schriftverkehr mit Clayton")?
 - Ordnervorlage: In "11 Baubegleitung" fehlt die Nummer 08. Absicht oder Lücke?

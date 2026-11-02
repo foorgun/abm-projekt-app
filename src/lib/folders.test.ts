@@ -1,9 +1,26 @@
 import { describe, expect, it } from "vitest";
 import template from "../../docs/ordnerstruktur.md?raw";
-import { concretePath, extractCodeBlock, isAllowedFolder, normalizeLabel, parseFolderTemplate, templateOf } from "./folders";
+import { concretePath, extractCodeBlock, foldersFor, isAllowedFolder, normalizeLabel, parseFolderTemplate, templateOf } from "./folders";
 
 const folders = parseFolderTemplate(extractCodeBlock(template));
 const paths = folders.map((f) => f.path);
+
+describe("Ordner ohne Baubegleitung", () => {
+  const T = (path: string) => ({ path, parentPath: null, sort: 0, label: path, hasDate: false, keywords: [], description: null });
+  const templates = [T("10 Bodengutachten"), T("11 Baubegleitung"), T("11 Baubegleitung/01 Ausschreibung")];
+
+  it("entfällt der Ordner, sonst bleibt die Vorlage gleich", () => {
+    expect(foldersFor({ baubegleitung: false }, templates).map((t) => t.path)).toEqual(["10 Bodengutachten"]);
+    expect(foldersFor({ baubegleitung: true }, templates)).toBe(templates);
+    expect(foldersFor({}, templates)).toBe(templates);
+    expect(foldersFor(null, templates)).toBe(templates);
+  });
+
+  it("bleibt er sichtbar, wenn dort schon Dateien liegen", () => {
+    expect(foldersFor({ baubegleitung: false }, templates, [{ folderPath: "11 Baubegleitung/01 Ausschreibung" }])).toBe(templates);
+    expect(foldersFor({ baubegleitung: false }, templates, [{ folderPath: "10 Bodengutachten" }])).toHaveLength(1);
+  });
+});
 
 describe("normalizeLabel", () => {
   it("erkennt die uneinheitlichen Datumsplatzhalter", () => {

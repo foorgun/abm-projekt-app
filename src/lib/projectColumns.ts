@@ -40,7 +40,7 @@ export const COLUMN_DEFS: readonly { key: ColumnKey; label: string; byDefault: b
   { key: "vertrag_versendet", label: "ABM-Vertrag – versendet", byDefault: true },
   { key: "vertrag_zurueck", label: "ABM-Vertrag – zurück", byDefault: true },
   { key: "baugenehmigung", label: "Baugenehmigung", byDefault: true },
-  { key: "baubetreuung", label: "Baubetreuung", byDefault: true },
+  { key: "baubetreuung", label: "Baubegleitung", byDefault: true },
   { key: "hausbau_nr", label: "Fertighausfirma-Nr.", byDefault: true },
   { key: "bundesland", label: "Bundesland", byDefault: false },
   { key: "ort", label: "Bauort", byDefault: false },

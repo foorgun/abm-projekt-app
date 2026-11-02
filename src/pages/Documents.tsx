@@ -7,7 +7,7 @@ import { useToast } from "../components/Toast";
 import { Button, buttonClass, Card, CellTip, DataTable, Dialog, Drawer, EmptyState, ErrorState, Field, Input, KpiCard, Pill, Select, TableSkeleton, Tabs, type Column } from "../components/ui";
 import { documentStats, KIND_LABEL, PERIOD_LABEL, type DocKind, type DocPeriod, type DocumentFilter, type DocumentListResult, type DocumentRow } from "../lib/documentFilters";
 import { checkFile, fileKind } from "../lib/files";
-import { concretePath, DATE_TOKEN, displayPath } from "../lib/folders";
+import { concretePath, DATE_TOKEN, displayPath, foldersFor } from "../lib/folders";
 import { formatBytes, formatDate, formatRelative } from "../lib/format";
 import { projectTitle } from "../lib/projects";
 import { useOpenDocument } from "../components/useOpenDocument";
@@ -436,10 +436,17 @@ function UploadDialog({ defaultProjectId, onClose }: { defaultProjectId: string 
       }
     >
       <Field label="Projekt *" htmlFor="up-project">
-        <Select id="up-project" value={projectId} onChange={(e) => setProjectId(e.target.value)} options={[{ value: "", label: "Projekt wählen" }, ...projects.map((p) => ({ value: p.id, label: projectTitle(p) }))]} />
+        <Select
+          id="up-project"
+          value={projectId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            // gewählter Ordner gehört nicht zum neuen Projekt: neu wählen
+            if (template && !foldersFor(projects.find((x) => x.id === e.target.value), data?.folderTemplates ?? []).some((t) => t.path === template)) setTemplate(null);
+          }} options={[{ value: "", label: "Projekt wählen" }, ...projects.map((p) => ({ value: p.id, label: projectTitle(p) }))]} />
       </Field>
       <Field label="Zielordner *" htmlFor="up-folder" hint={folderPath ? `Ziel: ${displayPath(folderPath)}` : "Ordner aus der Vorlage wählen."}>
-        <FolderPicker templates={data?.folderTemplates ?? []} value={template} onChange={setTemplate} />
+        <FolderPicker templates={foldersFor(projects.find((x) => x.id === projectId), data?.folderTemplates ?? [])} value={template} onChange={setTemplate} />
       </Field>
       {template?.includes(DATE_TOKEN) && (
         <Field label="Datum für den Ordner *" htmlFor="up-date">

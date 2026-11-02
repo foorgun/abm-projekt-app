@@ -18,7 +18,7 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
   architectId: "Architekt",
   planerId: "Planer",
   intakeMonth: "Eingangsmonat",
-  baubetreuung: "Baubetreuung",
+  baubetreuung: "Leistungen Baubegleitung",
   flurstueck: "Flurstück",
   gemarkung: "Gemarkung",
   flur: "Flur",

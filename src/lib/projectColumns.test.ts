@@ -54,7 +54,7 @@ describe("Spalten der Projektliste", () => {
       "ABM-Vertrag – versendet",
       "ABM-Vertrag – zurück",
       "Baugenehmigung",
-      "Baubetreuung",
+      "Baubegleitung",
       "Fertighausfirma-Nr.",
     ]);
     // Normale Schreibweise, nicht wie in der Excel in Großbuchstaben
