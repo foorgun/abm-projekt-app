@@ -128,7 +128,7 @@ die manuelle Anlage an).
 | `EXTRACTOR_USD_EUR` | `1.0` | Umrechnung der Dollar-Listenpreise; 1,0 schätzt eher zu hoch |
 | `EXTRACTOR_STRICT` | `true` | `false` verzichtet ganz auf die Schema-Bindung: die Anweisung verlangt reines JSON, die Funktion prüft es. Nur nötig, wenn der Dienst auch das kleine Schema ablehnt. |
 
-`SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` stellt Supabase der Funktion von selbst bereit.
+`SUPABASE_URL` und `SUPABASE_SECRET_KEYS` stellt Supabase der Funktion von selbst bereit (Rückfall auf `SUPABASE_SERVICE_ROLE_KEY`, solange production nicht umgestellt ist).
 
 ## Wie die Funktion absichert
 

@@ -122,6 +122,13 @@ export function base64Bytes(base64: string): number {
 
 export type Failure = { ok: false; code: "disabled" | "limit" | "forbidden" | "error"; message: string };
 
+/** Der KI-Dienst lehnt den Schlüssel ab (401). Nur Admins können das beheben und bekommen die genaue Meldung. */
+export function keyInvalidMessage(role: string | undefined): string {
+  return role === "admin"
+    ? "KI-Schlüssel ungültig oder abgelaufen. Bitte den Schlüssel in den Secrets der Edge Function erneuern (docs/umgebungen.md)."
+    : "Die Auslesung ist gerade nicht verfügbar. Bitte einen Admin informieren und das Projekt von Hand anlegen.";
+}
+
 /** Prüft den Aufruf. Liefert die Bilder oder eine Fehlermeldung (ohne Inhalte zu wiederholen). */
 export interface ParsedRequest {
   ok: true;

@@ -28,6 +28,20 @@ export function createSupabaseAuth(): AuthApi {
       const { error } = await getSupabase().auth.signOut();
       if (error) throw error;
     },
+    async changePassword(current, next) {
+      const auth = getSupabase().auth;
+      const { data, error } = await auth.getSession();
+      if (error) throw error;
+      const email = data.session?.user.email;
+      if (!email) throw new Error("Nicht angemeldet. Bitte neu anmelden.");
+      // Eine offene Sitzung allein reicht nicht: Wer am fremden Rechner sitzt, kennt das aktuelle Passwort nicht
+      const check = await auth.signInWithPassword({ email, password: current });
+      if (check.error) throw /invalid login credentials/i.test(check.error.message) ? new Error("Das aktuelle Passwort stimmt nicht.") : check.error;
+      const update = await auth.updateUser({ password: next });
+      if (update.error) throw update.error;
+      // Das Passwort ist schon geändert; schlägt nur dies fehl, laufen andere Sitzungen eben bis zu ihrem Ablauf weiter
+      await auth.signOut({ scope: "others" }).catch(() => undefined);
+    },
     onChange(cb) {
       const { data } = getSupabase().auth.onAuthStateChange((event) => {
         if (event === "SIGNED_OUT") cb(false);

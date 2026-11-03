@@ -15,6 +15,8 @@ export interface AuthApi {
   current(): Promise<AuthUser | null>;
   signIn(email: string, password: string): Promise<AuthUser>;
   signOut(): Promise<void>;
+  /** Prüft das aktuelle Passwort und setzt das neue. Andere Sitzungen des Kontos werden beendet. */
+  changePassword(current: string, next: string): Promise<void>;
   /** Meldet An- und Abmeldung (auch aus einem anderen Tab). Gibt eine Funktion zum Abbestellen zurück. */
   onChange(cb: (signedIn: boolean) => void): () => void;
 }
@@ -25,6 +27,8 @@ export function authErrorMessage(e: unknown): string {
   if (/invalid login credentials/i.test(msg)) return "E-Mail oder Passwort stimmt nicht.";
   if (/email not confirmed/i.test(msg)) return "Dieses Konto ist noch nicht bestätigt. Bitte beim Admin melden.";
   if (/rate limit|too many/i.test(msg)) return "Zu viele Versuche. Bitte kurz warten und erneut probieren.";
+  if (/different from the old|same.*password/i.test(msg)) return "Das neue Passwort muss sich vom bisherigen unterscheiden.";
+  if (/password should be|weak.?password/i.test(msg)) return "Das neue Passwort ist zu kurz oder zu einfach.";
   if (/failed to fetch|network|load failed/i.test(msg)) return "Keine Verbindung zum Server. Bitte Internetverbindung prüfen.";
   return msg;
 }
