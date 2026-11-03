@@ -1,17 +1,19 @@
-// Prüft die Rollen gegen die ECHTE Datenbank: meldet sich je Konto aus konten.local.json an (mit dem Publishable key,
+// Prüft die Rollen gegen die ECHTE Datenbank: meldet sich je Konto aus konten.<ziel>.local.json an (mit dem Publishable key,
 // wie die App) und prüft, was das Konto sieht und was nicht. Braucht KEINEN Secret key.
 // Schreibversuche sind so gewählt, dass sie auch dann nichts verändern, wenn eine Regel wider Erwarten nicht greift:
 // Werte werden auf sich selbst gesetzt, oder der Versuch enthält absichtlich einen ungültigen Wert, den die Datenbank
 // erst NACH der Berechtigungsprüfung ablehnt (leerer Name, nicht vorhandene Benutzer-ID).
 // Jede Prüfung hat eines von drei Ergebnissen: eine Zeilenzahl, "gesperrt" (mit Code und Text der Datenbank) oder
 // "UNERWARTETER FEHLER" (ebenfalls mit Code und Text). Ein unerwarteter Fehler ist nie ok.
-// Aufruf: npm run check:roles
+// Aufruf: npm run check:roles -- --ziel development|production
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeAlerts, unsentInvoiceTotal } from "../src/lib/alerts";
 import { todayIso } from "../src/lib/format";
 import { getSupabase } from "../src/lib/supabase/client";
 import { createSupabaseRepo } from "../src/lib/supabaseRepo";
-import { die, publicClient, readKonten, table, type Konto } from "./lib/server";
+import { die, publicClient, readKonten, table, waehleZiel, type Konto } from "./lib/server";
+
+await waehleZiel("Rollenprüfung, legt kurz Testanträge an und zieht sie zurück");
 
 const NIL = "00000000-0000-4000-8000-000000000000";
 const rows: string[][] = [];
@@ -179,7 +181,7 @@ const NEVER = { fields: {}, form: {}, file_name: "rollenpruefung.pdf", file_size
 
 const konten = readKonten();
 const mitPasswort = konten.filter((k) => k.passwort);
-for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.rolle})`, "Anmeldung", "–", "übersprungen: kein Passwort in konten.local.json", "–"]);
+for (const k of konten.filter((x) => !x.passwort)) rows.push([`${k.email} (${k.rolle})`, "Anmeldung", "–", "übersprungen: kein Passwort in der Kontenliste", "–"]);
 
 // ---- nicht angemeldet
 const anon = publicClient();
@@ -194,9 +196,9 @@ expectDenied("nicht angemeldet", "Abwesenheitskalender aufrufen", await attempt(
 
 // ---- Bezugswerte: was ein Admin sieht
 const adminKonto = mitPasswort.find((k) => k.rolle === "admin");
-if (!adminKonto) die("Für die Bezugswerte wird ein Admin-Konto mit Passwort in konten.local.json gebraucht.");
+if (!adminKonto) die("Für die Bezugswerte wird ein Admin-Konto mit Passwort in der Kontenliste gebraucht.");
 const ref = await signIn(adminKonto);
-if (!ref) die(`Anmeldung als ${adminKonto.email} fehlgeschlagen (Passwort in konten.local.json prüfen).`);
+if (!ref) die(`Anmeldung als ${adminKonto.email} fehlgeschlagen (Passwort in der Kontenliste prüfen).`);
 const all = {
   projects: await count(ref.sb, "projects"),
   invoices: await count(ref.sb, "invoices"),
@@ -558,5 +560,5 @@ await ref.sb.auth.signOut();
 console.log(table(["Konto", "Prüfung", "Erwartet", "Ist", "Ergebnis"], rows));
 const skipped = rows.filter((r) => r[4] === "–").length;
 console.log(failed ? `\n${failed} Prüfung(en) FEHLGESCHLAGEN.` : `\nAlle ${rows.filter((r) => r[4] === "ok").length} Prüfungen bestanden.`);
-if (skipped) console.log(`${skipped} Konto/Konten übersprungen (kein Passwort in konten.local.json): für diese Rolle ist damit nichts geprüft.`);
+if (skipped) console.log(`${skipped} Konto/Konten übersprungen (kein Passwort in der Kontenliste): für diese Rolle ist damit nichts geprüft.`);
 process.exit(failed ? 1 : 0);

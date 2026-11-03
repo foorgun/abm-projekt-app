@@ -30,6 +30,7 @@ interface SessionValue {
   demo: boolean;
   signIn: (email: string, password: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   signOut: () => Promise<void>;
+  changePassword: (current: string, next: string) => Promise<{ ok: true } | { ok: false; error: string }>;
   retry: () => void;
 }
 
@@ -112,6 +113,15 @@ export function SessionProvider({ auth, children }: { auth: AuthApi | null; chil
           await auth.signOut();
         } finally {
           apply(null);
+        }
+      },
+      changePassword: async (current, next) => {
+        if (!auth) return { ok: true };
+        try {
+          await auth.changePassword(current, next);
+          return { ok: true };
+        } catch (e) {
+          return { ok: false, error: authErrorMessage(e) };
         }
       },
       retry: () => {

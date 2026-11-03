@@ -1,0 +1,3 @@
+#!/bin/sh
+# Wird über "npm install" aktiviert (package.json, prepare). Regeln: scripts/lib/secretGuard.ts
+exec npm run --silent check:secrets -- --staged

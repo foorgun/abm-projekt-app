@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { ChevronsLeft, ChevronsRight, ChevronsUpDown, LogOut, RotateCcw, UserRound } from "lucide-react";
+import { ChevronsLeft, ChevronsRight, ChevronsUpDown, KeyRound, LogOut, RotateCcw, UserRound } from "lucide-react";
 import logo from "../../assets/abm-logo.png";
 import { homePath, isPilot } from "../../lib/appMode";
 import { ROLE_LABEL, useSession, type AppRole } from "../../lib/session";
 import { useData } from "../../lib/store";
+import { ChangePasswordDialog } from "../ChangePasswordDialog";
 import { useToast } from "../Toast";
 import { Avatar, Badge, Button, Dialog, IconButton, Menu } from "../ui";
 import { COUNT_HINT, visibleNav, type CountKey } from "./nav";
@@ -25,6 +26,7 @@ export function Sidebar({
   const toast = useToast();
   const navigate = useNavigate();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   const roles: AppRole[] = ["admin", "mitarbeiter", "freiberufler"];
   const canReset = repo.mode === "demo" && Boolean(repo.resetDemo);
   const pilot = isPilot();
@@ -134,7 +136,10 @@ export function Sidebar({
                   icon: <UserRound size={14} />,
                   onSelect: () => setRole(r),
                 }))
-              : [{ label: "Abmelden", icon: <LogOut size={14} />, onSelect: () => void signOut() }]),
+              : [
+                  { label: "Passwort ändern", icon: <KeyRound size={14} />, onSelect: () => setChangingPassword(true) },
+                  { label: "Abmelden", icon: <LogOut size={14} />, onSelect: () => void signOut() },
+                ]),
             ...(canReset ? (["sep", { label: "Demo zurücksetzen", icon: <RotateCcw size={14} />, onSelect: () => setConfirmReset(true) }] as const) : []),
           ]}
           trigger={(p) => (
@@ -150,6 +155,15 @@ export function Sidebar({
         />
         <div className="sidebar-version">v0.1 – {repo.mode === "demo" ? "Prototyp · Demo-Daten" : "Pilot"}</div>
       </div>
+      {changingPassword && (
+        <ChangePasswordDialog
+          onClose={() => setChangingPassword(false)}
+          onChanged={() => {
+            setChangingPassword(false);
+            toast("Passwort geändert");
+          }}
+        />
+      )}
       {confirmReset && (
         <Dialog
           title="Demo zurücksetzen?"

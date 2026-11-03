@@ -16,6 +16,7 @@ import { projectTitle } from "../lib/projects";
 import { firstName, useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import type { Activity, Project, Task, TeamMember } from "../lib/types";
+import { isProduction } from "../lib/umgebung";
 
 const ACTIVITY_LIMIT = 5;
 const ALERT_ICON = { dringend: AlertTriangle, hinweis: CircleAlert, info: Info };
@@ -169,8 +170,8 @@ export function Dashboard() {
           )}
         </div>
 
-        {/* Termine der Woche direkt unter den Kennzahlen: vorerst erfundene Demo-Termine, nur für Admin und Mitarbeiter */}
-        {staff && <TermineKarte heute={today} />}
+        {/* Termine der Woche direkt unter den Kennzahlen: vorerst erfundene Demo-Termine, nur für Admin und Mitarbeiter, nie in production */}
+        {staff && !isProduction() && <TermineKarte heute={today} />}
 
         <Card>
           <CardHead title="Heute zu tun" sub={todoCount ? `${todoCount} ${todoCount === 1 ? "Eintrag" : "Einträge"}, nach Dringlichkeit sortiert` : undefined} />

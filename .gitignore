@@ -1,5 +1,6 @@
 node_modules/
 dist/
+# Lokale Konfiguration, auch .env.ziel.development und .env.ziel.production (Sperre: npm run check:secrets)
 .env
 .env.*
 !.env.example
@@ -22,6 +23,8 @@ __pycache__/
 supabase/.out/
 supabase/.temp/
 konten.local.json
+konten.*.local.json
+.dev.vars*
 backups/
 
 # Vorlagen der Hausbaufirmen (Firmendokumente, nicht ins Repo)

@@ -38,6 +38,7 @@ import {
   type SuchAntwort,
   type Treffer,
 } from "./logic.ts";
+import { serviceKey } from "../_shared/serviceKey.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -59,7 +60,7 @@ Deno.serve(async (req) => {
   // --- Anmeldung und Rolle ---------------------------------------------------------------------------
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!token) return fail("forbidden", "Nicht angemeldet.", 401);
-  const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(env("SUPABASE_URL")!, serviceKey(env)!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: auth, error: authError } = await admin.auth.getUser(token);
   if (authError || !auth.user) return fail("forbidden", "Nicht angemeldet.", 401);
   const userId = auth.user.id;

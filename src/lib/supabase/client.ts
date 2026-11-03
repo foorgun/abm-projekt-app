@@ -5,8 +5,16 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
+let override: { url: string; key: string } | null = null;
+
+/** Nur für die Skripte mit --ziel (scripts/lib/server.ts): import.meta.env steht dort schon beim Start fest. */
+export function setSupabaseConfig(cfg: { url: string; key: string }): void {
+  override = cfg;
+  client = null;
+}
 
 export function supabaseConfig(): { url: string; key: string } | null {
+  if (override) return override;
   const url = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.trim();
   const key = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined)?.trim();
   return url && key ? { url, key } : null;

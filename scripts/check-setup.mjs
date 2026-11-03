@@ -1,29 +1,11 @@
-// Prüft das echte Supabase-Projekt von außen, nur mit dem Publishable key aus .env (ohne Anmeldung, ohne Secret key):
+// Prüft das echte Supabase-Projekt von außen, nur mit dem Publishable key des Ziels (ohne Anmeldung, ohne Secret key):
 //   * sind die Tabellen da (Migrationen angewendet)?
 //   * bekommt ein nicht angemeldeter Besucher wirklich nichts?
-// Liest nur, ändert nichts. Aufruf: npm run check:setup
-import { readFileSync } from "node:fs";
+// Liest nur, ändert nichts. Aufruf: npm run check:setup -- --ziel development|production
+import { publicConfig, waehleZiel } from "./lib/server";
 
-function readEnv(file) {
-  try {
-    return Object.fromEntries(
-      readFileSync(file, "utf8")
-        .split("\n")
-        .filter((l) => l.includes("=") && !l.trim().startsWith("#"))
-        .map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "")]),
-    );
-  } catch {
-    return {};
-  }
-}
-const env = { ...readEnv(".env"), ...readEnv(".env.local") };
-const url = env.VITE_SUPABASE_URL;
-const key = env.VITE_SUPABASE_ANON_KEY;
-if (!url || !key) {
-  console.error("VITE_SUPABASE_URL und VITE_SUPABASE_ANON_KEY fehlen in .env");
-  process.exit(1);
-}
-if (!key.startsWith("sb_publishable_")) console.warn("Hinweis: der Schlüssel in .env beginnt nicht mit sb_publishable_. Dort darf nie der Secret key stehen.");
+const ziel = await waehleZiel("Einrichtung nur lesend prüfen");
+const { url, key } = publicConfig();
 
 const TABLES = [
   "companies", "salespeople", "team_members", "step_definitions", "folder_templates", "bauherren", "projects", "project_steps",
@@ -63,7 +45,7 @@ if (s) {
 }
 
 const w = Math.max(...rows.map((r) => r[0].length));
-console.log("Projekt aus .env (nur lesend geprüft)\n");
+console.log(`Projekt ${ziel} (nur lesend geprüft)\n`);
 for (const [name, status, result] of rows) console.log(`${name.padEnd(w)}  ${String(status).padEnd(3)}  ${result}`);
 console.log("");
 if (missing) console.log(`${missing} Tabellen fehlen: Migrationen anwenden (docs/supabase-einrichten.md, Schritt 2).`);

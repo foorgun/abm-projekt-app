@@ -21,6 +21,7 @@ import {
   isEnabled,
   isSchemaRejection,
   JSON_ONLY,
+  keyInvalidMessage,
   limitsFromEnv,
   MAX_TOKENS,
   outputConfig,
@@ -34,6 +35,7 @@ import {
   toResponse,
   type Failure,
 } from "./logic.ts";
+import { serviceKey } from "../_shared/serviceKey.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -54,7 +56,7 @@ Deno.serve(async (req) => {
   // Abgelaufenes oder ungültiges Token: eigene Meldung, damit die App einmal auffrischen und erneut senden kann.
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!token || !token.includes(".")) return fail("forbidden", "Nicht angemeldet: Es wurde keine Sitzung mitgeschickt. Bitte neu anmelden.", 401);
-  const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(env("SUPABASE_URL")!, serviceKey(env)!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: auth, error: authError } = await admin.auth.getUser(token);
   if (authError || !auth.user) return fail("forbidden", "Sitzung abgelaufen oder ungültig. Bitte neu anmelden.", 401);
   const userId = auth.user.id;
@@ -201,7 +203,7 @@ Deno.serve(async (req) => {
     if (error instanceof Anthropic.APIError) {
       const info = apiErrorInfo(error);
       console.error(`KI-Dienst: Fehler ${error.status ?? "ohne Status"} · ${info.type} · ${info.message}`);
-      if (error instanceof Anthropic.AuthenticationError) return fail("disabled", "Auslesung noch nicht freigeschaltet (Schlüssel ungültig).", 503);
+      if (error instanceof Anthropic.AuthenticationError) return fail("disabled", keyInvalidMessage(role?.role), 503);
       if (error instanceof Anthropic.RateLimitError) return fail("limit", "Der KI-Dienst ist gerade ausgelastet. Bitte in ein paar Minuten erneut versuchen oder von Hand anlegen.", 429);
       if (error instanceof Anthropic.BadRequestError) {
         return fail("error", `Der KI-Dienst hat die Anfrage abgelehnt (${info.type}). Einzelheiten stehen im Log der Funktion. Bitte von Hand anlegen.`, 502);

@@ -2,13 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 import { FlaskConical, MessageSquare, MousePointerClick, TriangleAlert } from "lucide-react";
 import { isPilot } from "../lib/appMode";
 import { firstName, useSession } from "../lib/session";
+import { isProduction } from "../lib/umgebung";
 import { Button, Dialog } from "./ui";
 
-/**
- * Hinweis für die ersten Nutzer des Pilotbetriebs. Der Satz zu den Daten gilt, solange die erfundenen Demo-Daten geladen sind:
- * sobald echte Projekte eingetragen werden, hier anpassen (siehe docs/hosting-echtbetrieb.md).
- */
+/** Hinweis für die ersten Nutzer in development, solange dort die erfundenen Demo-Daten geladen sind. */
 export const PILOT_NOTICE = "Das ist ein Pilot. Die Daten sind erfunden, Prozessschritte und Warnfristen sind Annahmen.";
+
+/** In production gibt es keine Demo-Daten: keine Aussage über erfundene Daten. */
+export const PRODUCTION_NOTICE = "Das ist die Pilotphase der ABM Projekt-App. Prozessschritte und Warnfristen sind Annahmen.";
 
 const KEY = "abm.pilot-einfuehrung.gesehen";
 
@@ -32,6 +33,50 @@ export function PilotIntroContent() {
   const staff = useSession().user.role !== "freiberufler";
   // Pilot-Modus: nur Projekte, Dokumente und Planungsprotokoll; Aufgaben, Prüfliste und Agent sind ausgeblendet
   const pilot = isPilot();
+  if (isProduction()) {
+    return (
+      <div className="intro">
+        <p className="intro-lead">
+          <TriangleAlert size={16} aria-hidden /> {PRODUCTION_NOTICE}
+        </p>
+        <ul className="intro-list">
+          <li>
+            <FlaskConical size={16} aria-hidden />
+            <span>
+              <strong>Was das heißt:</strong> Die zwölf Prozessschritte und die Fristen der Warnungen (z. B. „Vertrag seit 3 Wochen offen“) sind ein erster
+              Vorschlag und werden mit euch abgestimmt.
+            </span>
+          </li>
+          <li>
+            <MousePointerClick size={16} aria-hidden />
+            <span>
+              <strong>So geht es los:</strong>{" "}
+              {staff && pilot
+                ? "ein Projekt anlegen, im Projekt einen Schritt mit Datum setzen, eine Datei in einen Ordner legen, ein Planungsprotokoll erzeugen."
+                : staff
+                  ? "ein Projekt anlegen, im Projekt einen Schritt mit Datum setzen, eine Datei in einen Ordner legen, eine Aufgabe abhaken."
+                  : "deine zugewiesenen Projekte ansehen, den Stand im Prozess verfolgen und eine Datei in einen Projektordner legen."}{" "}
+              Was du einträgst, wird gespeichert.
+            </span>
+          </li>
+          {!pilot && (
+            <li>
+              <TriangleAlert size={16} aria-hidden />
+              <span>
+                <strong>Was noch nicht geht:</strong> Der Posteingangs-Agent liest noch keine Postfächer.
+              </span>
+            </li>
+          )}
+          <li>
+            <MessageSquare size={16} aria-hidden />
+            <span>
+              <strong>Rückmeldung:</strong> Was fehlt, was stört, was anders heißt als bei euch im Büro: bitte direkt an Furkan. Genau dafür ist der Pilot da.
+            </span>
+          </li>
+        </ul>
+      </div>
+    );
+  }
   return (
     <div className="intro">
       <p className="intro-lead">

@@ -1,4 +1,7 @@
-# Supabase einrichten (Pilotprojekt "abm-pilot", Frankfurt)
+# Supabase einrichten
+
+Zwei Projekte: development (`abm-pilot.`, Demodaten) und production (`abm-prod`), beide Frankfurt. Ablauf, Schlüssel und Ablaufdaten
+stehen in `docs/umgebungen.md`. **Alle `npm run`-Befehle hier brauchen `-- --ziel development` oder `-- --ziel production`.**
 
 Stand: Schritt 8 (Datenanbindung, Rechte, Anmeldung, Skripte für Konten, Rollenprüfung, Sicherung und Demo-Daten).
 Die Skripte aus Abschnitt 8 sind geschrieben und lokal geprüft, soweit das ohne das echte Projekt geht.
@@ -7,13 +10,15 @@ Die Skripte aus Abschnitt 8 sind geschrieben und lokal geprüft, soweit das ohne
 
 | Schlüssel | Beginnt mit | Wo er liegt | Was er darf |
 |---|---|---|---|
-| Publishable key | `sb_publishable_…` | `.env` (`VITE_SUPABASE_ANON_KEY`), landet im Browser | Nur, was GRANT und Zeilenregeln (RLS) erlauben. Ohne Anmeldung: nichts. |
-| Secret key | `sb_secret_…` | **nur** lokal in `.env.server` (nicht eingecheckt), nie im Frontend, nie im Repo | Alles, umgeht RLS. Nur für Skripte und später den Agenten. |
+| Publishable key | `sb_publishable_…` | `.env.ziel.<ziel>` (`VITE_SUPABASE_ANON_KEY`), landet im Browser | Nur, was GRANT und Zeilenregeln (RLS) erlauben. Ohne Anmeldung: nichts. |
+| Secret key | `sb_secret_…` | **nur** lokal in `.env.ziel.<ziel>` (nicht eingecheckt), nie im Frontend, nie im Repo | Alles, umgeht RLS. Nur für Skripte und später den Agenten. |
 
-`.env`, `.env.*`, `konten.local.json`, `backups/` und `supabase/.out/` stehen in `.gitignore`.
+`.env`, `.env.*`, `konten.*.local.json`, `backups/` und `supabase/.out/` stehen in `.gitignore`, `npm run check:secrets` sperrt sie zusätzlich.
 Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, das nach Secret key aussieht.
 
 ## 2. Im Dashboard prüfen (einmalig, von Hand)
+
+In production setzt `npm run auth:einrichten -- --ziel production` Punkt 1 und die Schemas aus Punkt 2 samt Mindestlänge, Site-URL und Redirects.
 
 1. **Authentication → Sign In / Providers:** "Allow new users to sign up" ist **aus**. Anbieter "Email" ist **an**.
 2. **Project Settings → Data API:** "Automatically expose new tables" ist **aus**, "Automatic RLS" ist **an**,
@@ -22,15 +27,15 @@ Die App weigert sich zu starten, wenn in `VITE_SUPABASE_ANON_KEY` etwas steht, d
 
 ## 3. Migrationen anwenden
 
-Die Migrationen liegen in `supabase/migrations/` (0001 bis 0015). Sie enthalten kein Passwort und keinen Schlüssel.
+Die Migrationen liegen in `supabase/migrations/`. Sie enthalten kein Passwort und keinen Schlüssel.
 
-### Weg A: SQL-Editor (empfohlen, geprüft gegen ein lokales Postgres)
+### Weg A: SQL-Editor
 
 ```
-npm run db:bundle
+npm run db:bundle -- --ziel <ziel>
 ```
 
-Das erzeugt `supabase/.out/migrationen-gesamt.sql` (alle Migrationen in einer Transaktion: alles oder nichts).
+Das erzeugt `supabase/.out/<ziel>/migrationen-gesamt.sql` (alle Migrationen in einer Transaktion: alles oder nichts).
 
 1. Datei öffnen, alles kopieren.
 2. Dashboard → **SQL Editor** → neue Abfrage → einfügen → **Run**.
@@ -38,35 +43,27 @@ Das erzeugt `supabase/.out/migrationen-gesamt.sql` (alle Migrationen in einer Tr
 4. Erwartet: "Success. No rows returned". Bei einem Fehler wurde nichts übernommen; Meldung an mich weitergeben.
 
 Nicht zweimal ausführen (beim zweiten Mal bricht es ab, weil die Typen schon existieren; das schadet nicht).
-Spätere Migrationen einzeln nachziehen: `npm run db:bundle -- --ab 7` (gleichbedeutend `--ab 0007`) erzeugt eine Datei nur mit den neuen.
+Spätere Migrationen einzeln nachziehen: `npm run db:bundle -- --ziel <ziel> --ab 7` (gleichbedeutend `--ab 0007`) erzeugt eine Datei nur mit den neuen.
 
-### Weg B: Supabase CLI mit `db query` (geprüft am 20.10.2026 mit Migration 0015)
+### Weg B: `db:einspielen` (empfohlen, so ist production eingerichtet)
 
 > **Nicht `npx supabase db push` benutzen.** Die Migrationen wurden über den SQL-Editor eingespielt, deshalb ist die
 > Migrationshistorie der CLI leer (`npx supabase migration list --linked` zeigt bei „remote“ nichts). `db push` hielte
 > darum alle Migrationen ab 0001 für neu und würde sie noch einmal ausführen.
 
-Dieselbe Bundle-Datei wie bei Weg A, nur ohne Kopieren: `db query --linked` schickt genau diese eine Datei über die
-Management API an das verknüpfte Projekt (eine Transaktion, alles oder nichts). Braucht kein Datenbank-Passwort.
+Dieselbe Bundle-Datei wie bei Weg A, nur ohne Kopieren: Das Skript schickt sie über die Management API an das Ziel (eine Transaktion,
+alles oder nichts). Die Ref kommt aus dem Ziel, nie aus `supabase link`. Braucht das Zugangs-Token, kein Datenbank-Passwort.
 
 ```
-npx supabase login                                   # einmalig, öffnet den Browser
-npx supabase link --project-ref <projekt-ref>        # einmalig; die Verknüpfung steht in supabase/.temp/ (nicht im Repo)
-npm run db:bundle -- --ab 15                         # nur die neuen Migrationen, hier ab 0015
-# Datei supabase/.out/migrationen-ab-0015.sql lesen: nur die erwarteten Anweisungen?
-npx supabase db query --linked -f supabase/.out/migrationen-ab-0015.sql
-```
-
-Danach prüfen, ob die Tabellen da sind und RLS aktiv ist (nur lesend), z. B.:
-
-```
-npx supabase db query --linked "select relname, relrowsecurity from pg_class where relnamespace = 'public'::regnamespace and relkind = 'r' and relname like 'schornsteinfeger%'"
+npm run db:bundle -- --ziel <ziel> --ab 15
+# Datei supabase/.out/<ziel>/migrationen-ab-0015.sql lesen: nur die erwarteten Anweisungen?
+npm run db:einspielen -- --ziel <ziel> --datei supabase/.out/<ziel>/migrationen-ab-0015.sql
 ```
 
 ### Danach prüfen
 
 ```
-npm run check:setup
+npm run check:setup -- --ziel <ziel>
 ```
 
 Liest nur, mit dem Publishable key und ohne Anmeldung. Erwartet: jede Tabelle "gesperrt", Selbstregistrierung "aus",
@@ -100,7 +97,7 @@ where u.email = 'frei@example.com' and p.abm_nr in ('8161-101', '8161-102', '826
 ## 5. App starten
 
 ```
-npm run dev          # Echtbetrieb, sobald .env die beiden VITE_SUPABASE_*-Werte enthält → Anmeldeseite
+npm run dev          # immer development, Werte aus .env.ziel.development → Anmeldeseite
 npm run dev:demo     # Demo-Modus mit erfundenen Daten auf http://localhost:5199 (ignoriert .env)
 VITE_APP_MODE=pilot npm run dev   # Pilot-Modus: nur Projekte, Dokumente, Planungsprotokoll (siehe docs/hosting-echtbetrieb.md)
 ```
@@ -150,11 +147,7 @@ im Alltag damit arbeitet. Gründe: tägliche Backups, keine Pause, mehr Speicher
 
 ## 8. Demo-Daten, Testkonten, Prüfungen, Sicherung
 
-Reihenfolge einhalten. Schritte mit **[Secret key]** brauchen die Datei `.env.server`, die du selbst anlegst:
-
-```
-SUPABASE_SECRET_KEY=sb_secret_…
-```
+Reihenfolge einhalten. Schritte mit **[Secret key]** brauchen `SUPABASE_SECRET_KEY` in `.env.ziel.<ziel>`.
 
 Den Schlüssel findest du im Dashboard unter Project Settings → API Keys → Secret keys. Die Datei ist in `.gitignore`.
 Kein Skript gibt den Schlüssel aus oder schreibt ihn irgendwohin. Wer ihn hat, kann alles lesen und löschen: nicht weitergeben,
@@ -162,21 +155,21 @@ und wenn er doch einmal in eine Mail oder einen Chat gerät, im Dashboard widerr
 
 | Nr. | Befehl | Was passiert | Schlüssel |
 |---|---|---|---|
-| 1 | `npm run db:bundle -- --ab 0008`, Datei im SQL-Editor ausführen | Migrationen 0008 und 0009 | keiner |
-| 2 | `npm run seed:demo` | lädt rund 2.000 erfundene Zeilen (60 Projekte, 150 Rechnungen, 624 Dokumente ohne Dateien …), alle mit `is_demo` | **[Secret key]** |
-| 3 | `konten.beispiel.json` nach `konten.local.json` kopieren, vier E-Mail-Adressen eintragen | Liste der Testkonten, nur lokal | keiner |
+| 1 | Abschnitt 3 | Migrationen | Zugangs-Token |
+| 2 | `npm run seed:demo` (nur development) | lädt rund 2.000 erfundene Zeilen (60 Projekte, 150 Rechnungen, 624 Dokumente ohne Dateien …), alle mit `is_demo` | **[Secret key]** |
+| 3 | `konten.beispiel.json` nach `konten.<ziel>.local.json` kopieren, E-Mail-Adressen eintragen | Liste der Konten, nur lokal | keiner |
 | 4 | `npm run konten:anlegen` | legt fehlende Konten an, setzt Rolle und Namen, weist dem Freiberufler drei Demo-Projekte zu | **[Secret key]** |
-| 5 | `npm run check:roles` | meldet sich je Konto an und prüft die Sichten, Ergebnis als Tabelle | keiner (Passwörter aus `konten.local.json`) |
-| 6 | `npm run check:repo` | ruft jede Funktion der App einmal gegen die echte Datenbank auf, mit Testdaten, die danach entfernt werden | **[Secret key]** (Vorbereiten und Aufräumen) |
+| 5 | `npm run check:roles` | meldet sich je Konto an und prüft die Sichten, Ergebnis als Tabelle | keiner (Passwörter aus der Kontenliste) |
+| 6 | `npm run check:repo` (nur development) | ruft jede Funktion der App einmal gegen die echte Datenbank auf, mit Testdaten, die danach entfernt werden | **[Secret key]** (Vorbereiten und Aufräumen) |
 | 6a | `npm run vorlagen:hochladen` | lädt die drei PDF-Vorlagen des Planungsprotokolls aus `vorlagen/planungsprotokoll/` in den privaten Bucket `vorlagen` (prüft vorher die Felder) | **[Secret key]** |
-| 7 | `npm run export:backup` | alle Tabellen als JSON nach `backups/abm-backup-<Datum>_<Uhrzeit>/` | **[Secret key]** |
+| 7 | `npm run export:backup` | alle Tabellen als JSON nach `backups/<ziel>/abm-backup-<Datum>_<Uhrzeit>/` | **[Secret key]** |
 
-**Demo-Daten wieder entfernen:** `npm run seed:demo -- --loeschen` **[Secret key]**. Entfernt alles mit `is_demo` samt der daran
+**Demo-Daten wieder entfernen:** `npm run seed:demo -- --ziel development --loeschen` **[Secret key]**. Entfernt alles mit `is_demo` samt der daran
 hängenden Zeilen; echte Projekte, die drei Hausbaufirmen und die Ordnervorlage bleiben. Zweimal laden geht nicht (das Skript bricht ab).
 
-**Ohne Secret key** geht der Seed auch: `npm run seed:demo -- --sql` schreibt `supabase/.out/demo-seed.sql` und
+**Ohne Secret key** geht der Seed auch: `npm run seed:demo -- --ziel development --sql` schreibt `supabase/.out/demo-seed.sql` und
 `demo-loeschen.sql` zum Einfügen in den SQL-Editor (eine Transaktion, rund 550 KB). Genau diese Dateien sind lokal geprüft:
-`npm run seed:demo -- --sql && bash tools/test-db.sh --demo` lädt, zählt und löscht restlos.
+`npm run seed:demo -- --ziel development --sql && bash tools/test-db.sh --demo` lädt, zählt und löscht restlos.
 
 **`check:roles` lesen:** Jede Zeile hat eines von drei Ergebnissen: eine Zeilenzahl, `gesperrt (Code: Text)` oder
 `UNERWARTETER FEHLER (Code: Text)`. "Gesperrt" heißt, die Datenbank lehnt wegen fehlender Berechtigung ab (meist Code `42501`,
@@ -186,14 +179,16 @@ bei unseren Funktionen `P0001: Keine Berechtigung`). Ein unerwarteter Fehler zä
 **Konten:**
 
 - Gibt es ein Konto schon (z. B. deines), bleibt das Passwort unberührt; das Skript setzt nur Rolle und Namen.
-- Neue Konten bekommen ein zufälliges Passwort. Es wird nicht angezeigt, sondern steht danach in `konten.local.json`.
-  Der Person auf sicherem Weg geben; ändern lässt es sich im Dashboard unter Authentication → Users.
-- `check:roles` und `check:repo` melden sich nur mit Konten an, zu denen ein Passwort in `konten.local.json` steht.
+- Neue Konten bekommen ein zufälliges Passwort. Es wird nicht angezeigt, sondern steht danach in `konten.<ziel>.local.json`.
+  Der Person auf sicherem Weg geben; ändern lässt es sich in der App im Benutzermenü unter „Passwort ändern“.
+- `check:roles` und `check:repo` melden sich nur mit Konten an, zu denen ein Passwort in der Kontenliste steht.
   Für dein eigenes Konto kannst du dort von Hand `"passwort": "…"` ergänzen; sonst wird es übersprungen.
   Gebraucht wird mindestens ein Admin-Konto mit Passwort (das neu angelegte reicht).
-- Der Freiberufler bekommt die ersten drei aktiven Demo-Projekte. Hat er schon genau drei Zuweisungen, bleiben sie.
+- In development bekommt der Freiberufler die ersten drei aktiven Demo-Projekte, in production bleiben Zuweisungen unberührt.
+- `check:roles` erwartet für den Freiberufler genau drei zugewiesene Projekte und ein fremdes, sonst fehlen die Prüfungen auf fremde Projekte.
+- Hat der Freiberufler in development schon genau drei Zuweisungen, bleiben sie.
 
-**Sicherung:** enthält alle Tabellen, die Liste der Konten (ohne Passwörter) und die Liste der Dateien im Speicher, aber
+**Sicherung:** enthält alle Tabellen, die Liste der Konten (ohne Passwörter) und die Liste der Dateien aller Buckets, aber
 **nicht die Dateien selbst**. Im Free-Tarif ist das die einzige Sicherung; vor jedem größeren Schritt (Import, Migration) laufen lassen.
 Der Ordner enthält Kontaktdaten: nicht in eine Cloud-Ablage legen, die dafür nicht gedacht ist. Eine Wiederherstellung aus den
 JSON-Dateien gibt es noch nicht als Skript.
