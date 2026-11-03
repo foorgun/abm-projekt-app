@@ -16,8 +16,9 @@ await waehleZiel(`Edge Functions deployen: ${auswahl.join(", ")}`, ["token"]);
 const { ref, env } = zielWerte();
 for (const name of auswahl) {
   console.log(`Deploy ${name} …`);
-  // Das Token nur über die Umgebung des Kindprozesses, nie als Argument
-  const r = spawnSync("npx", ["--yes", "supabase", "functions", "deploy", name, "--project-ref", ref, "--use-api"], {
+  // Das Token nur über die Umgebung des Kindprozesses, nie als Argument. --yes beantwortet die Rückfrage der CLI:
+  // Das Ziel ist hier schon geprüft, bei production mit eingetipptem abm-prod (waehleZiel).
+  const r = spawnSync("npx", ["--yes", "supabase", "functions", "deploy", name, `--remote=${ref}`, "--use-api", "--yes"], {
     stdio: "inherit",
     env: { ...process.env, SUPABASE_ACCESS_TOKEN: env.SUPABASE_ACCESS_TOKEN },
   });
