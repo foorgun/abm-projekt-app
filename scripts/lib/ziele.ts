@@ -1,10 +1,12 @@
 // Die zwei Umgebungen der App. Die Refs sind nicht geheim (sie stehen in jeder Projekt-URL) und sichern ab,
 // dass eine Datei wirklich zu ihrem Ziel gehört. Werte stehen nur in den lokalen Dateien, siehe docs/umgebungen.md.
+import { isProduction, PRODUCTION_REF } from "../../src/lib/umgebung";
+
 export type Ziel = "development" | "production";
 
 export const ZIELE: Record<Ziel, { ref: string; datei: string; konten: string }> = {
   development: { ref: "xyiiewwoorxhglgddrcb", datei: ".env.ziel.development", konten: "konten.development.local.json" },
-  production: { ref: "ydpqxjkcygpoynwpjwrk", datei: ".env.ziel.production", konten: "konten.production.local.json" },
+  production: { ref: PRODUCTION_REF, datei: ".env.ziel.production", konten: "konten.production.local.json" },
 };
 
 /** Muss bei production eingetippt werden. */
@@ -41,5 +43,5 @@ export function pruefeWerte(ziel: Ziel, env: Record<string, string | undefined>,
 
 /** Vite-Dev-Server und vite-node dürfen nie an production hängen (vite.config.ts). */
 export function verweistAufProduction(url: string | undefined): boolean {
-  return !!url && url.includes(ZIELE.production.ref);
+  return isProduction({ VITE_SUPABASE_URL: url });
 }
