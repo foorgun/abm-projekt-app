@@ -30,11 +30,13 @@ Farben und Abstände nur über CSS-Variablen (Tokens), keine Hex-Werte in Kompon
 
 ```
 npm install
-npm run dev          # Demo-Modus auf http://localhost:5173
+npm run dev          # development (.env.ziel.development), ohne diese Datei Demo-Modus, http://localhost:5173
 npm run typecheck && npm test && npm run build    # vor jedem Commit
 python3 -m unittest discover -s tools -p "test_*.py"   # Excel-Import
 bash tools/test-db.sh   # Datenbank- und RLS-Tests (temporäres Postgres, nicht als root)
 ```
+
+Skripte gegen echte Projekte brauchen `-- --ziel development|production`, siehe `docs/umgebungen.md`. Nie `supabase db push`.
 
 ## Vorgehen
 
