@@ -1,14 +1,17 @@
-// Legt die Testkonten aus konten.local.json an und weist Rollen zu. Braucht den Secret key (.env.server).
+// Legt die Konten aus konten.<ziel>.local.json an und weist Rollen zu. Braucht den Secret key.
 //   * Gibt es ein Konto schon, bleibt sein Passwort unberührt; nur Rolle und Name werden gesetzt.
-//   * Neue Konten bekommen ein zufälliges Passwort. Es wird NICHT angezeigt, sondern nur in konten.local.json
+//   * Neue Konten bekommen ein zufälliges Passwort. Es wird NICHT angezeigt, sondern nur in die Kontenliste
 //     geschrieben (lokal, nicht eingecheckt), damit check:roles sich anmelden kann.
 //   * Admins und Mitarbeiter bekommen den Urlaubsanspruch für das laufende Jahr (30 Tage), falls noch keiner eingetragen ist.
-//   * Dem Freiberufler werden genau drei Projekte zugewiesen (Demo-Projekte; vorher npm run seed:demo).
-// Aufruf: npm run konten:anlegen
+//   * development: Dem Freiberufler werden genau drei Projekte zugewiesen (Demo-Projekte; vorher npm run seed:demo).
+//     production: Zuweisungen bleiben unberührt, dort gibt es keine Demo-Projekte.
+// Aufruf: npm run konten:anlegen -- --ziel development|production
 import { randomBytes } from "node:crypto";
-import { adminClient, die, KONTEN_DATEI, readKonten, table, writeKonten } from "./lib/server";
+import { adminClient, die, kontenDatei, readKonten, table, waehleZiel, writeKonten } from "./lib/server";
 
 const FREELANCER_PROJECTS = 3;
+const ziel = await waehleZiel("Konten anlegen und Rollen setzen", ["oeffentlich", "secret"]);
+const KONTEN_DATEI = kontenDatei();
 const konten = readKonten();
 const sb = adminClient();
 
@@ -47,7 +50,8 @@ for (const k of konten) {
   }
 
   let projekte = "alle (über die Rolle)";
-  if (k.rolle === "freiberufler") {
+  if (k.rolle === "freiberufler" && ziel === "production") projekte = "unverändert (Zuweisung von Hand)";
+  else if (k.rolle === "freiberufler") {
     const mine = await sb.from("project_members").select("project_id").eq("user_id", id);
     if (mine.error) die(mine.error.message);
     if ((mine.data ?? []).length === FREELANCER_PROJECTS) projekte = `${FREELANCER_PROJECTS} zugewiesen (unverändert)`;

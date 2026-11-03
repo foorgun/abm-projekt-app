@@ -1,5 +1,9 @@
 # Supabase einrichten (Pilotprojekt "abm-pilot", Frankfurt)
 
+> **Skripte brauchen jetzt ein Ziel:** Alle `npm run`-Befehle unten laufen nur mit `-- --ziel development` oder
+> `-- --ziel production` und lesen `.env.ziel.<ziel>` statt `.env` und `.env.server`. Siehe `docs/umgebungen.md`.
+> Diese Anleitung wird nach der Einrichtung von production überarbeitet.
+
 Stand: Schritt 8 (Datenanbindung, Rechte, Anmeldung, Skripte für Konten, Rollenprüfung, Sicherung und Demo-Daten).
 Die Skripte aus Abschnitt 8 sind geschrieben und lokal geprüft, soweit das ohne das echte Projekt geht.
 

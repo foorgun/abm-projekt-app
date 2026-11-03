@@ -1,16 +1,17 @@
 // Sicherung: alle Tabellen als JSON in einen lokalen Ordner mit Datum (backups/ steht in .gitignore).
-// Braucht den Secret key (.env.server), weil nur er alle Zeilen unabhängig von Rollen lesen darf. Liest nur.
+// Braucht den Secret key, weil nur er alle Zeilen unabhängig von Rollen lesen darf. Liest nur.
 // Enthalten: alle Tabellen der App (Liste in scripts/lib/backupTables.ts, ein Test prüft sie gegen die Migrationen), die
 // Liste der Benutzerkonten (ohne Passwörter) und die Liste der Dateien im Speicher.
 // NICHT enthalten: die Dateien selbst (Pläne, PDFs). Die müssen getrennt gesichert werden.
-// Aufruf: npm run export:backup
+// Aufruf: npm run export:backup -- --ziel development|production
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BACKUP_TABLES } from "./lib/backupTables";
-import { adminClient, die, fetchAll, stamp, table } from "./lib/server";
+import { adminClient, die, fetchAll, stamp, table, waehleZiel } from "./lib/server";
 
+const ziel = await waehleZiel("Sicherung lesen", ["oeffentlich", "secret"]);
 const sb = adminClient();
-const dir = join("backups", `abm-backup-${stamp()}`);
+const dir = join("backups", ziel, `abm-backup-${stamp()}`);
 mkdirSync(dir, { recursive: true });
 const counts: [string, number][] = [];
 

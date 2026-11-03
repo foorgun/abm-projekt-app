@@ -1,10 +1,10 @@
 // Smoke-Test: ruft jede Methode des supabaseRepo einmal gegen das ECHTE Projekt auf, als angemeldeter Admin
-// (bzw. Mitarbeiter) aus konten.local.json, also genau so, wie die App es tut.
+// (bzw. Mitarbeiter) aus der Kontenliste, also genau so, wie die App es tut.
 // Alle Testdaten heißen "Zzsmoke…" bzw. "ZZ-Smoketest …" und werden am Ende wieder entfernt.
-// Braucht den Secret key (.env.server) für zwei Dinge, die ein angemeldeter Benutzer absichtlich nicht darf:
+// Nur development: legt Testdaten an. Braucht den Secret key für zwei Dinge, die ein angemeldeter Benutzer absichtlich nicht darf:
 //   * Vorbereiten: eine Testmail im Posteingang und eine Testrechnung anlegen (schreibt sonst nur der Agent)
 //   * Aufräumen: Testprojekt, Testfirma usw. löschen (die App kann nichts löschen)
-// Aufruf: npm run check:repo
+// Aufruf: npm run check:repo -- --ziel development
 import { todayIso } from "../src/lib/format";
 import { followupKey } from "../src/lib/projectForm";
 import type { Repo } from "../src/lib/repo";
@@ -12,10 +12,12 @@ import type { SessionUser } from "../src/lib/session";
 import { getSupabase } from "../src/lib/supabase/client";
 import { BUCKET, createSupabaseRepo } from "../src/lib/supabaseRepo";
 import type { Dataset } from "../src/lib/types";
-import { adminClient, die, readKonten, table } from "./lib/server";
+import { adminClient, die, readKonten, table, waehleZiel } from "./lib/server";
+
+await waehleZiel("Smoke-Test mit Testdaten", ["oeffentlich", "secret"], { nurDevelopment: true });
 
 const konto = readKonten().find((k) => k.passwort && k.rolle === "admin") ?? readKonten().find((k) => k.passwort && k.rolle === "mitarbeiter");
-if (!konto) die("Gebraucht wird ein Admin- oder Mitarbeiter-Konto mit Passwort in konten.local.json.");
+if (!konto) die("Gebraucht wird ein Admin- oder Mitarbeiter-Konto mit Passwort in der Kontenliste.");
 const admin = adminClient();
 const sb = getSupabase();
 const login = await sb.auth.signInWithPassword({ email: konto.email, password: konto.passwort! });

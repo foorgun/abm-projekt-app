@@ -1,18 +1,17 @@
 // Prüft den Produktions-Build (dist/) vor dem Veröffentlichen: keine Geheimnisse, keine internen Seiten,
-// Suchmaschinen ausgesperrt. Baut vorher neu mit den Werten aus .env (wie Cloudflare mit seinen Variablen).
+// Suchmaschinen ausgesperrt. Baut vorher neu mit den Werten des Ziels (wie Cloudflare mit seinen Variablen).
 // Liest lokale Geheimnisse nur, um nach ihnen zu SUCHEN; sie werden nie ausgegeben.
-// Aufruf: npm run check:build
+// Aufruf: npm run check:build -- --ziel development|production
 import { execSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const env = (file) =>
-  existsSync(file)
-    ? Object.fromEntries(readFileSync(file, "utf8").split("\n").filter((l) => l.includes("=") && !l.trim().startsWith("#")).map((l) => [l.slice(0, l.indexOf("=")).trim(), l.slice(l.indexOf("=") + 1).trim().replace(/^["']|["']$/g, "")]))
-    : {};
+import { kontenDatei, waehleZiel, zielWerte } from "./lib/server";
 
+const ziel = await waehleZiel("Build mit den öffentlichen Werten bauen und prüfen");
 console.log("Baue Produktions-Build …");
-execSync("npx vite build", { stdio: ["ignore", "ignore", "inherit"] });
+// vite-node setzt NODE_ENV=development; ein Build damit enthielte die Entwicklerseiten
+execSync(`npx vite build --mode ziel.${ziel}`, { stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, NODE_ENV: "production" } });
 
 const files = [];
 (function walk(dir) {
@@ -34,11 +33,11 @@ const check = (name, ok, detail = "") => {
 };
 
 // ---- Geheimnisse
-const pub = env(".env");
-const server = env(".env.server");
+const { env: pub } = zielWerte();
+const GEHEIM = ["SUPABASE_SECRET_KEY", "SUPABASE_ACCESS_TOKEN", "SUPABASE_DB_PASSWORD", "ANTHROPIC_API_KEY"];
+const server = Object.fromEntries(GEHEIM.map((k) => [k, pub[k]]));
 check("Kein Secret key (sb_secret_…)", !/sb_secret_[A-Za-z0-9_-]{8,}/.test(all));
-for (const [k, v] of Object.entries(server)) if (v && v.length >= 12) check(`Wert von ${k} aus .env.server nicht enthalten`, !all.includes(v), all.includes(v) ? where(v).join(", ") : "");
-if (!Object.keys(server).length) rows.push(["Werte aus .env.server", "–", "Datei nicht vorhanden, nichts zu vergleichen"]);
+for (const [k, v] of Object.entries(server)) if (v && v.length >= 12) check(`Wert von ${k} nicht enthalten`, !all.includes(v), all.includes(v) ? where(v).join(", ") : "");
 // Alte JWT-Schlüssel: jedes Token im Build entschlüsseln und auf die Rolle service_role prüfen
 const jwts = [...new Set(all.match(/eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g) ?? [])];
 const serviceJwt = jwts.filter((t) => {
@@ -49,10 +48,10 @@ const serviceJwt = jwts.filter((t) => {
   }
 });
 check("Kein Schlüssel der Rolle service_role (JWT)", serviceJwt.length === 0, `${jwts.length} Token im Build geprüft`);
-if (existsSync("konten.local.json")) {
-  const konten = JSON.parse(readFileSync("konten.local.json", "utf8")).konten ?? [];
-  check("Keine Passwörter aus konten.local.json", !konten.some((k) => k.passwort && all.includes(k.passwort)));
-  check("Keine E-Mail-Adressen aus konten.local.json", !konten.some((k) => k.email && all.toLowerCase().includes(k.email.toLowerCase())));
+if (existsSync(kontenDatei())) {
+  const konten = JSON.parse(readFileSync(kontenDatei(), "utf8")).konten ?? [];
+  check("Keine Passwörter aus der Kontenliste", !konten.some((k) => k.passwort && all.includes(k.passwort)));
+  check("Keine E-Mail-Adressen aus der Kontenliste", !konten.some((k) => k.email && all.toLowerCase().includes(k.email.toLowerCase())));
 }
 check("Keine Datenbank-Adresse mit Passwort (postgres://…)", !/postgres(ql)?:\/\/[^\s"']+:[^\s"']+@/.test(all));
 check("Keine Quelltext-Karten (*.map)", !files.some((f) => f.endsWith(".map")));
@@ -80,7 +79,7 @@ check("_headers: Content-Security-Policy erlaubt nur die eigene Seite und Supaba
 check("Keine externen Skripte, Schriften oder Tracker in index.html", !/(src|href)="https?:\/\//.test(index));
 
 // ---- Unerwartete Dateien (z. B. aus public/, die nicht ins Repo gehören)
-const expected = /^dist\/(index\.html|robots\.txt|_headers|favicon\.svg|assets\/[^/]+)$/;
+const expected = /^dist\/(index\.html|robots\.txt|_headers|favicon\.svg|theme-init\.js|assets\/[^/]+)$/;
 const extra = files.filter((f) => !expected.test(f.replaceAll("\\", "/")));
 // Cloudflare baut aus dem Git-Stand: Dateien, die nur lokal in public/ liegen und nicht eingecheckt sind, landen dort nicht im Build.
 const tracked = (f) => {
