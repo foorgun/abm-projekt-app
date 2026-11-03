@@ -21,6 +21,8 @@
     "check:roles": "vite-node scripts/check-roles.ts",
     "check:repo": "vite-node scripts/check-repo.ts",
     "check:build": "node scripts/check-build.mjs",
+    "check:secrets": "vite-node scripts/check-secrets.ts --",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
     "vorlagen:hochladen": "vite-node scripts/vorlagen-hochladen.ts --"
   },
   "dependencies": {
