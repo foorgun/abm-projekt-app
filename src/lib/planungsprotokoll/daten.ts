@@ -97,13 +97,20 @@ export function architektKontakt(buero: BueroDaten | null, sachbearbeiter: Proje
 /** Name und Anschrift in einem Feld ("Name/Anschrift", große Namensfelder). */
 export const nameAnschrift = (k: Kontakt): string | null => join([k.name, k.anschrift], ", ");
 
+/** Alle Bauherren in einer Zeile: "A", "A und B", "A, B und C". */
+function bauherrNamen(erster: string, contact: BauherrContact | null): string {
+  const namen = [erster, contact?.name2, contact?.name3, contact?.name4].map(clean).filter(Boolean);
+  const letzter = namen.pop();
+  return namen.length ? `${namen.join(", ")} und ${letzter}` : (letzter ?? "");
+}
+
 function bauherrTeil(contact: BauherrContact | null, label: string) {
   // Getrennte Felder gehen vor; nur wenn keines gesetzt ist, wird die alte Zeile aufgeteilt
   const getrennt = clean(contact?.street) || clean(contact?.postalCode) || clean(contact?.city);
   const alt = getrennt ? { strasse: null, plz: null, ort: null } : splitAnschrift(contact?.address);
   const phone = clean(contact?.phone);
   return {
-    name: join([clean(contact?.name) ?? label, contact?.name2], " und "),
+    name: bauherrNamen(clean(contact?.name) ?? label, contact),
     strasse: clean(contact?.street) ?? alt.strasse,
     plzOrt: join([clean(contact?.postalCode) ?? alt.plz, clean(contact?.city) ?? alt.ort], " "),
     // Das Protokoll fragt nur "Mobil": ohne eigene Mobilnummer die Telefonnummer, wenn sie eine Handynummer ist

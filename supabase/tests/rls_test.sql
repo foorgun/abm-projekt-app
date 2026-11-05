@@ -606,6 +606,15 @@ select test.expect('Bearbeiten: Gemarkung geändert, Flurstück geleert',
 select test.expect('Bearbeiten: zweiter Bauherr geändert',
   (select count(*) from public.bauherren where name = 'Jonas Hoffmann' and name2 is null and email2 = 'anna@example.com'), 1);
 
+select public.update_project((select id from public.projects where bauherr_label = 'Hoffmann'), '{}',
+  '{"name": "Jonas Hoffmann", "phone": "0731 000111", "name3": " Lena Hoffmann ", "email3": "", "name4": "Tom Hoffmann", "phone4": "0171 4"}');
+select test.expect('Bearbeiten: dritter und vierter Bauherr gespeichert (bereinigt, leere E-Mail wird null)',
+  (select count(*) from public.bauherren where name = 'Jonas Hoffmann' and name3 = 'Lena Hoffmann' and email3 is null and name4 = 'Tom Hoffmann' and phone4 = '0171 4'), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Hoffmann'), '{}',
+  '{"name": "Jonas Hoffmann", "phone": "0731 000111"}');
+select test.expect('Bearbeiten: dritter und vierter Bauherr bleiben, wenn nicht genannt',
+  (select count(*) from public.bauherren where name = 'Jonas Hoffmann' and name3 = 'Lena Hoffmann' and name4 = 'Tom Hoffmann'), 1);
+
 insert into public.documents (project_id, name, storage_path, folder_path, doc_type, meta, uploaded_by)
 select id, 'scan.pdf', id::text || '/x/scan.pdf', '00 Verträge', 'werkvertrag', '{"vertragsdatum": "2026-10-02", "vertragspreis": "312.450,00 €"}', auth.uid()
 from public.projects where bauherr_label = 'Hoffmann' and gemarkung = 'Söflingen';
@@ -655,6 +664,8 @@ select test.expect('Freiberufler sieht keine Entwurfsdatei im Speicher', (select
 select test.throws('Freiberufler darf nichts im Entwurfsspeicher ablegen', $$insert into storage.objects (bucket_id, name) values ('project-documents', 'drafts/z/x.pdf')$$);
 select test.throws('Freiberufler darf nichts in einem fremden Projekt ablegen', $$insert into storage.objects (bucket_id, name) values ('project-documents', 'a0000000-0000-4000-8000-000000000002/x.pdf')$$);
 select test.expect('Freiberufler sieht den zweiten Bauherrn nicht', (select count(*) from public.bauherren where name2 is not null or name2 is null), 0);
+select test.expect('Freiberufler sieht dritten und vierten Bauherrn nicht', (select count(*) from public.bauherren where name3 is not null or name4 is not null), 0);
+select test.expect('Freiberufler ändert den dritten Bauherrn nicht', test.affected($$update public.bauherren set name3 = 'x'$$), 0);
 select test.expect('Freiberufler sieht Flurstück und Gemarkung seines Projekts (kein Kontaktdatum)', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and flurstueck is null), 1);
 select test.throws('Freiberufler darf kein Projekt aus einem Entwurf anlegen', $$select public.create_project('{"bauherr_label": "Hoffmann", "flurstueck": "1/2"}')$$);
 

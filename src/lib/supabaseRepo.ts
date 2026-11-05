@@ -134,8 +134,14 @@ export function projectJson(fields: Partial<ProjectFields>): Record<string, stri
 export function bauherrJson(b: BauherrInput): Record<string, string | null> {
   const v = (x: string | null | undefined) => x?.trim() || null;
   const out: Record<string, string | null> = { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress), name2: v(b.name2), phone2: v(b.phone2), email2: v(b.email2) };
-  // Getrennte Felder nur, wenn genannt: fehlt ein Schlüssel, lässt die Datenbank den Wert stehen (Migration 0013)
+  // Getrennte Felder sowie dritter und vierter Bauherr nur, wenn genannt: fehlt ein Schlüssel, lässt die Datenbank den Wert stehen (Migrationen 0013, 0023)
   const extra: [keyof BauherrInput, string][] = [
+    ["name3", "name3"],
+    ["phone3", "phone3"],
+    ["email3", "email3"],
+    ["name4", "name4"],
+    ["phone4", "phone4"],
+    ["email4", "email4"],
     ["street", "street"],
     ["postalCode", "postal_code"],
     ["city", "city"],

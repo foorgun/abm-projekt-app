@@ -9,6 +9,7 @@ export function Dialog({
   footer,
   wide,
   xwide,
+  keepOpenOnOutsideClick,
 }: {
   title: string;
   onClose: () => void;
@@ -18,6 +19,8 @@ export function Dialog({
   wide?: boolean;
   /** Sehr breiter Dialog für zwei Spalten (Dokument-Vorschau neben den Feldern) */
   xwide?: boolean;
+  /** Klick neben den Dialog schließt nicht: für Formulare, in denen sonst Eingaben verloren gingen */
+  keepOpenOnOutsideClick?: boolean;
 }) {
   const id = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -33,7 +36,7 @@ export function Dialog({
     };
   }, [onClose]);
   return (
-    <div className="dialog-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="dialog-backdrop" onMouseDown={(e) => !keepOpenOnOutsideClick && e.target === e.currentTarget && onClose()}>
       <div className={xwide ? "dialog dialog-xwide" : wide ? "dialog dialog-wide" : "dialog"} role="dialog" aria-modal="true" aria-labelledby={id} ref={ref}>
         <div className="dialog-head">
           <h2 id={id}>{title}</h2>

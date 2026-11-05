@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, FileUp } from "lucide-react";
 import { ALWAYS_CHECK, applyDraft, cleanMeta, FORM_SOURCE, formPatchFor, preserveEdited, SIMILAR_LABEL, similarProjects, type AppliedDraft, type FormKey } from "../lib/extract/applyDraft";
@@ -29,6 +29,7 @@ import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from
 import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, monthStart } from "../lib/format";
 import { folgeAnschrift } from "../lib/projectEdit";
+import { WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
 import type { NewProject } from "../lib/repo";
@@ -238,7 +239,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set(resumed?.form.resolved ?? []));
   /** Felder, die der Mensch nach dem Vorbefüllen selbst geändert hat (gelten als geprüft) */
   const [edited, setEdited] = useState<ReadonlySet<string>>(new Set(resumed?.form.edited ?? []));
-  const [showSecond, setShowSecond] = useState(false);
+  /** Weitere Bauherren, für die Felder angefordert wurden (zweiter bis vierter) */
+  const [weitereAngefordert, setWeitereAngefordert] = useState(0);
   const [dropActive, setDropActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -306,7 +308,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       return { ...old, bauherr: { ...after, ...folgeAnschrift(before, after) } };
     });
   };
-  const second = showSecond || Boolean(v.bauherr?.name2 || v.bauherr?.phone2 || v.bauherr?.email2);
+  const weitere = weitereSichtbar(v.bauherr, weitereAngefordert);
   const similar = draft
     ? similarProjects({ bauherrLabel: v.bauherrLabel, buildingAddress: v.bauherr?.buildingAddress ?? null, flurstueck: v.flurstueck, gemarkung: v.gemarkung }, projects, data?.bauherren ?? [])
     : [];
@@ -633,6 +635,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       <Dialog
         title={dialogTitle}
         wide
+        keepOpenOnOutsideClick
         onClose={closeStable}
         footer={
           <>
@@ -719,6 +722,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       <Dialog
         title="Gibt es dieses Projekt schon?"
         wide
+        keepOpenOnOutsideClick
         onClose={backToForm}
         footer={
           <>
@@ -771,6 +775,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       title={draft ? `${dialogTitle} prüfen` : dialogTitle}
       wide={!draft}
       xwide={Boolean(draft)}
+      keepOpenOnOutsideClick
       onClose={closeStable}
       footer={
         <>
@@ -1119,26 +1124,27 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                 </Field>
               </div>
             </details>
-            {second ? (
-              <>
-                <Field label="Zweiter Bauherr (Name)" htmlFor="np-name2">
-                  <Input id="np-name2" value={v.bauherr?.name2 ?? ""} onChange={(e) => setContact({ name2: e.target.value || null })} autoComplete="off" />
-                  <Src k="name2" />
+            {WEITERE_BAUHERREN.slice(0, weitere).map((b) => (
+              <Fragment key={b.nr}>
+                <Field label={`${b.label} (Name)`} htmlFor={`np-name${b.nr}`}>
+                  <Input id={`np-name${b.nr}`} value={v.bauherr?.[b.name] ?? ""} onChange={(e) => setContact({ [b.name]: e.target.value || null })} autoComplete="off" />
+                  {b.nr === 2 && <Src k="name2" />}
                 </Field>
                 <div className="dialog-row">
-                  <Field label="Telefon (zweiter Bauherr)" htmlFor="np-tel2">
-                    <Input id="np-tel2" type="tel" value={v.bauherr?.phone2 ?? ""} onChange={(e) => setContact({ phone2: e.target.value || null })} autoComplete="off" />
-                    <Src k="phone2" />
+                  <Field label={`Telefon (${b.klein})`} htmlFor={`np-tel${b.nr}`}>
+                    <Input id={`np-tel${b.nr}`} type="tel" value={v.bauherr?.[b.phone] ?? ""} onChange={(e) => setContact({ [b.phone]: e.target.value || null })} autoComplete="off" />
+                    {b.nr === 2 && <Src k="phone2" />}
                   </Field>
-                  <Field label="E-Mail (zweiter Bauherr)" htmlFor="np-mail2">
-                    <Input id="np-mail2" type="email" value={v.bauherr?.email2 ?? ""} onChange={(e) => setContact({ email2: e.target.value || null })} autoComplete="off" />
-                    <Src k="email2" />
+                  <Field label={`E-Mail (${b.klein})`} htmlFor={`np-mail${b.nr}`}>
+                    <Input id={`np-mail${b.nr}`} type="email" value={v.bauherr?.[b.email] ?? ""} onChange={(e) => setContact({ [b.email]: e.target.value || null })} autoComplete="off" />
+                    {b.nr === 2 && <Src k="email2" />}
                   </Field>
                 </div>
-              </>
-            ) : (
-              <button type="button" className="hint-action form-more" onClick={() => setShowSecond(true)}>
-                Zweiten Bauherrn hinzufügen
+              </Fragment>
+            ))}
+            {weitere < WEITERE_BAUHERREN.length && (
+              <button type="button" className="hint-action form-more" onClick={() => setWeitereAngefordert(weitere + 1)}>
+                {WEITERE_BAUHERREN[weitere].hinzufuegen}
               </button>
             )}
           </fieldset>

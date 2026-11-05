@@ -34,6 +34,12 @@ export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
   name2: "Zweiter Bauherr",
   phone2: "Telefon (zweiter Bauherr)",
   email2: "E-Mail (zweiter Bauherr)",
+  name3: "Dritter Bauherr",
+  phone3: "Telefon (dritter Bauherr)",
+  email3: "E-Mail (dritter Bauherr)",
+  name4: "Vierter Bauherr",
+  phone4: "Telefon (vierter Bauherr)",
+  email4: "E-Mail (vierter Bauherr)",
   street: "Straße (Bauherr)",
   postalCode: "PLZ (Bauherr)",
   city: "Ort (Bauherr)",
@@ -45,8 +51,8 @@ export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
   siteState: "Bundesland",
 };
 
-/** Felder des Bauherrn, die erst mit dem Planungsprotokoll kamen: nicht genannt = unverändert (wie der zweite Bauherr). */
-const OPTIONAL_BAUHERR: (keyof BauherrInput)[] = ["name2", "phone2", "email2", "street", "postalCode", "city", "mobile", "siteStreet", "sitePostalCode", "siteCity", "siteDistrict", "siteState"];
+/** Weitere Bauherren und Felder, die erst mit dem Planungsprotokoll kamen: nicht genannt = unverändert. */
+const OPTIONAL_BAUHERR: (keyof BauherrInput)[] = ["name2", "phone2", "email2", "name3", "phone3", "email3", "name4", "phone4", "email4", "street", "postalCode", "city", "mobile", "siteStreet", "sitePostalCode", "siteCity", "siteDistrict", "siteState"];
 
 export const PARTY_LABEL: Record<PartyRole, string> = {
   vermesser: "Vermesser",
@@ -161,6 +167,12 @@ export function planProjectUpdate(
     name2: contact?.name2 ?? null,
     phone2: contact?.phone2 ?? null,
     email2: contact?.email2 ?? null,
+    name3: contact?.name3 ?? null,
+    phone3: contact?.phone3 ?? null,
+    email3: contact?.email3 ?? null,
+    name4: contact?.name4 ?? null,
+    phone4: contact?.phone4 ?? null,
+    email4: contact?.email4 ?? null,
     street: contact?.street ?? null,
     postalCode: contact?.postalCode ?? null,
     city: contact?.city ?? null,
@@ -183,7 +195,7 @@ export function planProjectUpdate(
       address: clean(b.address),
       buildingAddress: clean(b.buildingAddress),
     };
-    // zweiter Bauherr und getrennte Felder: nicht genannt = unverändert
+    // weitere Bauherren und getrennte Felder: nicht genannt = unverändert
     for (const k of OPTIONAL_BAUHERR) if (b[k] !== undefined) after[k] = clean(b[k]);
     // einzeilige Anschrift geändert, getrennte nicht genannt: abgeleitete Werte mitziehen
     const folge = folgeAnschrift(before, after);

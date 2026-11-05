@@ -73,10 +73,16 @@ export interface BauherrInput {
   email: string | null;
   address: string | null;
   buildingAddress: string | null;
-  /** Zweiter Bauherr. Nicht genannt (undefined) = unverändert. */
+  /** Weitere Bauherren. Nicht genannt (undefined) = unverändert. */
   name2?: string | null;
   phone2?: string | null;
   email2?: string | null;
+  name3?: string | null;
+  phone3?: string | null;
+  email3?: string | null;
+  name4?: string | null;
+  phone4?: string | null;
+  email4?: string | null;
   /** Getrennte Anschrift, Mobil und Bauort (Planungsprotokoll). Nicht genannt (undefined) = unverändert. */
   street?: string | null;
   postalCode?: string | null;
