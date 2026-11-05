@@ -31,10 +31,10 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 
 ## Zu Schritt 8 (Supabase)
 
-- Vertrag zur Auftragsverarbeitung (AVV) mit Supabase: liegt er vor bzw. lässt er sich im Free-Tarif abschließen? Vor echten Bauherren-Daten klären.
+- Vertrag zur Auftragsverarbeitung (AVV): zwischen Furkan Cetin (Auftragsverarbeiter) und ABM, Anthropic und Supabase als Unterauftragnehmer. Noch nicht unterschrieben. Vor echten Bauherren-Daten klären, auch ob die Verträge mit den Unterauftragnehmern im gewählten Tarif vorliegen.
 - Wechsel auf den Pro-Tarif: wann, und wer zahlt (Backups, keine Pause)?
 - Sollen Admins Rollen und Projektzuweisungen in der App pflegen (Nutzerverwaltung), oder reicht Skript/Dashboard?
-- Passwörter: Mindestlänge und Regeln im Dashboard festlegen (Authentication → Passwords). Zwei-Faktor-Anmeldung gewünscht?
+- Passwörter: Mindestlänge in production ist 12. Zwei-Faktor-Anmeldung gewünscht?
 - Wird ein Dokument in der Prüfliste in ein anderes Projekt verschoben, bleibt die Datei im Speicher unter der alten Projekt-ID liegen.
   Das muss der Agent in Schritt 9 lösen (Datei mit verschieben), sonst passt die Zugriffsregel des Speichers nicht mehr.
 - Nummernkreise der Hausbaufirmen (z. B. 8161 für Bien-Zenker?): stimmen die Zuordnungen aus der Demo? Erst mit bestätigtem
@@ -60,8 +60,8 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - **Zweiter Bauherr:** gespeichert als zweiter Kontakt (Name, Telefon, E-Mail) bei den Kontaktdaten des Bauherrn, nicht am Projekt,
   damit Freiberufler ihn nicht sehen. Reicht das, oder braucht es mehr als zwei Bauherren (Bauherrengemeinschaft)?
 - **AVV und Freigabe:** Die KI-Auslesung sendet Seite 1 des Vertrags (Name, Anschrift, Telefon, E-Mail der Bauherren) als Bild an
-  den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) braucht es den Auftragsverarbeitungsvertrag mit dem Anbieter und
-  die Zustimmung von ABM. Siehe `docs/vertrag-extraktion.md`.
+  den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) in production muss der AVV zwischen Furkan Cetin und ABM unterschrieben sein
+  (Anthropic als Unterauftragnehmer). Siehe `docs/vertrag-extraktion.md`.
 - **Limits der Auslesung:** 20 je Person und Tag, 100 je Tag, 20 € im Monat sind Annahmen. Passen sie zum Büro?
 
 ## Zu Urlaub und Krankheit

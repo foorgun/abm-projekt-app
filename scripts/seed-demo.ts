@@ -1,18 +1,20 @@
 // Erfundene Demo-Daten in die ECHTE Datenbank laden oder wieder entfernen. Echte Daten werden nie angefasst:
 // jede Demo-Zeile trägt is_demo = true bzw. hängt per Fremdschlüssel an einer solchen Zeile.
 //
-//   npm run seed:demo                 lädt die Demo-Daten (braucht den Secret key in .env.server)
-//   npm run seed:demo -- --loeschen   entfernt ALLE Demo-Daten wieder (Secret key)
-//   npm run seed:demo -- --sql        schreibt stattdessen SQL nach supabase/.out/ (kein Schlüssel nötig):
+// Nur development: production bekommt nie Demo-Daten.
+//   npm run seed:demo -- --ziel development               lädt die Demo-Daten (braucht den Secret key)
+//   npm run seed:demo -- --ziel development --loeschen    entfernt ALLE Demo-Daten wieder (Secret key)
+//   npm run seed:demo -- --ziel development --sql         schreibt stattdessen SQL nach supabase/.out/ (kein Schlüssel nötig):
 //                                     demo-seed.sql und demo-loeschen.sql, zum Einfügen in den SQL-Editor
 import { mkdirSync, writeFileSync } from "node:fs";
 import { absenceSeedRows, absenceSeedSql } from "../src/data/demoAbwesenheit";
 import { buildDemoDataset } from "../src/data/demoData";
 import { buildSeedTables, deleteDemoSql, DELETE_ORDER, LINK_ATTACHMENTS_SQL, REAL_COMPANY_ID, seedSql, type SeedRow } from "../src/data/seedRows";
 import { todayIso } from "../src/lib/format";
-import { adminClient, die, table } from "./lib/server";
+import { adminClient, die, table, waehleZiel } from "./lib/server";
 
 const args = new Set(process.argv.slice(2));
+await waehleZiel("Demo-Daten", args.has("--sql") ? [] : ["oeffentlich", "secret"], { nurDevelopment: true });
 const tables = buildSeedTables(buildDemoDataset(todayIso()));
 const total = tables.reduce((n, t) => n + t.rows.length, 0);
 

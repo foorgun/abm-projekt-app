@@ -1,10 +1,13 @@
 // Gemeinsames für die Skripte gegen das echte Supabase-Projekt (Konten, Seed, Sicherung, Prüfungen).
-// Schlüssel und Konten stehen nur in lokalen, nicht eingecheckten Dateien:
-//   .env               VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY (Publishable key)
-//   .env.server        SUPABASE_SECRET_KEY=sb_secret_…   (umgeht RLS, nur für diese Skripte)
-//   konten.local.json  Testkonten (siehe konten.beispiel.json)
+// Jedes Skript verlangt ein ausdrückliches Ziel (--ziel development|production), siehe docs/umgebungen.md.
+// Schlüssel und Konten stehen nur in lokalen, nicht eingecheckten Dateien (scripts/lib/ziele.ts):
+//   .env.ziel.<ziel>            Projekt-URL, Publishable und Secret key, Zugangs-Token, Anthropic-Schlüssel
+//   konten.<ziel>.local.json    Konten (siehe konten.beispiel.json)
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { setSupabaseConfig } from "../../src/lib/supabase/client";
+import { BESTAETIGUNG_PRODUCTION, parseZiel, pruefeWerte, ZIELE, type Feld, type Ziel } from "./ziele";
 
 export function readEnvFile(file: string): Record<string, string> {
   if (!existsSync(file)) return {};
@@ -16,12 +19,49 @@ export function readEnvFile(file: string): Record<string, string> {
   );
 }
 
+let aktiv: { ziel: Ziel; env: Record<string, string> } | null = null;
+
+/**
+ * Muss jedes Skript zuerst aufrufen: liest --ziel, prüft die verlangten Werte und fragt bei production nach.
+ * Ohne eingetippte Bestätigung (auch ohne Eingabe) bricht es ab, einen Schalter zum Überspringen gibt es nicht.
+ */
+export async function waehleZiel(aktion: string, felder: Feld[] = ["oeffentlich"], opt: { nurDevelopment?: boolean } = {}): Promise<Ziel> {
+  const ziel = parseZiel(process.argv);
+  if (!ziel) die(`Ziel fehlt. Aufruf mit -- --ziel development oder -- --ziel production (${aktion}).`);
+  if (opt.nurDevelopment && ziel === "production") die(`${aktion} ist für production gesperrt, es läuft nur gegen development.`);
+  const { ref, datei } = ZIELE[ziel];
+  if (felder.length && !existsSync(datei)) die(`${datei} fehlt. Siehe docs/umgebungen.md.`);
+  const env = readEnvFile(datei);
+  const probleme = pruefeWerte(ziel, env, felder);
+  if (probleme.length) die(probleme.join("\n"));
+  console.log(`Ziel: ${ziel} (${ref})`);
+  if (ziel === "production") {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const antwort = await new Promise<string>((resolve) => {
+      rl.once("close", () => resolve("")); // Eingabe zu Ende: gilt als nicht bestätigt
+      void rl.question(`ACHTUNG, PRODUCTION: ${aktion}. Zum Fortfahren ${BESTAETIGUNG_PRODUCTION} eintippen: `).then(resolve);
+    });
+    rl.close();
+    if (antwort.trim() !== BESTAETIGUNG_PRODUCTION) die("Abgebrochen, nichts ausgeführt.");
+  }
+  aktiv = { ziel, env };
+  // vite-node hat beim Start .env geladen. Client der App und aufgerufene Prozesse (vite build) sollen dieses Ziel nutzen.
+  if (felder.includes("oeffentlich")) {
+    setSupabaseConfig({ url: env.VITE_SUPABASE_URL, key: env.VITE_SUPABASE_ANON_KEY });
+    process.env.VITE_SUPABASE_URL = env.VITE_SUPABASE_URL;
+    process.env.VITE_SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY;
+  }
+  return ziel;
+}
+
+export function zielWerte(): { ziel: Ziel; ref: string; env: Record<string, string> } {
+  if (!aktiv) die("Programmfehler: waehleZiel() wurde nicht aufgerufen.");
+  return { ziel: aktiv.ziel, ref: ZIELE[aktiv.ziel].ref, env: aktiv.env };
+}
+
 export function publicConfig(): { url: string; key: string } {
-  const env = { ...readEnvFile(".env"), ...readEnvFile(".env.local") };
-  const url = env.VITE_SUPABASE_URL;
-  const key = env.VITE_SUPABASE_ANON_KEY;
-  if (!url || !key) die("VITE_SUPABASE_URL und VITE_SUPABASE_ANON_KEY fehlen in .env");
-  return { url, key };
+  const { env } = zielWerte();
+  return { url: env.VITE_SUPABASE_URL, key: env.VITE_SUPABASE_ANON_KEY };
 }
 
 /** Client mit dem Publishable key, ohne gespeicherte Sitzung: verhält sich wie ein Browser ohne Anmeldung. */
@@ -33,15 +73,10 @@ export function publicClient(): SupabaseClient {
 /** Client mit dem Secret key (umgeht RLS). Der Schlüssel wird nie ausgegeben und nie geschrieben. */
 export function adminClient(): SupabaseClient {
   const { url } = publicConfig();
-  const secret = readEnvFile(".env.server").SUPABASE_SECRET_KEY;
-  if (!secret) {
-    die(
-      "Der Secret key fehlt. Lege die Datei .env.server an (sie ist in .gitignore) mit der Zeile\n" +
-        "  SUPABASE_SECRET_KEY=sb_secret_…\n" +
-        "Den Schlüssel findest du im Dashboard unter Project Settings → API Keys → Secret keys.",
-    );
-  }
-  if (secret.startsWith("sb_publishable_")) die("In .env.server steht der Publishable key. Gebraucht wird der Secret key (sb_secret_…).");
+  const { ziel, env } = zielWerte();
+  const secret = env.SUPABASE_SECRET_KEY;
+  const probleme = pruefeWerte(ziel, env, ["secret"]);
+  if (probleme.length) die(`${probleme.join("\n")}\nDen Schlüssel findest du im Dashboard unter Project Settings → API Keys → Secret keys.`);
   return createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
 }
 
@@ -53,9 +88,10 @@ export interface Konto {
   /** Vom Skript erzeugt (neue Konten) oder von Hand eingetragen. Ohne Passwort wird das Konto bei check:roles übersprungen. */
   passwort?: string;
 }
-export const KONTEN_DATEI = "konten.local.json";
+export const kontenDatei = (): string => ZIELE[zielWerte().ziel].konten;
 
 export function readKonten(): Konto[] {
+  const KONTEN_DATEI = kontenDatei();
   if (!existsSync(KONTEN_DATEI)) {
     die(`${KONTEN_DATEI} fehlt. Kopiere konten.beispiel.json nach ${KONTEN_DATEI} und trage die E-Mail-Adressen ein (die Datei wird nicht eingecheckt).`);
   }
@@ -71,7 +107,7 @@ export function readKonten(): Konto[] {
 }
 
 export function writeKonten(konten: Konto[]): void {
-  writeFileSync(KONTEN_DATEI, JSON.stringify({ konten }, null, 2) + "\n");
+  writeFileSync(kontenDatei(), JSON.stringify({ konten }, null, 2) + "\n", { mode: 0o600 });
 }
 
 export function die(message: string): never {

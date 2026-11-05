@@ -1,5 +1,8 @@
 # Hosting für den Pilotbetrieb: Cloudflare Pages + Cloudflare Access
 
+> **Stand:** Die App läuft inzwischen als Worker `abm-pilot` unter `https://abm-pilot.fcetin19.workers.dev`, production ist das Projekt
+> `abm-prod`. Die Menüwege unten beschreiben die erste Einrichtung über Pages. Umgebungen, Schlüssel und Ablauf: `docs/umgebungen.md`.
+
 Ziel: Die App läuft unter einer `…pages.dev`-Adresse, verbunden mit dem Supabase-Projekt "abm-pilot". Davor steht Cloudflare Access:
 Wer die Seite öffnet, bekommt einen Einmalcode per Mail, und nur freigegebene Adressen kommen durch. Danach folgt die
 Anmeldung der App (E-Mail und Passwort). Keine eigene Domain im ersten Schritt.

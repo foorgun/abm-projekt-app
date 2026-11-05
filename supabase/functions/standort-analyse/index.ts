@@ -11,6 +11,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { analysieren, anfrageAusProjekt, MAX_ANALYSEN_PRO_TAG, parseProjektId, tagesbeginn, TIMEOUT_MS, USER_AGENT, type Dienste, type StandortFehler } from "./logic.ts";
 import { GEMEINDEN } from "./gemeinden.ts";
 import { ERDBEBEN, ERDBEBEN_BY_KREISE, SCHNEELAST } from "./zonen.ts";
+import { serviceKey } from "../_shared/serviceKey.ts";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
   // --- Anmeldung und Rolle ---------------------------------------------------------------------------
   const token = req.headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ?? "";
   if (!token) return fail("forbidden", "Nicht angemeldet.", 401);
-  const admin = createClient(env("SUPABASE_URL")!, env("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
+  const admin = createClient(env("SUPABASE_URL")!, serviceKey(env)!, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: auth, error: authError } = await admin.auth.getUser(token);
   if (authError || !auth.user) return fail("forbidden", "Nicht angemeldet.", 401);
   const userId = auth.user.id;

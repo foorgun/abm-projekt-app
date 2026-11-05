@@ -54,13 +54,16 @@ Ist ein Seitenbild über 5 MB, rendert die App es kleiner (1024 statt 1568 px); 
 
 ## Was vorher geklärt sein muss
 
-1. **AVV:** Auftragsverarbeitungsvertrag mit Anthropic abgeschlossen (auf Seite 1 stehen Name, Anschrift, Telefon und
-   E-Mail der Bauherren). Ohne AVV bleibt `EXTRACTOR_ENABLED` auf `false`.
+1. **AVV:** Auftragsverarbeitungsvertrag zwischen Furkan Cetin (Auftragsverarbeiter) und ABM unterschrieben, Anthropic und Supabase
+   sind Unterauftragnehmer (auf Seite 1 stehen Name, Anschrift, Telefon und E-Mail der Bauherren). Ohne AVV bleibt
+   `EXTRACTOR_ENABLED` in production auf `false`. Siehe `docs/umgebungen.md`.
 2. **API-Schlüssel:** in der Anthropic Console erzeugt. Er steht ausschließlich als Secret der Funktion in Supabase,
    nie in `.env`, nie in Cloudflare, nie im Repo.
 3. **Migration 0010** ist in der Datenbank (Tabelle `extraction_log` für die Kostenbremse).
 
 ## Schritt für Schritt
+
+Heute geht das mit Ziel: `secrets:setzen` und `functions:deploy` (`docs/umgebungen.md`). Die Schritte unten zeigen, was dabei passiert.
 
 Alle Befehle im Projektordner. `<ref>` ist die Projekt-Referenz aus der Supabase-Adresse (`https://<ref>.supabase.co`).
 
@@ -128,7 +131,7 @@ die manuelle Anlage an).
 | `EXTRACTOR_USD_EUR` | `1.0` | Umrechnung der Dollar-Listenpreise; 1,0 schätzt eher zu hoch |
 | `EXTRACTOR_STRICT` | `true` | `false` verzichtet ganz auf die Schema-Bindung: die Anweisung verlangt reines JSON, die Funktion prüft es. Nur nötig, wenn der Dienst auch das kleine Schema ablehnt. |
 
-`SUPABASE_URL` und `SUPABASE_SERVICE_ROLE_KEY` stellt Supabase der Funktion von selbst bereit.
+`SUPABASE_URL` und `SUPABASE_SECRET_KEYS` stellt Supabase der Funktion von selbst bereit (Rückfall auf `SUPABASE_SERVICE_ROLE_KEY`, solange production nicht umgestellt ist).
 
 ## Wie die Funktion absichert
 

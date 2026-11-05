@@ -1,16 +1,17 @@
 // Lädt die PDF-Vorlagen des Planungsprotokolls aus vorlagen/planungsprotokoll/ in den privaten Bucket "vorlagen"
-// (Migration 0014). Die Vorlagen sind Firmendokumente und liegen nicht im Repo. Braucht den Secret key in .env.server.
+// (Migration 0014). Die Vorlagen sind Firmendokumente und liegen nicht im Repo. Braucht den Secret key.
 // Vor dem Hochladen prüft das Skript jede Datei: lesbares PDF und alle Felder, die die App auf Seite 1 befüllt, vorhanden.
 //
-//   npm run vorlagen:hochladen                 lädt fehlende Vorlagen hoch, vorhandene bleiben unverändert
-//   npm run vorlagen:hochladen -- --ersetzen   ersetzt vorhandene (z. B. nach einer neuen Revision der Hausbaufirma)
+//   npm run vorlagen:hochladen -- --ziel <ziel>              lädt fehlende Vorlagen hoch, vorhandene bleiben unverändert
+//   npm run vorlagen:hochladen -- --ziel <ziel> --ersetzen   ersetzt vorhandene (z. B. nach einer neuen Revision der Hausbaufirma)
 import { existsSync, readFileSync } from "node:fs";
 import { PDFDocument, PDFTextField } from "pdf-lib";
 import { VORLAGEN_BUCKET, VORLAGEN_LISTE, VORLAGEN_ORDNER } from "../src/lib/planungsprotokoll/vorlagen";
 import { ZUORDNUNG } from "../src/lib/planungsprotokoll/zuordnung";
-import { adminClient, die, table } from "./lib/server";
+import { adminClient, die, table, waehleZiel } from "./lib/server";
 
 const ersetzen = process.argv.includes("--ersetzen");
+await waehleZiel(ersetzen ? "Vorlagen hochladen und ersetzen" : "Vorlagen hochladen", ["oeffentlich", "secret"]);
 const sb = adminClient();
 
 const { data: buckets, error: bucketError } = await sb.storage.listBuckets();

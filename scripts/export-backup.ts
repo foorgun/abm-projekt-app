@@ -1,16 +1,17 @@
 // Sicherung: alle Tabellen als JSON in einen lokalen Ordner mit Datum (backups/ steht in .gitignore).
-// Braucht den Secret key (.env.server), weil nur er alle Zeilen unabhängig von Rollen lesen darf. Liest nur.
+// Braucht den Secret key, weil nur er alle Zeilen unabhängig von Rollen lesen darf. Liest nur.
 // Enthalten: alle Tabellen der App (Liste in scripts/lib/backupTables.ts, ein Test prüft sie gegen die Migrationen), die
 // Liste der Benutzerkonten (ohne Passwörter) und die Liste der Dateien im Speicher.
 // NICHT enthalten: die Dateien selbst (Pläne, PDFs). Die müssen getrennt gesichert werden.
-// Aufruf: npm run export:backup
+// Aufruf: npm run export:backup -- --ziel development|production
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { BACKUP_TABLES } from "./lib/backupTables";
-import { adminClient, die, fetchAll, stamp, table } from "./lib/server";
+import { adminClient, die, fetchAll, stamp, table, waehleZiel } from "./lib/server";
 
+const ziel = await waehleZiel("Sicherung lesen", ["oeffentlich", "secret"]);
 const sb = adminClient();
-const dir = join("backups", `abm-backup-${stamp()}`);
+const dir = join("backups", ziel, `abm-backup-${stamp()}`);
 mkdirSync(dir, { recursive: true });
 const counts: [string, number][] = [];
 
@@ -35,15 +36,28 @@ for (let page = 1; ; page++) {
 writeFileSync(join(dir, "auth_users.json"), JSON.stringify(users, null, 1));
 counts.push(["auth_users (ohne Passwörter)", users.length]);
 
-// Dateien im Speicher: nur die Liste (Pfad = storage_path in documents)
-const objects = await sb.schema("storage").from("objects").select("name, bucket_id, created_at, metadata").eq("bucket_id", "project-documents").limit(100000);
-if (objects.error) {
-  writeFileSync(join(dir, "storage_objects.json"), JSON.stringify({ hinweis: `Liste nicht lesbar: ${objects.error.message}` }));
-  counts.push(["storage_objects (Liste nicht lesbar)", 0]);
-} else {
-  writeFileSync(join(dir, "storage_objects.json"), JSON.stringify(objects.data, null, 1));
-  counts.push(["storage_objects (nur Liste, keine Dateien)", objects.data.length]);
+// Dateien im Speicher: nur die Liste, über die Storage-Schnittstelle (das Schema storage ist über die Daten-API nicht erreichbar)
+const buckets = await sb.storage.listBuckets();
+if (buckets.error) die(`Speicher: ${buckets.error.message}`);
+const objects: Record<string, unknown>[] = [];
+for (const bucket of buckets.data) {
+  const walk = async (folder: string): Promise<void> => {
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await sb.storage.from(bucket.id).list(folder, { limit: 1000, offset, sortBy: { column: "name", order: "asc" } });
+      if (error) die(`Speicher ${bucket.id}/${folder}: ${error.message}`);
+      for (const o of data) {
+        const name = folder ? `${folder}/${o.name}` : o.name;
+        // Ordner haben keine id
+        if (o.id) objects.push({ bucket_id: bucket.id, name, created_at: o.created_at, metadata: o.metadata });
+        else await walk(name);
+      }
+      if (data.length < 1000) return;
+    }
+  };
+  await walk("");
 }
+writeFileSync(join(dir, "storage_objects.json"), JSON.stringify(objects, null, 1));
+counts.push(["storage_objects (nur Liste, keine Dateien)", objects.length]);
 
 writeFileSync(join(dir, "_info.json"), JSON.stringify({ erstellt: new Date().toISOString(), tabellen: Object.fromEntries(counts), hinweis: "Dateien aus dem Speicher sind nicht enthalten." }, null, 1));
 console.log(table(["Tabelle", "Zeilen"], counts));
