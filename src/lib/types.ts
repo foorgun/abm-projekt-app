@@ -4,7 +4,7 @@ import type { DraftFormState, ProjectDraft } from "./extract/types";
 import type { StepDefinition } from "./steps";
 
 export type ProjectKind = "neubau" | "bauvoranfrage";
-export type ProjectStatus = "aktiv" | "storno" | "abgeschlossen";
+export type ProjectStatus = "anfrage" | "aktiv" | "storno" | "abgeschlossen";
 export type InvoiceStatus = "geplant" | "faellig" | "versendet" | "bezahlt";
 
 /** Schritt-Key → Datum (YYYY-MM-DD). Fehlender Key = Schritt noch offen. */
@@ -51,6 +51,8 @@ export interface Project {
   baubegleitung?: boolean;
   intakeMonth: string | null;
   notes: string | null;
+  /** Nachricht des Verkäufers zur Anfrage, z. B. Terminvorschläge (Migration 0022). */
+  anfrageText?: string | null;
   /** Flurstück und Gemarkung des Baugrundstücks (optional; dienen auch der Duplikatprüfung). */
   flurstueck?: string | null;
   gemarkung?: string | null;

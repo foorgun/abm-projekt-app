@@ -7,8 +7,8 @@ import type { Phase } from "../lib/projects";
 import type { ProjectStatus } from "../lib/types";
 import { Pill, type Tone } from "./ui";
 
-export const STATUS_LABEL: Record<ProjectStatus, string> = { aktiv: "Aktiv", abgeschlossen: "Abgeschlossen", storno: "Storno" };
-const STATUS_TONE: Record<ProjectStatus, Tone> = { aktiv: "accent", abgeschlossen: "ok", storno: "neutral" };
+export const STATUS_LABEL: Record<ProjectStatus, string> = { anfrage: "Anfrage", aktiv: "Aktiv", abgeschlossen: "Abgeschlossen", storno: "Storno" };
+const STATUS_TONE: Record<ProjectStatus, Tone> = { anfrage: "warn", aktiv: "accent", abgeschlossen: "ok", storno: "neutral" };
 
 export function StatusPill({ status }: { status: ProjectStatus }) {
   return <Pill tone={STATUS_TONE[status]}>{STATUS_LABEL[status]}</Pill>;

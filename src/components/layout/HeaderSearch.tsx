@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { FilePlus2, ListTodo, Search } from "lucide-react";
 import { isPilot } from "../../lib/appMode";
 import { matchesQuery } from "../../lib/projectFilters";
+import { STATUS_LABEL } from "../ProjectBits";
 import { phaseOf, projectTitle } from "../../lib/projects";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
@@ -177,7 +178,7 @@ export function HeaderSearch({ placeholder, onNewProject }: { placeholder: strin
                           {[p.location, p.companyId ? companyName.get(p.companyId) : null, data ? phaseOf(p, data.stepDefinitions).label : null].filter(Boolean).join(" · ")}
                         </span>
                       </span>
-                      {p.status !== "aktiv" && <span className="muted">{p.status === "storno" ? "Storno" : "Abgeschlossen"}</span>}
+                      {p.status !== "aktiv" && <span className="muted">{STATUS_LABEL[p.status]}</span>}
                     </div>
                   );
                 })

@@ -147,6 +147,13 @@
   font-size: var(--fs-13);
 }
 
+.input.textarea {
+  height: auto;
+  padding: 8px 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .input::placeholder {
   color: var(--muted);
 }
@@ -5355,6 +5362,11 @@ li:first-child > .doc-card {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
+}
+
+/* Mehrzeiliger Text, z. B. die Nachricht zu einer Anfrage */
+.preline {
+  white-space: pre-line;
 }
 
 /* Auswahl ja/nein in Formularen */

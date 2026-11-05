@@ -49,6 +49,10 @@ export interface NewProject {
   planerId: string | null;
   /** Erster Tag des Eingangsmonats */
   intakeMonth: string | null;
+  /** "anfrage": Anfrage vom Verkäufer statt laufendes Projekt. Nicht genannt gilt als aktiv. */
+  status?: "anfrage" | "aktiv";
+  /** Nachricht des Verkäufers zur Anfrage */
+  anfrageText?: string | null;
   /** Baubegleitung beauftragt? Nicht genannt gilt als ja (ältere Entwürfe). */
   baubegleitung?: boolean;
   /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */
@@ -108,7 +112,7 @@ export interface ProtokollAblage {
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
   Project,
-  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "bundesland" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "flurstueck" | "gemarkung" | "flur"
+  "bauherrLabel" | "abmNr" | "hausbauNr" | "companyId" | "salespersonId" | "location" | "bundesland" | "architectId" | "planerId" | "intakeMonth" | "baubetreuung" | "anfrageText" | "flurstueck" | "gemarkung" | "flur"
 >;
 
 /** Änderung an einem Projekt: nur was genannt ist, ändert sich. */

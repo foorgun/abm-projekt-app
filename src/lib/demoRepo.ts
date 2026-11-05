@@ -274,7 +274,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         abmNr: input.kind === "bauvoranfrage" ? "Bauvoranfrage" : input.abmNr?.trim() || null,
         hausbauNr: input.hausbauNr?.trim() || null,
         kind: input.kind,
-        status: "aktiv",
+        status: input.status ?? "aktiv",
+        anfrageText: input.anfrageText?.trim() || null,
         companyId: input.companyId,
         salespersonId: input.salespersonId,
         bauherrLabel: input.bauherrLabel.trim(),
@@ -319,7 +320,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
           siteState: val(b.siteState),
         });
       }
-      log({ projectId: p.id, kind: "projekt", text: "Projekt angelegt" });
+      log({ projectId: p.id, kind: "projekt", text: p.status === "anfrage" ? "Anfrage angelegt" : "Projekt angelegt" });
       if (input.createFolders) log({ projectId: p.id, kind: "projekt", text: `Projektordner aus der Vorlage angelegt (${db.folderTemplates.length} Ordner)` });
       // Fehlende Angaben: eine Aufgabe zum Nachfragen (ohne eigenen Protokolleintrag)
       syncFollowup(p.id, followupForMissingInfo(infoStateOfNew(input), todayIso()));
@@ -395,8 +396,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       requireStaff();
       const p = project(projectId);
       if (p.status === status) return done(undefined);
+      const text = { anfrage: "Zurück zu den Anfragen", aktiv: p.status === "anfrage" ? "Anfrage als Projekt angenommen" : "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
       p.status = status;
-      const text = { aktiv: "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
       log({ projectId, kind: "projekt", text });
       return done(undefined);
     },

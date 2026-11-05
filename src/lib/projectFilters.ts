@@ -8,7 +8,7 @@ import { phaseOf, progressOf } from "./projects";
 import type { StepDefinition } from "./steps";
 import type { Company, Project, Task, TeamMember } from "./types";
 
-export type ProjectTab = "alle" | "aktiv" | "abgeschlossen";
+export type ProjectTab = "anfragen" | "alle" | "aktiv" | "abgeschlossen";
 export type ProjectSort = "eingang" | "abm" | "bauherr" | "fortschritt";
 
 export interface ProjectFilters {
@@ -47,7 +47,7 @@ export function matchesQuery(p: Project, q: string, companyName?: string | null)
 
 export function tabFilter(tab: ProjectTab, showStorno: boolean) {
   return (p: Project) =>
-    tab === "aktiv" ? p.status === "aktiv" : tab === "abgeschlossen" ? p.status === "abgeschlossen" : p.status !== "storno" || showStorno;
+    tab === "anfragen" ? p.status === "anfrage" : tab === "aktiv" ? p.status === "aktiv" : tab === "abgeschlossen" ? p.status === "abgeschlossen" : p.status !== "storno" || showStorno;
 }
 
 export function filterProjects(

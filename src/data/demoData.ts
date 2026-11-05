@@ -151,6 +151,8 @@ interface ProjectSpec {
   intakeAgo?: number;
   status?: Project["status"];
   kind?: Project["kind"];
+  /** Nachricht des Verkäufers (nur bei Anfragen) */
+  anfrageText?: string;
   /** false: Projekt ohne Baubegleitung, der Prozess endet bei der Baufreigabe. */
   baubegleitung?: boolean;
   /** Schritt-Keys, die trotz späterer Schritte fehlen ("fehlt noch"). */
@@ -190,6 +192,9 @@ const SPECIAL: ProjectSpec[] = [
   { stage: 4, lastAgo: 3, name: "Vogel", town: "Senden", companyId: "c-lh" },
   // 12: ohne Baubegleitung, Prozess bis zur Baufreigabe durchlaufen
   { stage: 9, lastAgo: 12, name: "Haas", town: "Ulm", companyId: "c-bz", baubegleitung: false },
+  // 13, 14: offene Anfragen vom Verkäufer
+  { stage: 0, lastAgo: 2, name: "Sommer", town: "Blaustein", companyId: "c-bz", status: "anfrage", anfrageText: "Anbei die Unterlagen, die Familie möchte mit der Planung loslegen.\n\nMögliche Termine:\nMittwoch, 15.00 Uhr\nDonnerstag, 9.00 Uhr" },
+  { stage: 0, lastAgo: 6, name: "Kaiser", town: "Laupheim", companyId: "c-lh", status: "anfrage" },
 ];
 
 const RANDOM_COUNT = 34;
@@ -342,6 +347,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       baubegleitung: spec.baubegleitung ?? true,
       intakeMonth: monthStart(firstDate),
       notes: null,
+      anfrageText: spec.anfrageText ?? null,
       steps: dates,
     });
 
@@ -484,6 +490,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   };
   for (const p of projects) {
     if (p.status === "storno") continue;
+    if (p.anfrageText) addDoc(p, "00 Verträge", addDays(today, -2), "Werkvertrag.pdf");
     for (const s of steps) {
       const date = p.steps[s.key];
       if (!date) continue;

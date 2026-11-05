@@ -56,6 +56,7 @@ export function App() {
                 <Route element={<PilotGate />}>
                   <Route index element={<Dashboard />} />
                   <Route path="projekte" element={<Projects tab="alle" />} />
+                  <Route path="projekte/anfragen" element={<Projects tab="anfragen" />} />
                   <Route path="projekte/aktiv" element={<Projects tab="aktiv" />} />
                   <Route path="projekte/abgeschlossen" element={<Projects tab="abgeschlossen" />} />
                   <Route path="projekte/:id" element={<ProjectDetail />} />

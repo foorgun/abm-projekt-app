@@ -87,7 +87,7 @@ describe("Umleitungen im Pilot", () => {
     });
 
     it(`${role}: Projektliste, Projekt-Detail und Hilfe bleiben`, () => {
-      for (const path of ["/projekte", "/projekte/", "/projekte/aktiv", "/projekte/abgeschlossen", "/projekte/p-123", "/hilfe"]) {
+      for (const path of ["/projekte", "/projekte/", "/projekte/anfragen", "/projekte/aktiv", "/projekte/abgeschlossen", "/projekte/p-123", "/hilfe"]) {
         expect(pilotRedirect(path, role, true), path).toBeNull();
       }
     });

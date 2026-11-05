@@ -27,11 +27,12 @@ export function homePath(pilot = isPilot()): string {
 export const PILOT_HOME = "/projekte";
 
 /**
- * Im Pilot erlaubte Routen (ohne führenden Schrägstrich, ":id" = ein Pfadteil). Aktiv/Abgeschlossen sind die Reiter
+ * Im Pilot erlaubte Routen (ohne führenden Schrägstrich, ":id" = ein Pfadteil). Anfragen/Aktiv/Abgeschlossen sind die Reiter
  * der Projektliste (kein eigener Menüpunkt), der Brotkrumen-Link im Projekt zeigt auf "projekte/aktiv".
  */
 export const PILOT_ROUTES: { path: string; roles?: AppRole[] }[] = [
   { path: "projekte" },
+  { path: "projekte/anfragen" },
   { path: "projekte/aktiv" },
   { path: "projekte/abgeschlossen" },
   { path: "projekte/:id" },

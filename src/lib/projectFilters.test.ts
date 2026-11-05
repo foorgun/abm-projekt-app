@@ -40,13 +40,18 @@ describe("Suche", () => {
 
 describe("Filter", () => {
   it("Tabs trennen Aktiv und Abgeschlossen, Storno nur auf Wunsch", () => {
+    const anfragen = filterProjects(db.projects, "anfragen", DEFAULT_FILTERS, ctx);
+    expect(anfragen.length).toBeGreaterThan(0);
+    expect(anfragen.every((p) => p.status === "anfrage")).toBe(true);
+    expect(filterProjects(db.projects, "aktiv", DEFAULT_FILTERS, ctx).some((p) => p.status === "anfrage")).toBe(false);
     const alle = filterProjects(db.projects, "alle", DEFAULT_FILTERS, ctx);
+    expect(alle.some((p) => p.status === "anfrage")).toBe(true);
     const aktiv = filterProjects(db.projects, "aktiv", DEFAULT_FILTERS, ctx);
     const fertig = filterProjects(db.projects, "abgeschlossen", DEFAULT_FILTERS, ctx);
     expect(alle.some((p) => p.status === "storno")).toBe(false);
     expect(aktiv.every((p) => p.status === "aktiv")).toBe(true);
     expect(fertig.every((p) => p.status === "abgeschlossen")).toBe(true);
-    expect(alle.length).toBe(aktiv.length + fertig.length);
+    expect(alle.length).toBe(anfragen.length + aktiv.length + fertig.length);
     expect(filterProjects(db.projects, "alle", { ...DEFAULT_FILTERS, storno: true }, ctx).length).toBe(db.projects.length);
   });
 

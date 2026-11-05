@@ -97,6 +97,7 @@ export function buildSeedTables(d: Dataset): SeedTable[] {
         baubegleitung: p.baubegleitung ?? true,
         intake_month: p.intakeMonth,
         notes: p.notes,
+        anfrage_text: p.anfrageText ?? null,
         flur: p.flur ?? null,
         is_demo: true,
       })),
