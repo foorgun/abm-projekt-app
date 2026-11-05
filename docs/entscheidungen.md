@@ -667,3 +667,15 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   "Anmeldung abgelaufen, die Dateien bleiben im Entwurf". Die Funktion unterscheidet jetzt "keine Sitzung" und
   "abgelaufen".
 
+## Bis zu vier Bauherren, Projektdialog bleibt offen (Migration 0023)
+
+Anlass: Testtermin vom 04.11.2026.
+
+- **Dritter und vierter Bauherr** als Spalten bei den Kontaktdaten (`bauherren.name3/phone3/email3`, `name4/phone4/email4`),
+  genau wie der zweite. Damit gilt dieselbe Zugriffsregel (Freiberufler sehen sie nie), und alle Wege (Anlegen, Bearbeiten,
+  Entwürfe) funktionieren unverändert. Mehr als vier Bauherren würde eine weitere Migration brauchen; das ist derzeit nicht gefordert.
+- **Felder erscheinen auf Knopfdruck** („Dritten Bauherrn hinzufügen“). Ausgefüllte Bauherren bleiben immer sichtbar
+  (`weitereSichtbar`), auch beim Fortsetzen eines Entwurfs. Die Auslesung aus Verträgen füllt weiter nur den ersten und zweiten.
+- **Planungsprotokoll:** alle Namen in einer Zeile („A, B und C“); die Schrift des Felds passt sich der Länge an.
+- **Klick neben den Dialog** schließt „Neues Projekt“ bzw. „Neue Anfrage“ nicht mehr (`keepOpenOnOutsideClick`), weil sonst
+  alle Eingaben verloren gingen. Andere Dialoge schließen weiter wie gehabt. Schließen-Knopf, Abbrechen und Escape bleiben.

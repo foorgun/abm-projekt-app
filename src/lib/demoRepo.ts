@@ -297,7 +297,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
       const b = input.bauherr;
       const val = (v: string | null | undefined) => v?.trim() || null;
-      const extra = b ? ([b.street, b.postalCode, b.city, b.mobile, b.siteStreet, b.sitePostalCode, b.siteCity, b.siteDistrict, b.siteState] as (string | null | undefined)[]) : [];
+      const extra = b ? ([b.name3, b.phone3, b.email3, b.name4, b.phone4, b.email4, b.street, b.postalCode, b.city, b.mobile, b.siteStreet, b.sitePostalCode, b.siteCity, b.siteDistrict, b.siteState] as (string | null | undefined)[]) : [];
       if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2) || extra.some(val))) {
         db.bauherren.push({
           projectId: p.id,
@@ -309,6 +309,12 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
           name2: val(b.name2),
           phone2: val(b.phone2),
           email2: val(b.email2),
+          name3: val(b.name3),
+          phone3: val(b.phone3),
+          email3: val(b.email3),
+          name4: val(b.name4),
+          phone4: val(b.phone4),
+          email4: val(b.email4),
           street: val(b.street),
           postalCode: val(b.postalCode),
           city: val(b.city),

@@ -226,7 +226,7 @@ describe("Projekt anlegen mit wenigen Angaben, Stammdaten ergänzen", () => {
     const d = await repo.load({ name: "Test", role: "admin" });
     expect(d.tasks.filter((t) => t.projectId === p.id)).toHaveLength(0);
     expect(d.parties.filter((x) => x.projectId === p.id)).toEqual([{ projectId: p.id, role: "vermesser", name: "Vermessung Neu", contact: null }]);
-    expect(d.bauherren.find((b) => b.projectId === p.id)).toEqual({ projectId: p.id, name: "Vollmer", address: null, phone: "0731 1", email: null, buildingAddress: "Weg 1, Ulm", name2: null, phone2: null, email2: null,
+    expect(d.bauherren.find((b) => b.projectId === p.id)).toEqual({ projectId: p.id, name: "Vollmer", address: null, phone: "0731 1", email: null, buildingAddress: "Weg 1, Ulm", name2: null, phone2: null, email2: null, name3: null, phone3: null, email3: null, name4: null, phone4: null, email4: null,
       street: null, postalCode: null, city: null, mobile: null, siteStreet: null, sitePostalCode: null, siteCity: null, siteDistrict: null, siteState: null });
   });
 

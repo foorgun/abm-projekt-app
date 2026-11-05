@@ -222,6 +222,11 @@ describe("Protokolldaten aus dem Projekt", () => {
     const d = protokollDaten(dataset({ bauherr: { name: "Jörg Müller", name2: "Bärbel Müller", street: "Größlestraße 7", postalCode: "89077", city: "Ulm", mobile: "0170 1", address: "Alt 1, 11111 Altort", email: "a@example.de" } }), "p1");
     expect(d.bauherr).toEqual({ name: "Jörg Müller und Bärbel Müller", strasse: "Größlestraße 7", plzOrt: "89077 Ulm", mobil: "0170 1", mail: "a@example.de" });
   });
+  it("Bauherr: drei und vier Bauherren stehen in einer Zeile", () => {
+    expect(protokollDaten(dataset({ bauherr: { name: "A Müller", name2: "B Müller", name3: "C Müller" } }), "p1").bauherr.name).toBe("A Müller, B Müller und C Müller");
+    expect(protokollDaten(dataset({ bauherr: { name: "A Müller", name2: "B Müller", name3: "C Müller", name4: "D Müller" } }), "p1").bauherr.name).toBe("A Müller, B Müller, C Müller und D Müller");
+    expect(protokollDaten(dataset({ bauherr: { name: "A Müller", name3: " C Müller " } }), "p1").bauherr.name).toBe("A Müller und C Müller");
+  });
   it("Bauherr: ohne getrennte Felder wird die alte Anschrift aufgeteilt; Mobil nur aus einer Handynummer", () => {
     const d = protokollDaten(dataset({ bauherr: { address: "Größlestraße 7, 89077 Ulm-Söflingen", phone: "0731 123456" } }), "p1");
     expect(d.bauherr.strasse).toBe("Größlestraße 7");

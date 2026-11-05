@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { Fragment, useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
 import { AbmHinweise } from "../../components/AbmHinweise";
 import { BaubegleitungField } from "../../components/BaubegleitungField";
@@ -11,6 +11,7 @@ import { bundeslandName, suggestBundesland } from "../../lib/bundesland";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
+import { WEITERE_BAUHERREN, weitereSichtbar } from "../../lib/weitereBauherren";
 import { baubegleitungText } from "../../lib/projects";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
 import type { ProjectPatch } from "../../lib/repo";
@@ -194,13 +195,17 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
                   <Row label="Anschrift">{contact.address}</Row>
                   <Row label="Telefon">{contact.phone && <a href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}>{contact.phone}</a>}</Row>
                   <Row label="E-Mail">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}</Row>
-                  {(contact.name2 || contact.phone2 || contact.email2) && (
-                    <>
-                      <Row label="Zweiter Bauherr">{contact.name2}</Row>
-                      <Row label="Telefon (2)">{contact.phone2 && <a href={`tel:${contact.phone2.replace(/[^\d+]/g, "")}`}>{contact.phone2}</a>}</Row>
-                      <Row label="E-Mail (2)">{contact.email2 && <a href={`mailto:${contact.email2}`}>{contact.email2}</a>}</Row>
-                    </>
-                  )}
+                  {WEITERE_BAUHERREN.map((b) => {
+                    const [name, phone, email] = [contact[b.name], contact[b.phone], contact[b.email]];
+                    if (!name && !phone && !email) return null;
+                    return (
+                      <Fragment key={b.nr}>
+                        <Row label={b.label}>{name}</Row>
+                        <Row label={`Telefon (${b.nr})`}>{phone && <a href={`tel:${phone.replace(/[^\d+]/g, "")}`}>{phone}</a>}</Row>
+                        <Row label={`E-Mail (${b.nr})`}>{email && <a href={`mailto:${email}`}>{email}</a>}</Row>
+                      </Fragment>
+                    );
+                  })}
                 </dl>
               ) : (
                 <p className="muted">Noch keine Kontaktdaten eingetragen. Über den Stift oben rechts lassen sie sich nachtragen.</p>
@@ -504,12 +509,21 @@ function ContactForm({ project, data, contact, onClose }: { project: Project; da
     name2: contact?.name2 ?? "",
     phone2: contact?.phone2 ?? "",
     email2: contact?.email2 ?? "",
+    name3: contact?.name3 ?? "",
+    phone3: contact?.phone3 ?? "",
+    email3: contact?.email3 ?? "",
+    name4: contact?.name4 ?? "",
+    phone4: contact?.phone4 ?? "",
+    email4: contact?.email4 ?? "",
   });
+  // Der zweite Bauherr steht hier immer im Formular; dritter und vierter erst auf Wunsch oder wenn eingetragen
+  const [weitereAngefordert, setWeitereAngefordert] = useState(1);
+  const weitere = weitereSichtbar(v, weitereAngefordert);
   const id = `pc-${project.id}`;
 
   function submit() {
     // Die Bauadresse steht in der Kachel "Projektdaten" und bleibt hier unverändert
-    void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, name2: v.name2, phone2: v.phone2, email2: v.email2 } }, onClose);
+    void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, name2: v.name2, phone2: v.phone2, email2: v.email2, name3: v.name3, phone3: v.phone3, email3: v.email3, name4: v.name4, phone4: v.phone4, email4: v.email4 } }, onClose);
   }
 
   return (
@@ -528,17 +542,26 @@ function ContactForm({ project, data, contact, onClose }: { project: Project; da
           <Input id={`${id}-mail`} type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} autoComplete="off" />
         </Field>
       </div>
-      <Field label="Zweiter Bauherr (Name)" htmlFor={`${id}-name2`}>
-        <Input id={`${id}-name2`} value={v.name2} onChange={(e) => setV({ ...v, name2: e.target.value })} autoComplete="off" />
-      </Field>
-      <div className="dialog-row">
-        <Field label="Telefon (zweiter Bauherr)" htmlFor={`${id}-tel2`}>
-          <Input id={`${id}-tel2`} type="tel" value={v.phone2} onChange={(e) => setV({ ...v, phone2: e.target.value })} autoComplete="off" />
-        </Field>
-        <Field label="E-Mail (zweiter Bauherr)" htmlFor={`${id}-mail2`}>
-          <Input id={`${id}-mail2`} type="email" value={v.email2} onChange={(e) => setV({ ...v, email2: e.target.value })} autoComplete="off" />
-        </Field>
-      </div>
+      {WEITERE_BAUHERREN.slice(0, weitere).map((b) => (
+        <Fragment key={b.nr}>
+          <Field label={`${b.label} (Name)`} htmlFor={`${id}-name${b.nr}`}>
+            <Input id={`${id}-name${b.nr}`} value={v[b.name]} onChange={(e) => setV({ ...v, [b.name]: e.target.value })} autoComplete="off" />
+          </Field>
+          <div className="dialog-row">
+            <Field label={`Telefon (${b.klein})`} htmlFor={`${id}-tel${b.nr}`}>
+              <Input id={`${id}-tel${b.nr}`} type="tel" value={v[b.phone]} onChange={(e) => setV({ ...v, [b.phone]: e.target.value })} autoComplete="off" />
+            </Field>
+            <Field label={`E-Mail (${b.klein})`} htmlFor={`${id}-mail${b.nr}`}>
+              <Input id={`${id}-mail${b.nr}`} type="email" value={v[b.email]} onChange={(e) => setV({ ...v, [b.email]: e.target.value })} autoComplete="off" />
+            </Field>
+          </div>
+        </Fragment>
+      ))}
+      {weitere < WEITERE_BAUHERREN.length && (
+        <button type="button" className="hint-action form-more" onClick={() => setWeitereAngefordert(weitere + 1)}>
+          {WEITERE_BAUHERREN[weitere].hinzufuegen}
+        </button>
+      )}
     </EditForm>
   );
 }
