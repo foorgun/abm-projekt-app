@@ -186,6 +186,12 @@ dort lässt sich zusätzlich ein hartes Ausgabenlimit setzen (empfohlen).
   Eine weitere Seite geht nur über den Knopf "Diese Seite lesen" an den KI-Dienst (z. B. für den Haustyp), und dann genau
   diese eine; sie ergänzt nur leere Felder und zählt als weitere Auslesung.
 - DOCX hat kein Seitenbild: dort liest die App den Text weiterhin lokal, ohne Aufruf.
+- **Anfrage-Mail (.eml), Modus Mail:** statt Bildern gehen Betreff und gekürzter Text an die Funktion (`mail` statt
+  `images`). Gekürzt heißt: ohne Signatur, Grußformel, Rechtshinweise und Links, höchstens 6000 Zeichen
+  (`mailExcerpt`). Absender und Dateinamen gehen nicht mit. Ausgelesen werden nur Bauherren und Baugrundstück
+  (`MAIL_FIELDS`); Hausbaufirma und Verkäufer erkennt die App selbst am Absender, Preise in Mails werden nicht
+  übernommen. Die Anweisung sagt ausdrücklich: Absender und angesprochene Person sind nie der Bauherr. Zählt wie ein
+  Dokument gegen die Limits; im Protokoll steht `images = 0`, im Log nur die Zeichenzahl.
 
 ## Nicht eingeschaltet: Ausweichmodell bei Ablehnung
 

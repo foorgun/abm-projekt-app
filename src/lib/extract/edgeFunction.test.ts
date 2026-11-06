@@ -387,7 +387,7 @@ describe("Edge Function: Ablauf im Quelltext", () => {
     for (const m of logs) {
       expect(["info", "error"], m[0]).toContain(m[1]);
       expect(m[2], m[0]).not.toMatch(/\bbody\b|\.data\b|response|raw|text\b|JSON\.stringify|\berror\)|error\.message|error\.error/);
-      for (const v of m[2].matchAll(/\$\{([^}]*)\}/g)) expect(v[1], m[0]).toMatch(/^(model|parsed\.images\.length|describeImages\(parsed\.images\)|error\.status \?\? "ohne Status"|info\.type|info\.message|apiErrorInfo\(error\)\.(type|message))$/);
+      for (const v of m[2].matchAll(/\$\{([^}]*)\}/g)) expect(v[1], m[0]).toMatch(/^(model|parsed\.images\.length|describeImages\(parsed\.images\)|describeRequest\(parsed\)|error\.status \?\? "ohne Status"|info\.type|info\.message|apiErrorInfo\(error\)\.(type|message))$/);
     }
   });
 });

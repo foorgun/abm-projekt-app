@@ -707,8 +707,16 @@ später von Hand durchgesehen.
 - **Gelesen wird im Browser** (`src/lib/mail/eml.ts`, Bibliothek `postal-mime`, MIT-0, ohne weitere Abhängigkeiten). Die Mail
   geht an keinen Dienst; nur die auslesbaren Anhänge laufen wie hineingezogene Dokumente durch die KI-Auslesung.
 - **Übernommen werden:** Nachricht (mit Von, Datum, Betreff) ins Feld „Nachricht des Verkäufers“, Eingangsmonat aus dem
-  Sendedatum, Hausbaufirma und Verkäufer aus dem Absender (genaue Adresse eines Verkäufers; sonst die Firma, wenn die
-  Mail-Domain zu genau einer Firma gehört). Ist schon eine Firma gewählt, bleibt sie.
+  Sendedatum, Hausbaufirma und Verkäufer aus dem Absender. Ist schon eine Firma gewählt, bleibt sie.
+- **Absender-Abgleich ohne KI** (`matchSender`): genaue Adresse eines Verkäufers; sonst die Firma über die Domain (Verkäufer
+  mit derselben Domain, oder der Firmenname ohne Rechtsform steckt in der Domain, z. B. „musterhaus.de“ → „Musterhaus
+  GmbH“; nie bei Freemail). Der Verkäufer dann über den Namen (Anzeigename und Adresse, „Nachname, Vorname“ und Umlaute
+  egal; alle Namensteile oder eindeutiger Nachname). Fehlt er in den Stammdaten, bietet die Prüfmaske „… als Verkäufer
+  anlegen“ an. Grund: Aus dem Excel-Import haben Verkäufer meist keine Mail-Adresse. Die Adresse wird beim Anlegen nicht
+  gespeichert (dafür fehlt das Einfügerecht auf `salespeople.email`; bei Bedarf eigene Migration).
+- **Bauherr und Baugrundstück aus dem Mailtext** über die Edge Function (Modus Mail, `docs/vertrag-extraktion.md`), parallel
+  zu den Anhängen. In der Prüfmaske stehen die Werte mit der Quelle „aus der Mail“; widersprechen sie einem Anhang, wählt
+  der Mensch. Im Demo-Modus erkennt eine einfache Regel im Browser Flurstück, Straße mit Ort und „Familie …“.
 - **Anhänge:** PDF, DOCX und Bilder bis 30 MB werden ausgelesen und je Dokumentart abgelegt (wie bisher). Andere erlaubte
   Dateien (z. B. Excel) und die Mail selbst kommen beim Anlegen nach „02 Schriftverkehr/02 Schriftverkehr mit Hausbaufirma“
   (ohne Datumsunterordner). CAD und ausführbare Dateien werden nicht übernommen (wie überall), kleine Inline-Bilder unter

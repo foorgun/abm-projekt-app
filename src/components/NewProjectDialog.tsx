@@ -29,7 +29,8 @@ import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from
 import { sourcePage } from "../lib/extract/previewState";
 import { extension } from "../lib/files";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
-import { anfrageTextOf, berlinDay, isEmlFile, MAIL_FOLDER, matchSender, readEml, type ParsedMail } from "../lib/mail/eml";
+import { anfrageTextOf, berlinDay, isEmlFile, MAIL_FOLDER, matchSender, readEml, type ParsedMail, type SenderMatch } from "../lib/mail/eml";
+import { extractProjectFromMail, MAIL_DRAFT_FIELDS } from "../lib/mail/extractMail";
 import { demoAnfrageEml } from "../lib/mail/fixtures";
 import { folgeAnschrift } from "../lib/projectEdit";
 import { namensFormKey, namenTeilen, WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
@@ -116,9 +117,21 @@ interface MailEntry {
   mail: ParsedMail;
   /** Hausbaufirma (und Verkäufer) aus dem Absender übernommen */
   sender: "verkaeufer" | "firma" | null;
+  /** Abgleich des Absenders mit den Stammdaten (auch ein noch fehlender Verkäufer) */
+  match: SenderMatch | null;
+  /** Auslesung des Mailtexts (Bauherr, Baugrundstück) */
+  phase: "liest" | "fertig" | "fehler" | "ohne";
+  draft: ProjectDraft | null;
+  error: string | null;
 }
 
+/** Quelle eines Werts aus dem Mailtext (IDs der Mails beginnen mit "mail-") */
+const isMailSource = (id: string | undefined) => Boolean(id?.startsWith("mail-"));
+
 const MAIL_ACCEPT = ".eml,message/rfc822";
+
+/** Feldnamen, die aus dem Mailtext erkannt wurden */
+const mailFound = (m: MailEntry) => (m.draft ? MAIL_DRAFT_FIELDS.filter((k) => m.draft!.felder[k].wert && k !== "bauherrName").map((k) => CONFLICT_LABEL[k] ?? k) : []);
 
 const count = (n: number, eins: string, mehr: string) => (n === 1 ? `1 ${eins}` : `${n} ${mehr}`);
 
@@ -148,6 +161,16 @@ function MailList({ mails, request, onRemove }: { mails: MailEntry[]; request: b
             </span>
             <ul className="mail-facts">
               <li>{!mail.text ? "Mail ohne Text" : request ? "Nachricht übernommen" : "Nachricht bleibt in der Mail"}{m.sender === "verkaeufer" ? ", Hausbaufirma und Verkäufer am Absender erkannt" : m.sender === "firma" ? ", Hausbaufirma am Absender erkannt" : ""}.</li>
+              {m.match?.newSalesperson && m.sender === "firma" && <li>Verkäufer „{m.match.newSalesperson}“ steht noch nicht in den Stammdaten: im nächsten Schritt mit einem Klick anlegen.</li>}
+              <li>
+                {m.phase === "liest" ? (
+                  <AiSpinner size="sm" label="Bauherr und Baugrundstück werden aus dem Text gelesen …" />
+                ) : m.phase === "fehler" ? (
+                  <span className="mail-error">Text nicht ausgelesen: {m.error}</span>
+                ) : m.phase === "fertig" ? (
+                  mailFound(m).length ? `Aus dem Text erkannt: ${mailFound(m).join(", ")}.` : "Im Text keine Angaben zu Bauherr oder Baugrundstück gefunden."
+                ) : null}
+              </li>
               <li>{mail.readable.length ? `${count(mail.readable.length, "Anhang wird", "Anhänge werden")} ausgelesen (unten).` : "Kein Anhang zum Auslesen."}</li>
               <li>
                 Beim Anlegen abgelegt in „{MAIL_FOLDER}“: die Mail
@@ -208,14 +231,22 @@ function docsOfDraft(rec: ProjectDraftRecord | null): DocEntry[] {
   }));
 }
 
-const mergeOf = (docs: DocEntry[]) => mergeDrafts(docs.filter((d) => d.phase === "fertig" && d.draft).map((d) => ({ id: d.fileId ?? d.key, art: d.art, draft: d.draft! })));
+/** Dokumente und ausgelesene Mailtexte zusammenführen (Mails nach den Dokumenten, als "sonstiges"). */
+const mergeOf = (docs: DocEntry[], mails: MailEntry[] = []) =>
+  mergeDrafts([
+    ...docs.filter((d) => d.phase === "fertig" && d.draft).map((d) => ({ id: d.fileId ?? d.key, art: d.art, draft: d.draft! })),
+    ...mails.filter((m) => m.draft).map((m) => ({ id: m.key, art: "sonstiges" as const, draft: m.draft! })),
+  ]);
 
 /** Entwurf für die Prüfmaske aus dem Zusammengeführten; nicht ausgelesene Dateien stehen in den Hinweisen. */
-function displayDraft(docs: DocEntry[], merged: MergedDraft): ProjectDraft {
-  const read = docs.filter((d) => d.phase === "fertig" && d.draft);
+function displayDraft(docs: DocEntry[], merged: MergedDraft, mails: MailEntry[] = []): ProjectDraft {
+  const read = [...docs.filter((d) => d.phase === "fertig" && d.draft), ...mails.filter((m) => m.draft)];
   const first = docs.find((d) => d.phase !== "abgelehnt");
   const datei = first ? { name: first.name, size: first.size, type: first.type } : { name: "ohne Dokument", size: 0, type: "" };
-  const failed = docs.filter((d) => d.phase === "fehler").map((d) => `${d.name}: nicht ausgelesen (${d.error ?? "unbekannter Grund"}). Die Datei wird trotzdem im Projekt abgelegt.`);
+  const failed = [
+    ...docs.filter((d) => d.phase === "fehler").map((d) => `${d.name}: nicht ausgelesen (${d.error ?? "unbekannter Grund"}). Die Datei wird trotzdem im Projekt abgelegt.`),
+    ...mails.filter((m) => m.phase === "fehler").map((m) => `Mailtext nicht ausgelesen (${m.error ?? "unbekannter Grund"}).`),
+  ];
   if (!read.length) return emptyDraft(datei, "edge", [...failed, "Bitte die Felder von Hand ausfüllen."]);
   return {
     datei,
@@ -385,7 +416,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const formState = (): DraftFormState => ({ project: v, meta: {}, edited: [...edited], resolved: [...resolved] });
   const extractorEnv = { demo: repo.mode === "demo", call: repo.extractProject ? (r: Parameters<NonNullable<typeof repo.extractProject>>[0]) => repo.extractProject!(r) : undefined };
   const edge = extractorKind() === "edge" && repo.mode !== "demo";
-  const running = docs.some((d) => d.phase === "wartet" || d.phase === "speichert" || d.phase === "liest");
+  const running = docs.some((d) => d.phase === "wartet" || d.phase === "speichert" || d.phase === "liest") || mails.some((m) => m.phase === "liest");
   const stored = docs.filter((d) => d.fileId || d.legacy);
   /** Konflikte, für die noch niemand gewählt hat (und deren Feld nicht von Hand geändert wurde) */
   const openConflicts = (Object.keys(conflicts) as DraftFieldKey[]).filter((k) => !resolved.has(k) && !FORM_KEYS_OF[k].some((f) => edited.has(f)));
@@ -455,7 +486,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
    * damit die Prüfmaske die Werte beim Zusammenführen der Dokumente nicht wieder verwirft.
    */
   function addMail(file: File, mail: ParsedMail) {
-    const match = matchSender(mail.fromEmail, data?.salespeople ?? [], companies);
+    const match = matchSender({ name: mail.fromName, email: mail.fromEmail }, data?.salespeople ?? [], companies);
     const first = mailsRef.current.length === 0;
     const text = anfrageTextOf(mail);
     const day = mail.date ? berlinDay(mail.date) : null;
@@ -473,9 +504,37 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
     };
     blank.current = withMail(blank.current);
     setV(withMail);
-    const entry: MailEntry = { key: `mail-${Date.now()}-${mailsRef.current.length}`, file, mail, sender };
+    const entry: MailEntry = { key: `mail-${Date.now()}-${mailsRef.current.length}`, file, mail, sender, match, phase: mail.text ? "liest" : "ohne", draft: null, error: null };
     mailsRef.current = [...mailsRef.current, entry];
     setMails(mailsRef.current);
+    if (mail.text) void readMailText(entry);
+  }
+
+  function updateMail(key: string, patch: Partial<MailEntry>) {
+    mailsRef.current = mailsRef.current.map((m) => (m.key === key ? { ...m, ...patch } : m));
+    setMails(mailsRef.current);
+  }
+
+  /** Bauherr und Baugrundstück aus dem Mailtext (läuft neben der Auslesung der Anhänge). */
+  async function readMailText(m: MailEntry) {
+    try {
+      const draft = await extractProjectFromMail({ file: m.file, mail: m.mail }, extractorEnv);
+      updateMail(m.key, { phase: "fertig", draft, error: null });
+    } catch (e) {
+      updateMail(m.key, { phase: "fehler", error: e instanceof Error ? e.message : "Der Text ließ sich nicht auslesen." });
+    }
+  }
+
+  /** Verkäufer aus dem Absender anlegen und wählen (Firma wurde am Absender erkannt, der Verkäufer fehlte). */
+  const salesSuggestion = v.companyId && !v.salespersonId ? (mails.map((m) => m.match).find((x) => x?.newSalesperson && x.companyId === v.companyId)?.newSalesperson ?? null) : null;
+  async function createSuggestedSalesperson(name: string) {
+    try {
+      const id = await createVia((r) => r.createSalesperson(v.companyId!, name));
+      set({ salespersonId: id });
+      toast(`Verkäufer ${name} angelegt`, "ok");
+    } catch (e) {
+      toast("Verkäufer nicht angelegt", "danger", e instanceof Error ? e.message : undefined);
+    }
   }
 
   function removeMail(m: MailEntry) {
@@ -485,8 +544,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
 
   /** Alle ausgelesenen Dokumente zusammenführen und die Prüfmaske füllen; selbst Geändertes bleibt stehen. */
   function toReview(list: DocEntry[] = docsRef.current) {
-    const merged = mergeOf(list);
-    const display = displayDraft(list, merged);
+    const merged = mergeOf(list, mailsRef.current);
+    const display = displayDraft(list, merged, mailsRef.current);
     const applied = applyDraft(display, blank.current, { companies });
     const form = draft ? preserveEdited(v, applied.form, edited) : applied.form;
     setDraft(display);
@@ -576,7 +635,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   /** Schließen mit offenem Entwurf: den Stand der Prüfmaske und die Angaben je Dokument sichern. */
   async function closeDialog() {
     if (savedId && stored.length && !busy && !running) {
-      const merged = draft ?? displayDraft(docs, mergeOf(docs));
+      const merged = draft ?? displayDraft(docs, mergeOf(docs, mails), mails);
       for (const d of docs) if (d.fileId) await repo.updateDraftFile(d.fileId, { docType: d.art, meta: d.meta }).catch(() => undefined);
       const res = await mutate((r) => r.saveProjectDraft({ id: savedId, draft: merged, form: formState(), docType: docs.find((d) => d.phase === "fertig")?.art ?? "sonstiges", file: merged.datei }));
       const mailHint = mails.length ? " Die Mail selbst ist nicht im Entwurf gespeichert: beim Fortsetzen die .eml noch einmal hineinziehen, damit sie mit abgelegt wird." : "";
@@ -733,7 +792,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
               onClick={() => chooseConflict(key, o)}
               title={o.feld.quelle?.text ? `${o.feld.quelle.seite ? `S. ${o.feld.quelle.seite}: ` : ""}„${o.feld.quelle.text}“` : undefined}
             >
-              „{o.wert}“ <span className="muted">{sourceLabel(o.art, docName(o.dokumentId), sameType(o.art))}</span>
+              „{o.wert}“ <span className="muted">{isMailSource(o.dokumentId) ? "aus der Mail" : sourceLabel(o.art, docName(o.dokumentId), sameType(o.art))}</span>
             </button>
           ))}
         </span>
@@ -745,7 +804,11 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
     const level: Sicherheit = notFound ? "niedrig" : f.sicherheit;
     const flag = level === "niedrig" || mustCheck;
     // Klick auf die Textstelle zeigt das Dokument und springt in der Vorschau auf ihre Seite
-    const fromDoc = f.quelle?.dokumentArt && docs.length > 1 ? `${sourceLabel(f.quelle.dokumentArt, docName(f.quelle.dokumentId), sameType(f.quelle.dokumentArt))} · ` : "";
+    const fromDoc = isMailSource(f.quelle?.dokumentId)
+      ? "aus der Mail · "
+      : f.quelle?.dokumentArt && docs.length + mails.length > 1
+        ? `${sourceLabel(f.quelle.dokumentArt, docName(f.quelle.dokumentId), sameType(f.quelle.dokumentArt))} · `
+        : "";
     const sourceKey = docs.find((d) => d.fileId === f.quelle?.dokumentId || d.key === f.quelle?.dokumentId)?.key ?? null;
     const jump = sourcePage(f.quelle?.seite, sourceKey && sourceKey !== active?.key ? Number.MAX_SAFE_INTEGER : pageCount);
     const text = `${fromDoc}${notFound ? `Im Dokument: „${notFound}“, nicht in den Stammdaten. ` : ""}${f.quelle?.text ? `${f.quelle.seite ? `S. ${f.quelle.seite}: ` : ""}„${f.quelle.text}“` : "ohne Textstelle"}`;
@@ -776,7 +839,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   if (step === "start") {
     // Mit Mail geht es auch ohne auslesbaren Anhang weiter (dann das Formular mit der übernommenen Nachricht)
     const ready = (stored.length > 0 || mails.length > 0) && !running;
-    const next = () => (stored.length ? toReview() : setStep("form"));
+    const next = () => (stored.length || mails.some((m) => m.draft) ? toReview() : setStep("form"));
     return (
       <Dialog
         title={dialogTitle}
@@ -929,8 +992,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   return (
     <Dialog
       title={draft ? `${dialogTitle} prüfen` : dialogTitle}
-      wide={!draft}
-      xwide={Boolean(draft)}
+      wide={!draft || !active}
+      xwide={Boolean(draft && active)}
       keepOpenOnOutsideClick
       onClose={closeStable}
       footer={
@@ -949,7 +1012,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
         </>
       }
     >
-      <div className={draft ? "review-layout" : undefined}>
+      <div className={draft && active ? "review-layout" : undefined}>
         {draft && active && (
           <aside className="review-doc" aria-label="Dokument">
             {docs.filter((d) => d.phase !== "abgelehnt").length > 1 && (
@@ -1017,7 +1080,15 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
           {draft && (
             <section className="contract-summary" aria-label="Hinweise zu den Dokumenten">
               <p className="muted">
-                {draft.textquelle === "ohne" ? "Ohne Vorschläge aus den Dokumenten." : stored.length > 1 ? `Vorschläge aus ${stored.length} Dokumenten, je Feld mit Quelle.` : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen;
+                {draft.textquelle === "ohne"
+                  ? "Ohne Vorschläge aus den Dokumenten."
+                  : mails.some((m) => m.draft)
+                    ? stored.length
+                      ? `Vorschläge aus ${stored.length === 1 ? "dem Dokument" : `${stored.length} Dokumenten`} und dem Mailtext, je Feld mit Quelle.`
+                      : "Vorschläge aus dem Mailtext."
+                    : stored.length > 1
+                      ? `Vorschläge aus ${stored.length} Dokumenten, je Feld mit Quelle.`
+                      : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen;
                 gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr.
               </p>
               {openConflicts.length > 0 && (
@@ -1046,7 +1117,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
           {mails.length > 0 && (
             <p className="form-note" role="status">
               {mails.length === 1 ? `Aus der Mail „${mails[0].mail.subject ?? mails[0].file.name}“` : `Aus ${mails.length} Mails`} übernommen:{" "}
-              {[isRequest && "Nachricht", "Eingangsmonat", mails.some((m) => m.sender) && "Hausbaufirma am Absender"].filter(Boolean).join(", ")}. Beim Anlegen
+              {[isRequest && "Nachricht", "Eingangsmonat", mails.some((m) => m.sender) && "Hausbaufirma am Absender", mails.some((m) => m.draft && mailFound(m).length) && "Angaben aus dem Text (je Feld mit Quelle)"].filter(Boolean).join(", ")}. Beim Anlegen
               kommt die Mail{mails.some((m) => m.mail.other.length) ? " mit den übrigen Anhängen" : ""} in „{MAIL_FOLDER}“.
             </p>
           )}
@@ -1172,6 +1243,14 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                   canCreate={canCreate}
                   createPlaceholder="Name des Verkäufers"
                 />
+                {salesSuggestion && canCreate && (
+                  <span className="field-hint">
+                    Absender der Mail:{" "}
+                    <button type="button" className="hint-action" onClick={() => void createSuggestedSalesperson(salesSuggestion)}>
+                      „{salesSuggestion}“ als Verkäufer anlegen
+                    </button>
+                  </span>
+                )}
               </Field>
             </div>
           )}

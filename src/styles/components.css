@@ -6884,3 +6884,7 @@ li:first-child > .doc-card {
 .mail-skipped {
   color: var(--muted);
 }
+
+.mail-error {
+  color: var(--warn);
+}
