@@ -4,7 +4,7 @@
 |---|---|---|
 | Supabase-Projekt | bisheriges Projekt `abm-pilot.`, Demodaten | `abm-prod`, Frankfurt, keine Demodaten |
 | Adresse der App | Worker `abm-dev` (noch anzulegen) | `https://abm-pilot.fcetin19.workers.dev` |
-| Stand der Migrationen | bis 0024 | bis 0024 |
+| Stand der Migrationen | bis 0025 | bis 0025 |
 | Anthropic | Workspace `abm-dev` | Workspace `abm-prod` |
 | KI-Auslesung | an | **aus**, bis der AVV unterschrieben ist |
 | Lokale Werte | `.env.ziel.development` | `.env.ziel.production` |
