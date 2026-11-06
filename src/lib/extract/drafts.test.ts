@@ -126,7 +126,7 @@ describe("Bestätigen: Projekt anlegen und Vertrag ablegen", () => {
     expect(after.bauherren.find((b) => b.projectId === p.id)).toMatchObject({ name: c.name, name2: "Erika Beispiel", email2: "erika@example.com", phone2: null });
     const log = after.activities.find((a) => a.projectId === p.id && a.text.startsWith("Projektdaten geändert"))!;
     expect(log.text).toContain("Flurstück");
-    expect(log.text).toContain("Zweiter Bauherr");
+    expect(log.text).toContain("Bauherr 2");
     expect(log.text).not.toContain("erika@example.com");
   });
 });

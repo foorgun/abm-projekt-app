@@ -5364,6 +5364,25 @@ li:first-child > .doc-card {
   color: var(--muted);
 }
 
+/* Ein Bauherr im Formular: Überschrift "Bauherr 1" und seine Felder */
+.bauherr-block {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.bauherr-block + .bauherr-block {
+  padding-top: var(--sp-3);
+  border-top: 1px dashed var(--border);
+}
+
+.bauherr-titel {
+  margin: 0;
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+}
+
 /* Mehrzeiliger Text, z. B. die Nachricht zu einer Anfrage */
 .preline {
   white-space: pre-line;

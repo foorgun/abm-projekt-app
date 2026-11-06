@@ -11,7 +11,7 @@ import { bundeslandName, suggestBundesland } from "../../lib/bundesland";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
 import { PARTY_LABEL, planProjectUpdate } from "../../lib/projectEdit";
-import { WEITERE_BAUHERREN, weitereSichtbar } from "../../lib/weitereBauherren";
+import { NAMENS_FELDER, namenVorbelegen, WEITERE_BAUHERREN, weitereSichtbar } from "../../lib/weitereBauherren";
 import { baubegleitungText } from "../../lib/projects";
 import { followupKey, missingProjectInfo } from "../../lib/projectForm";
 import type { ProjectPatch } from "../../lib/repo";
@@ -191,7 +191,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
                 </p>
               ) : contact ? (
                 <dl className="dl">
-                  <Row label="Name">{contact.name}</Row>
+                  <Row label="Bauherr 1">{contact.name}</Row>
                   <Row label="Anschrift">{contact.address}</Row>
                   <Row label="Telefon">{contact.phone && <a href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}>{contact.phone}</a>}</Row>
                   <Row label="E-Mail">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}</Row>
@@ -267,7 +267,6 @@ function PartiesForm({ project, data, onClose }: { project: Project; data: Datas
   const current = data.parties.filter((p) => p.projectId === project.id);
   const [v, setV] = useState({
     hausbauNr: project.hausbauNr ?? "",
-    bauherrLabel: project.bauherrLabel,
     salespersonId: project.salespersonId ?? "",
   });
   const [parties, setParties] = useState(() => Object.fromEntries(ROLES.map((r) => [r, { name: current.find((x) => x.role === r)?.name ?? "", contact: current.find((x) => x.role === r)?.contact ?? "" }])) as Record<PartyRole, { name: string; contact: string }>);
@@ -278,7 +277,7 @@ function PartiesForm({ project, data, onClose }: { project: Project; data: Datas
   function submit() {
     void save(
       {
-        project: { hausbauNr: v.hausbauNr, bauherrLabel: v.bauherrLabel, salespersonId: v.salespersonId || null },
+        project: { hausbauNr: v.hausbauNr, salespersonId: v.salespersonId || null },
         parties: Object.fromEntries(ROLES.map((r) => [r, parties[r].name.trim() ? { name: parties[r].name, contact: parties[r].contact || null } : null])),
       },
       onClose,
@@ -289,9 +288,6 @@ function PartiesForm({ project, data, onClose }: { project: Project; data: Datas
     <EditForm onSubmit={submit} onCancel={onClose} onEdit={clearError} busy={busy} error={error}>
       <Field label="Hausbau-Nr." htmlFor={`${id}-hb`} hint={project.kind === "neubau" ? "Die ABM-Nr. steht unter „Projektdaten“ bei der Hausbaufirma." : undefined}>
         <Input id={`${id}-hb`} value={v.hausbauNr} onChange={(e) => setV({ ...v, hausbauNr: e.target.value })} placeholder="HB-26118" autoFocus />
-      </Field>
-      <Field label="Bauherr (Nachname) *" htmlFor={`${id}-bh`}>
-        <Input id={`${id}-bh`} value={v.bauherrLabel} onChange={(e) => setV({ ...v, bauherrLabel: e.target.value })} />
       </Field>
       {project.kind === "neubau" && (
         <Field label="Verkäufer" htmlFor={`${id}-sales`} hint={project.companyId ? undefined : "Erst unter „Projektdaten“ die Hausbaufirma wählen."}>
@@ -501,61 +497,75 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
 
 function ContactForm({ project, data, contact, onClose }: { project: Project; data: Dataset; contact: BauherrContact | null; onClose: () => void }) {
   const { save, busy, error, clearError } = useProjectSave(project, data);
+  // Vorname und Nachname: gespeichert oder (ältere Einträge) aus dem Namen vorgeschlagen; Nachname 1 ohne Namen = Projektname
+  const [start] = useState(() => namenVorbelegen(contact, project.bauherrLabel));
   const [v, setV] = useState({
-    name: contact?.name ?? "",
+    ...start,
     address: contact?.address ?? "",
     phone: contact?.phone ?? "",
     email: contact?.email ?? "",
-    name2: contact?.name2 ?? "",
     phone2: contact?.phone2 ?? "",
     email2: contact?.email2 ?? "",
-    name3: contact?.name3 ?? "",
     phone3: contact?.phone3 ?? "",
     email3: contact?.email3 ?? "",
-    name4: contact?.name4 ?? "",
     phone4: contact?.phone4 ?? "",
     email4: contact?.email4 ?? "",
   });
-  // Der zweite Bauherr steht hier immer im Formular; dritter und vierter erst auf Wunsch oder wenn eingetragen
+  // Bauherr 2 steht hier immer im Formular; Bauherr 3 und 4 erst auf Wunsch oder wenn eingetragen
   const [weitereAngefordert, setWeitereAngefordert] = useState(1);
   const weitere = weitereSichtbar(v, weitereAngefordert);
   const id = `pc-${project.id}`;
 
   function submit() {
-    // Die Bauadresse steht in der Kachel "Projektdaten" und bleibt hier unverändert
-    void save({ bauherr: { name: v.name, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, name2: v.name2, phone2: v.phone2, email2: v.email2, name3: v.name3, phone3: v.phone3, email3: v.email3, name4: v.name4, phone4: v.phone4, email4: v.email4 } }, onClose);
+    // Vorname und Nachname nur senden, wenn geändert oder schon getrennt gespeichert: ein nur vorgeschlagenes Teilen
+    // ändert den bisherigen Namen nicht (z. B. "Familie Hoffmann")
+    const namen: Record<string, string> = {};
+    for (const f of NAMENS_FELDER) {
+      const gespeichert = contact?.[f.vorname] != null || contact?.[f.nachname] != null;
+      if (gespeichert || v[f.vorname] !== start[f.vorname] || v[f.nachname] !== start[f.nachname]) Object.assign(namen, { [f.vorname]: v[f.vorname], [f.nachname]: v[f.nachname] });
+    }
+    // Der Nachname von Bauherr 1 ist der Projektname: geändert, ändert er ihn mit
+    const projektName = v.nachname.trim() !== start.nachname.trim() ? { project: { bauherrLabel: v.nachname } } : {};
+    void save(
+      {
+        ...projektName,
+        // Die Bauadresse steht in der Kachel "Projektdaten" und bleibt hier unverändert
+        bauherr: { ...namen, address: v.address, phone: v.phone, email: v.email, buildingAddress: contact?.buildingAddress ?? null, phone2: v.phone2, email2: v.email2, phone3: v.phone3, email3: v.email3, phone4: v.phone4, email4: v.email4 },
+      },
+      onClose,
+    );
   }
 
+  const bauherr1 = { nr: 1, label: "Bauherr 1", vorname: "vorname", nachname: "nachname", phone: "phone", email: "email" } as const;
   return (
     <EditForm onSubmit={submit} onCancel={onClose} onEdit={clearError} busy={busy} error={error}>
-      <Field label="Name" htmlFor={`${id}-name`} hint={`Leer lassen für „${project.bauherrLabel}“.`}>
-        <Input id={`${id}-name`} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} placeholder={`z. B. Familie ${project.bauherrLabel}`} autoComplete="off" autoFocus />
-      </Field>
-      <Field label="Anschrift" htmlFor={`${id}-addr`}>
-        <Input id={`${id}-addr`} value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} placeholder="Straße, PLZ Ort" autoComplete="off" />
-      </Field>
-      <div className="dialog-row">
-        <Field label="Telefon" htmlFor={`${id}-tel`}>
-          <Input id={`${id}-tel`} type="tel" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} autoComplete="off" />
-        </Field>
-        <Field label="E-Mail" htmlFor={`${id}-mail`}>
-          <Input id={`${id}-mail`} type="email" value={v.email} onChange={(e) => setV({ ...v, email: e.target.value })} autoComplete="off" />
-        </Field>
-      </div>
-      {WEITERE_BAUHERREN.slice(0, weitere).map((b) => (
-        <Fragment key={b.nr}>
-          <Field label={`${b.label} (Name)`} htmlFor={`${id}-name${b.nr}`}>
-            <Input id={`${id}-name${b.nr}`} value={v[b.name]} onChange={(e) => setV({ ...v, [b.name]: e.target.value })} autoComplete="off" />
-          </Field>
+      {[bauherr1, ...WEITERE_BAUHERREN.slice(0, weitere)].map((b) => (
+        <div key={b.nr} className="bauherr-block" role="group" aria-labelledby={`${id}-bh${b.nr}`}>
+          <h3 className="bauherr-titel" id={`${id}-bh${b.nr}`}>
+            {b.label}
+          </h3>
           <div className="dialog-row">
-            <Field label={`Telefon (${b.klein})`} htmlFor={`${id}-tel${b.nr}`}>
+            <Field label="Vorname" htmlFor={`${id}-vorname${b.nr}`}>
+              <Input id={`${id}-vorname${b.nr}`} value={v[b.vorname]} onChange={(e) => setV({ ...v, [b.vorname]: e.target.value })} autoComplete="off" autoFocus={b.nr === 1} />
+            </Field>
+            <Field label={b.nr === 1 ? "Nachname *" : "Nachname"} htmlFor={`${id}-nachname${b.nr}`} hint={b.nr === 1 ? "Ist der Projektname." : undefined}>
+              <Input id={`${id}-nachname${b.nr}`} value={v[b.nachname]} onChange={(e) => setV({ ...v, [b.nachname]: e.target.value })} autoComplete="off" />
+            </Field>
+          </div>
+          <div className="dialog-row">
+            <Field label="Telefon" htmlFor={`${id}-tel${b.nr}`}>
               <Input id={`${id}-tel${b.nr}`} type="tel" value={v[b.phone]} onChange={(e) => setV({ ...v, [b.phone]: e.target.value })} autoComplete="off" />
             </Field>
-            <Field label={`E-Mail (${b.klein})`} htmlFor={`${id}-mail${b.nr}`}>
+            <Field label="E-Mail" htmlFor={`${id}-mail${b.nr}`}>
               <Input id={`${id}-mail${b.nr}`} type="email" value={v[b.email]} onChange={(e) => setV({ ...v, [b.email]: e.target.value })} autoComplete="off" />
             </Field>
           </div>
-        </Fragment>
+          {b.nr === 1 && (
+            <Field label="Anschrift" htmlFor={`${id}-addr`}>
+              <Input id={`${id}-addr`} value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} placeholder="Straße, PLZ Ort" autoComplete="off" />
+            </Field>
+          )}
+        </div>
       ))}
       {weitere < WEITERE_BAUHERREN.length && (
         <button type="button" className="hint-action form-more" onClick={() => setWeitereAngefordert(weitere + 1)}>

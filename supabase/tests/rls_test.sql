@@ -615,6 +615,26 @@ select public.update_project((select id from public.projects where bauherr_label
 select test.expect('Bearbeiten: dritter und vierter Bauherr bleiben, wenn nicht genannt',
   (select count(*) from public.bauherren where name = 'Jonas Hoffmann' and name3 = 'Lena Hoffmann' and name4 = 'Tom Hoffmann'), 1);
 
+-- Vorname und Nachname getrennt (0024): gespeichert, wenn genannt; nicht genannt = unverändert
+select public.update_project((select id from public.projects where bauherr_label = 'Hoffmann'), '{}',
+  '{"name": "Jonas Hoffmann", "vorname": " Jonas ", "nachname": "Hoffmann", "phone": "0731 000111", "vorname3": "Lena", "nachname3": "", "vorname4": "Tom", "nachname4": "Hoffmann"}');
+select test.expect('Bearbeiten: Vor- und Nachnamen gespeichert (bereinigt, leer wird null)',
+  (select count(*) from public.bauherren where vorname = 'Jonas' and nachname = 'Hoffmann' and vorname3 = 'Lena' and nachname3 is null
+     and vorname4 = 'Tom' and nachname4 = 'Hoffmann' and vorname2 is null and nachname2 is null), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Hoffmann'), '{}',
+  '{"name": "Jonas Hoffmann", "phone": "0731 000111"}');
+select test.expect('Bearbeiten: Vor- und Nachnamen bleiben, wenn nicht genannt',
+  (select count(*) from public.bauherren where vorname = 'Jonas' and nachname = 'Hoffmann' and vorname4 = 'Tom'), 1);
+select public.create_project('{"bauherr_label": "Kaya", "kind": "neubau"}', '{"nachname": "Kaya"}',
+  null, 'Fehlende Angaben nachfragen: Telefon, E-Mail, Bauadresse, Hausbaufirma, Verkäufer, Vermesser', '2026-10-19');
+select test.expect('Nur der Nachname (= Projektname) legt keine Kontaktdaten an',
+  (select count(*) from public.projects where bauherr_label = 'Kaya' and bauherr_id is null), 1);
+select public.create_project('{"bauherr_label": "Yilmaz", "kind": "neubau"}', '{"name": "Deniz Yilmaz", "vorname": "Deniz", "nachname": "Yilmaz", "vorname2": "Ela", "nachname2": "Yilmaz", "name2": "Ela Yilmaz"}',
+  null, 'Fehlende Angaben nachfragen: Telefon, E-Mail, Bauadresse, Hausbaufirma, Verkäufer, Vermesser', '2026-10-19');
+select test.expect('Anlegen: Vor- und Nachnamen gespeichert',
+  (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id
+   where p.bauherr_label = 'Yilmaz' and b.vorname = 'Deniz' and b.nachname = 'Yilmaz' and b.vorname2 = 'Ela' and b.name2 = 'Ela Yilmaz'), 1);
+
 insert into public.documents (project_id, name, storage_path, folder_path, doc_type, meta, uploaded_by)
 select id, 'scan.pdf', id::text || '/x/scan.pdf', '00 Verträge', 'werkvertrag', '{"vertragsdatum": "2026-10-02", "vertragspreis": "312.450,00 €"}', auth.uid()
 from public.projects where bauherr_label = 'Hoffmann' and gemarkung = 'Söflingen';
@@ -666,6 +686,8 @@ select test.throws('Freiberufler darf nichts in einem fremden Projekt ablegen', 
 select test.expect('Freiberufler sieht den zweiten Bauherrn nicht', (select count(*) from public.bauherren where name2 is not null or name2 is null), 0);
 select test.expect('Freiberufler sieht dritten und vierten Bauherrn nicht', (select count(*) from public.bauherren where name3 is not null or name4 is not null), 0);
 select test.expect('Freiberufler ändert den dritten Bauherrn nicht', test.affected($$update public.bauherren set name3 = 'x'$$), 0);
+select test.expect('Freiberufler sieht Vor- und Nachnamen der Bauherren nicht', (select count(*) from public.bauherren where vorname is not null or nachname is not null or vorname2 is not null), 0);
+select test.expect('Freiberufler ändert keinen Vornamen', test.affected($$update public.bauherren set vorname = 'x', nachname2 = 'y'$$), 0);
 select test.expect('Freiberufler sieht Flurstück und Gemarkung seines Projekts (kein Kontaktdatum)', (select count(*) from public.projects where id = 'a0000000-0000-4000-8000-000000000001' and flurstueck is null), 1);
 select test.throws('Freiberufler darf kein Projekt aus einem Entwurf anlegen', $$select public.create_project('{"bauherr_label": "Hoffmann", "flurstueck": "1/2"}')$$);
 

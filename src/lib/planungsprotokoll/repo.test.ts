@@ -137,6 +137,20 @@ describe("Bearbeiten: neue Felder und Rollen", () => {
     expect(d.projects.find((x) => x.id === p.id)!.flur).toBe("3");
   });
 
+  it("Vorname und Nachname: Name daraus gebildet, im Protokoll nur der Bauherr; nur geteilt ohne neuen Namen = kein Eintrag", async () => {
+    const repo = createDemoRepo(TODAY, { delayMs: 0 });
+    const d = await repo.load({ name: "Test", role: "admin" });
+    const c = d.bauherren.find((b) => b.name.includes(" "))!;
+    const leer = { phone: c.phone, email: c.email, address: c.address, buildingAddress: c.buildingAddress };
+    const neu = planProjectUpdate(d, c.projectId, { bauherr: { ...leer, vorname: "Neu", nachname: "Name" } }, TODAY);
+    expect(neu.bauherr).toMatchObject({ name: "Neu Name", vorname: "Neu", nachname: "Name" });
+    expect(neu.changed).toEqual(["Bauherr 1"]);
+    const [vorname, ...rest] = c.name.split(" ");
+    const geteilt = planProjectUpdate(d, c.projectId, { bauherr: { ...leer, vorname, nachname: rest.join(" ") } }, TODAY);
+    expect(geteilt.bauherr).toMatchObject({ name: c.name, vorname });
+    expect(geteilt.changed).toEqual([]);
+  });
+
   it("Plan meldet geänderte Felder ohne Werte und nichts, wenn alles gleich bleibt", async () => {
     const d = await repo().load(admin);
     const p = d.projects[0];

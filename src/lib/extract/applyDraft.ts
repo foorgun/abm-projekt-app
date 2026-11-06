@@ -4,6 +4,7 @@ import { splitAnschrift } from "../planungsprotokoll/daten";
 import { compactText } from "../projectFilters";
 import type { BauherrInput, NewProject } from "../repo";
 import type { BauherrContact, Company, ContractMeta, Project } from "../types";
+import { namensFormKey, namenTeilen, teileName } from "../weitereBauherren";
 import type { DraftFieldKey, ProjectDraft } from "./types";
 
 /** Formularfelder, zu denen der Entwurf eine Herkunft liefern kann. */
@@ -81,9 +82,11 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
   // Getrennte Anschrift und Bauort fürs Planungsprotokoll: aus der erkannten Zeile, wenn sie eindeutig aufteilbar ist
   const wohn = splitAnschrift(v("address"));
   const bau = splitAnschrift(v("buildingAddress"));
+  // Projektname ist der Nachname des ersten Bauherrn: ohne eigene Angabe aus dem erkannten Namen
+  const label = v("bauherrLabel") ?? teileName(v("bauherrName")).nachname ?? base.bauherrLabel;
   const form: NewProject = {
     ...base,
-    bauherrLabel: v("bauherrLabel") ?? base.bauherrLabel,
+    bauherrLabel: label,
     location: v("location") ?? base.location,
     companyId: company?.id ?? base.companyId,
     // andere Firma als im leeren Formular: ein vorgewählter Verkäufer passt nicht mehr
@@ -91,7 +94,7 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
     vermesser: v("vermesser") ?? base.vermesser ?? null,
     flurstueck: v("flurstueck"),
     gemarkung: v("gemarkung"),
-    bauherr: {
+    bauherr: namenTeilen({
       name: v("bauherrName"),
       phone: v("phone"),
       email: v("email"),
@@ -106,7 +109,7 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
       siteStreet: bau.strasse,
       sitePostalCode: bau.plz,
       siteCity: bau.ort,
-    },
+    }, label),
   };
   const meta: ContractMeta = {};
   for (const k of ["vertragsdatum", "vertragspreis", "angebotsnummer", "haustyp"] as const) {
@@ -126,7 +129,7 @@ export function matchCompany(name: string | null | undefined, companies: Company
  * Einen einzelnen Wert ins Formular übernehmen (Auswahl bei abweichenden Werten aus mehreren Dokumenten).
  * Anschrift und Bauadresse ziehen ihre getrennten Felder mit; die Hausbaufirma wird gegen die Stammdaten abgeglichen.
  */
-export function formPatchFor(key: DraftFieldKey, wert: string, companies: Company[]): { project?: Partial<NewProject>; bauherr?: Partial<BauherrInput>; unmatchedCompany?: string } {
+export function formPatchFor(key: DraftFieldKey, wert: string, companies: Company[], nachname?: string | null): { project?: Partial<NewProject>; bauherr?: Partial<BauherrInput>; unmatchedCompany?: string } {
   switch (key) {
     case "bauherrLabel":
     case "location":
@@ -139,12 +142,14 @@ export function formPatchFor(key: DraftFieldKey, wert: string, companies: Compan
       return c ? { project: { companyId: c.id, salespersonId: null } } : { unmatchedCompany: wert };
     }
     case "bauherrName":
-      return { bauherr: { name: wert } };
+      return { bauherr: { name: wert, vorname: teileName(wert, nachname).vorname } };
     case "phone":
     case "email":
       return { bauherr: { [key]: wert } };
-    case "bauherr2Name":
-      return { bauherr: { name2: wert } };
+    case "bauherr2Name": {
+      const t = teileName(wert);
+      return { bauherr: { name2: wert, vorname2: t.vorname, nachname2: t.nachname } };
+    }
     case "bauherr2Phone":
       return { bauherr: { phone2: wert } };
     case "bauherr2Email":
@@ -171,7 +176,7 @@ export function preserveEdited(prev: NewProject, next: NewProject, edited: Reado
   for (const k of Object.keys(prev) as (keyof NewProject)[]) if (k !== "bauherr" && edited.has(k)) (out as unknown as Record<string, unknown>)[k] = prev[k];
   if (edited.has("companyId")) out.salespersonId = prev.salespersonId;
   for (const k of Object.keys(prev.bauherr ?? {}) as (keyof BauherrInput)[]) {
-    if (edited.has(k === "name" ? "bauherrName" : k)) (out.bauherr as unknown as Record<string, unknown>)[k] = prev.bauherr?.[k] ?? null;
+    if (edited.has(namensFormKey(k))) (out.bauherr as unknown as Record<string, unknown>)[k] = prev.bauherr?.[k] ?? null;
   }
   return out;
 }

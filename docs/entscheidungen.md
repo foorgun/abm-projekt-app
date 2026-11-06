@@ -674,8 +674,25 @@ Anlass: Testtermin vom 04.11.2026.
 - **Dritter und vierter Bauherr** als Spalten bei den Kontaktdaten (`bauherren.name3/phone3/email3`, `name4/phone4/email4`),
   genau wie der zweite. Damit gilt dieselbe Zugriffsregel (Freiberufler sehen sie nie), und alle Wege (Anlegen, Bearbeiten,
   Entwürfe) funktionieren unverändert. Mehr als vier Bauherren würde eine weitere Migration brauchen; das ist derzeit nicht gefordert.
-- **Felder erscheinen auf Knopfdruck** („Dritten Bauherrn hinzufügen“). Ausgefüllte Bauherren bleiben immer sichtbar
+- **Felder erscheinen auf Knopfdruck** (heute „Bauherr 3 hinzufügen“). Ausgefüllte Bauherren bleiben immer sichtbar
   (`weitereSichtbar`), auch beim Fortsetzen eines Entwurfs. Die Auslesung aus Verträgen füllt weiter nur den ersten und zweiten.
 - **Planungsprotokoll:** alle Namen in einer Zeile („A, B und C“); die Schrift des Felds passt sich der Länge an.
 - **Klick neben den Dialog** schließt „Neues Projekt“ bzw. „Neue Anfrage“ nicht mehr (`keepOpenOnOutsideClick`), weil sonst
   alle Eingaben verloren gingen. Andere Dialoge schließen weiter wie gehabt. Schließen-Knopf, Abbrechen und Escape bleiben.
+
+## Vorname und Nachname je Bauherr (Migration 0024)
+
+Anlass: Wunsch von ABM, Bauherren als „Bauherr 1: Vorname, Nachname / Bauherr 2: Vorname, Nachname“ zu erfassen.
+
+- **Getrennt gespeichert** (`bauherren.vorname/nachname`, `vorname2/nachname2` bis `vorname4/nachname4`), bei den
+  Kontaktdaten wie die übrigen Bauherren-Felder: Freiberufler sehen sie nie.
+- **`name`, `name2` … bleiben** der ganze Name. Die App bildet ihn beim Speichern aus Vorname und Nachname
+  (`namenErgaenzen`). Planungsprotokoll, Suche, Anzeige und Excel-Import funktionieren damit unverändert.
+- **Projektname = Nachname von Bauherr 1.** Das eigene Feld „Bauherr (Nachname)“ entfällt im Dialog und in der
+  Kachel „Projektbeteiligte“. Ändert jemand den Nachnamen von Bauherr 1, ändert sich der Projektname mit.
+- **Bestand wird nicht umgeschrieben.** Ältere Einträge haben nur den ganzen Namen. Das Formular schlägt eine Teilung vor
+  (bekannter Nachname, „Nachname, Vorname“, sonst letztes Leerzeichen; „Familie“, „Herr“, „Frau“ fallen weg). Gespeichert
+  wird sie erst, wenn jemand einen Namen ändert. Ein nur vorgeschlagenes Teilen ändert „Familie Nagel“ also nicht.
+- **Bauherr 2 steht immer im Formular**, Bauherr 3 und 4 auf Knopfdruck. Telefon und E-Mail stehen beim jeweiligen
+  Bauherrn; die Wohnanschrift bleibt eine (die von Bauherr 1).
+- **Firmen als Bauherr:** Firmenname ins Feld Nachname, Vorname leer lassen.

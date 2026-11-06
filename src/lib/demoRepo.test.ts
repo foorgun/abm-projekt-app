@@ -226,8 +226,22 @@ describe("Projekt anlegen mit wenigen Angaben, Stammdaten ergänzen", () => {
     const d = await repo.load({ name: "Test", role: "admin" });
     expect(d.tasks.filter((t) => t.projectId === p.id)).toHaveLength(0);
     expect(d.parties.filter((x) => x.projectId === p.id)).toEqual([{ projectId: p.id, role: "vermesser", name: "Vermessung Neu", contact: null }]);
-    expect(d.bauherren.find((b) => b.projectId === p.id)).toEqual({ projectId: p.id, name: "Vollmer", address: null, phone: "0731 1", email: null, buildingAddress: "Weg 1, Ulm", name2: null, phone2: null, email2: null, name3: null, phone3: null, email3: null, name4: null, phone4: null, email4: null,
+    expect(d.bauherren.find((b) => b.projectId === p.id)).toEqual({ projectId: p.id, name: "Vollmer", address: null, phone: "0731 1", email: null, buildingAddress: "Weg 1, Ulm", vorname: null, nachname: null, name2: null, vorname2: null, nachname2: null, phone2: null, email2: null,
+      name3: null, vorname3: null, nachname3: null, phone3: null, email3: null, name4: null, vorname4: null, nachname4: null, phone4: null, email4: null,
       street: null, postalCode: null, city: null, mobile: null, siteStreet: null, sitePostalCode: null, siteCity: null, siteDistrict: null, siteState: null });
+  });
+
+  it("Vorname und Nachname je Bauherr: der Name wird daraus gebildet, beim Bearbeiten ebenso", async () => {
+    const repo = createDemoRepo("2026-10-10", { delayMs: 0 });
+    const p = await repo.createProject({
+      ...base, bauherrLabel: "Kaya",
+      bauherr: { phone: null, email: null, address: null, buildingAddress: null, vorname: " Deniz ", nachname: "Kaya", vorname2: "Ela", nachname2: "Kaya", vorname3: null, nachname3: "Arslan" },
+    });
+    let b = (await repo.load({ name: "Test", role: "admin" })).bauherren.find((x) => x.projectId === p.id)!;
+    expect([b.name, b.vorname, b.nachname, b.name2, b.name3, b.vorname3, b.nachname3]).toEqual(["Deniz Kaya", "Deniz", "Kaya", "Ela Kaya", "Arslan", null, "Arslan"]);
+    await repo.updateProject(p.id, { bauherr: { phone: null, email: null, address: null, buildingAddress: null, vorname2: "Ela", nachname2: "Kaya-Arslan" } });
+    b = (await repo.load({ name: "Test", role: "admin" })).bauherren.find((x) => x.projectId === p.id)!;
+    expect([b.name, b.name2, b.nachname2, b.name3]).toEqual(["Deniz Kaya", "Ela Kaya-Arslan", "Kaya-Arslan", "Arslan"]);
   });
 
   it("Mitarbeiter legt Hausbaufirma, Verkäufer und Architekt an; Dubletten werden abgelehnt", async () => {

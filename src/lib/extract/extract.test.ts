@@ -377,6 +377,8 @@ describe("Entwurf ins Formular", () => {
       intakeMonth: "2026-10-01",
       bauherr: { name: "Jonas Hoffmann", phone: "0731 000111", address: "Lindenweg 12, 89073 Ulm", buildingAddress: null, name2: "Anna Hoffmann", phone2: null, email2: null },
     });
+    // Vorname und Nachname fürs Formular aus den erkannten Namen
+    expect(form.bauherr).toMatchObject({ vorname: "Jonas", nachname: "Hoffmann", vorname2: "Anna", nachname2: "Hoffmann" });
     expect(meta).toEqual({ vertragsdatum: "2026-10-02", vertragspreis: "312.450,00 €", angebotsnummer: "A-2026-0417", haustyp: "Beispielhaus 140" });
     expect(unmatched).toEqual({});
     // der Vertragspreis ist kein Projektfeld und belegt nichts vor
