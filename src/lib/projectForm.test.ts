@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDataset } from "../data/demoData";
-import { anfrageOhneBauherr, cleanMasterName, followupForMissingInfo, followupKey, FOLLOWUP_DUE_DAYS, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectInfoState } from "./projectForm";
+import { anfrageName, anfrageOhneBauherr, cleanMasterName, followupForMissingInfo, followupKey, FOLLOWUP_DUE_DAYS, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectInfoState } from "./projectForm";
 import type { NewProject } from "./repo";
 
 const db = buildDemoDataset("2026-10-10");
@@ -94,11 +94,12 @@ describe("anfrageOhneBauherr (Migration 0026)", () => {
   const base = { kind: "neubau", abmNr: null, hausbauNr: null, bauherrLabel: "", location: "Altheim", companyId: null, salespersonId: null, architectId: null, planerId: null, intakeMonth: "2026-11-01", status: "anfrage" } as NewProject;
   const opts = { today: "2026-11-06", company: "Musterhaus" };
 
-  it("leerer Nachname, Bauort bekannt: Anfrage heißt wie der Bauort", () => {
-    const r = anfrageOhneBauherr(base, opts);
-    expect(r).toMatchObject({ bauherrLabel: "Altheim", bauherrOffen: true });
+  it("leerer Nachname: Anfrage heißt nach PLZ und Ort", () => {
+    const r = anfrageOhneBauherr({ ...base, bauherr: { phone: null, email: null, address: null, buildingAddress: "Lindenstraße 7, 89611 Altheim" } }, opts);
+    expect(r).toMatchObject({ bauherrLabel: "89611 Altheim", bauherrOffen: true });
     expect(validateNewProject(r, [])).toEqual({});
   });
+  it("ohne PLZ nur der Ort", () => expect(anfrageOhneBauherr(base, opts)).toMatchObject({ bauherrLabel: "Altheim", bauherrOffen: true }));
   it("weder Nachname noch Bauort: trotzdem ohne Fehler, Name aus Firma und Datum", () => {
     const r = anfrageOhneBauherr({ ...base, location: null }, opts);
     expect(r).toMatchObject({ bauherrLabel: "Anfrage Musterhaus 06.11.2026", bauherrOffen: true });
@@ -115,5 +116,17 @@ describe("anfrageOhneBauherr (Migration 0026)", () => {
   it("Bauort darf Zahlen enthalten, andere Prüfungen gelten weiter", () => {
     const r = anfrageOhneBauherr({ ...base, location: "89134 Blaustein", abmNr: "123" }, opts);
     expect(validateNewProject(r, [])).toEqual({ abmNr: expect.any(String) });
+  });
+});
+
+describe("anfrageName", () => {
+  const leer = { phone: null, email: null, address: null, buildingAddress: null };
+  it("getrennte Felder des Bauorts zuerst", () => expect(anfrageName({ location: "Altheim", bauherr: { ...leer, sitePostalCode: "89611", siteCity: "Altheim (Alb)" } })).toBe("89611 Altheim (Alb)"));
+  it("PLZ aus der Bauadresse, Ort aus dem Bauort", () => expect(anfrageName({ location: "Altheim", bauherr: { ...leer, buildingAddress: "Lindenstraße 7, 89611 Altheim" } })).toBe("89611 Altheim"));
+  it("PLZ im Feld Bauort wird nicht doppelt genannt", () => expect(anfrageName({ location: "89611 Altheim", bauherr: null })).toBe("89611 Altheim"));
+  it("Bauadresse ohne PLZ: nur der Ort", () => expect(anfrageName({ location: "Altheim", bauherr: { ...leer, buildingAddress: "Lindenstraße 7, Altheim" } })).toBe("Altheim"));
+  it("ohne Ort: null", () => {
+    expect(anfrageName({ location: null, bauherr: null })).toBeNull();
+    expect(anfrageName({ location: null, bauherr: { ...leer, sitePostalCode: "89611" } })).toBeNull();
   });
 });

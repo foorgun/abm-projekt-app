@@ -732,7 +732,10 @@ Anlass: Verkäufer fragen oft erst einen Bauplatz an (Prüfung Bebauungsplan), e
 war der Nachname von Bauherr 1 Pflicht, auch in der Datenbank.
 
 - **Nachname bei Anfragen freiwillig** (Rückmeldung ABM: bei Anfragen ist der Bauherr praktisch nie bekannt). Leer
-  gelassen heißt die Anfrage vorläufig wie der Bauort, ohne Bauort „Anfrage <Firma> <Datum>“ (`anfrageOhneBauherr`).
+  gelassen heißt die Anfrage vorläufig nach PLZ und Ort des Bauorts, z. B. „74235 Flein“ (Wunsch von ABM, `anfrageName`:
+  getrennte Felder des Bauorts, sonst Bauadresse und Feld Bauort; ohne bekannte PLZ nur der Ort), ohne Ort
+  „Anfrage <Firma> <Datum>“ (`anfrageOhneBauherr`). Der Name wird beim Anlegen festgelegt und folgt späteren Änderungen
+  am Bauort nicht.
   Bei Anfragen gibt es damit keine Pflichtfelder. Bei Projekten bleibt der Nachname Pflicht.
 - **Kennzeichen `projects.bauherr_offen`** statt eines leeren Namens: `bauherr_label` bleibt Pflicht, Liste, Suche und
   Titel funktionieren unverändert. Der Projektname gilt dann nicht als Nachname: „Kontakt Bauherr“ schlägt ihn nicht vor,
