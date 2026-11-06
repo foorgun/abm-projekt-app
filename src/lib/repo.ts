@@ -66,21 +66,32 @@ export interface NewProject {
   createFolders: boolean;
 }
 
-/** Kontaktdaten des Bauherrn. Leere Werte leeren das Feld. Ohne Namen gilt der Nachname des Projekts. */
+/**
+ * Kontaktdaten des Bauherrn. Leere Werte leeren das Feld. Ohne Namen gilt der Nachname des Projekts.
+ * Sind Vorname oder Nachname genannt, wird der Name daraus gebildet (namenErgaenzen); nicht genannt = unverändert.
+ */
 export interface BauherrInput {
   name?: string | null;
+  vorname?: string | null;
+  nachname?: string | null;
   phone: string | null;
   email: string | null;
   address: string | null;
   buildingAddress: string | null;
   /** Weitere Bauherren. Nicht genannt (undefined) = unverändert. */
   name2?: string | null;
+  vorname2?: string | null;
+  nachname2?: string | null;
   phone2?: string | null;
   email2?: string | null;
   name3?: string | null;
+  vorname3?: string | null;
+  nachname3?: string | null;
   phone3?: string | null;
   email3?: string | null;
   name4?: string | null;
+  vorname4?: string | null;
+  nachname4?: string | null;
   phone4?: string | null;
   email4?: string | null;
   /** Getrennte Anschrift, Mobil und Bauort (Planungsprotokoll). Nicht genannt (undefined) = unverändert. */

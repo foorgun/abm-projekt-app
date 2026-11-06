@@ -67,6 +67,7 @@ import {
   type Row,
 } from "./supabase/mappers";
 import type { ActivityKind, AgentSettings, Dataset, KalenderEintrag, MailboxStatus, StaffMember, StandortWert } from "./types";
+import { namenErgaenzen } from "./weitereBauherren";
 
 export const BUCKET = "project-documents";
 /** Die Daten-API liefert höchstens 1000 Zeilen je Anfrage: größere Tabellen werden seitenweise geholt. */
@@ -131,11 +132,21 @@ export function projectJson(fields: Partial<ProjectFields>): Record<string, stri
   return out;
 }
 
-export function bauherrJson(b: BauherrInput): Record<string, string | null> {
+export function bauherrJson(input: BauherrInput): Record<string, string | null> {
+  // Name aus Vorname und Nachname bilden (bei geplanten Änderungen schon geschehen, hier für das Anlegen)
+  const b = namenErgaenzen(input);
   const v = (x: string | null | undefined) => x?.trim() || null;
   const out: Record<string, string | null> = { name: v(b.name), phone: v(b.phone), email: v(b.email), address: v(b.address), building_address: v(b.buildingAddress), name2: v(b.name2), phone2: v(b.phone2), email2: v(b.email2) };
-  // Getrennte Felder sowie dritter und vierter Bauherr nur, wenn genannt: fehlt ein Schlüssel, lässt die Datenbank den Wert stehen (Migrationen 0013, 0023)
+  // Getrennte Felder, Vor- und Nachnamen sowie dritter und vierter Bauherr nur, wenn genannt: fehlt ein Schlüssel, lässt die Datenbank den Wert stehen (Migrationen 0013, 0023, 0024)
   const extra: [keyof BauherrInput, string][] = [
+    ["vorname", "vorname"],
+    ["nachname", "nachname"],
+    ["vorname2", "vorname2"],
+    ["nachname2", "nachname2"],
+    ["vorname3", "vorname3"],
+    ["nachname3", "nachname3"],
+    ["vorname4", "vorname4"],
+    ["nachname4", "nachname4"],
     ["name3", "name3"],
     ["phone3", "phone3"],
     ["email3", "email3"],

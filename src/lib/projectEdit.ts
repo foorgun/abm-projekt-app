@@ -4,6 +4,7 @@
 
 import { splitAnschrift } from "./planungsprotokoll/daten";
 import { followupForMissingInfo, validateProjectFields, type ProjectFormErrors } from "./projectForm";
+import { NAMENS_TEILE, namenErgaenzen } from "./weitereBauherren";
 import type { BauherrInput, PartyInput, ProjectFields, ProjectPatch } from "./repo";
 import type { Dataset, PartyRole, Project, ProjectParty } from "./types";
 
@@ -26,20 +27,28 @@ export const FIELD_LABEL: Record<keyof ProjectFields, string> = {
 };
 
 export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
-  name: "Name des Bauherrn",
+  name: "Bauherr 1",
+  vorname: "Vorname (Bauherr 1)",
+  nachname: "Nachname (Bauherr 1)",
   phone: "Telefon",
   email: "E-Mail",
   address: "Anschrift",
   buildingAddress: "Bauadresse",
-  name2: "Zweiter Bauherr",
-  phone2: "Telefon (zweiter Bauherr)",
-  email2: "E-Mail (zweiter Bauherr)",
-  name3: "Dritter Bauherr",
-  phone3: "Telefon (dritter Bauherr)",
-  email3: "E-Mail (dritter Bauherr)",
-  name4: "Vierter Bauherr",
-  phone4: "Telefon (vierter Bauherr)",
-  email4: "E-Mail (vierter Bauherr)",
+  name2: "Bauherr 2",
+  vorname2: "Vorname (Bauherr 2)",
+  nachname2: "Nachname (Bauherr 2)",
+  phone2: "Telefon (Bauherr 2)",
+  email2: "E-Mail (Bauherr 2)",
+  name3: "Bauherr 3",
+  vorname3: "Vorname (Bauherr 3)",
+  nachname3: "Nachname (Bauherr 3)",
+  phone3: "Telefon (Bauherr 3)",
+  email3: "E-Mail (Bauherr 3)",
+  name4: "Bauherr 4",
+  vorname4: "Vorname (Bauherr 4)",
+  nachname4: "Nachname (Bauherr 4)",
+  phone4: "Telefon (Bauherr 4)",
+  email4: "E-Mail (Bauherr 4)",
   street: "Straße (Bauherr)",
   postalCode: "PLZ (Bauherr)",
   city: "Ort (Bauherr)",
@@ -52,7 +61,7 @@ export const BAUHERR_LABEL: Record<keyof BauherrInput, string> = {
 };
 
 /** Weitere Bauherren und Felder, die erst mit dem Planungsprotokoll kamen: nicht genannt = unverändert. */
-const OPTIONAL_BAUHERR: (keyof BauherrInput)[] = ["name2", "phone2", "email2", "name3", "phone3", "email3", "name4", "phone4", "email4", "street", "postalCode", "city", "mobile", "siteStreet", "sitePostalCode", "siteCity", "siteDistrict", "siteState"];
+const OPTIONAL_BAUHERR: (keyof BauherrInput)[] = ["vorname", "nachname", "vorname2", "nachname2", "vorname3", "nachname3", "vorname4", "nachname4", "name2", "phone2", "email2", "name3", "phone3", "email3", "name4", "phone4", "email4", "street", "postalCode", "city", "mobile", "siteStreet", "sitePostalCode", "siteCity", "siteDistrict", "siteState"];
 
 export const PARTY_LABEL: Record<PartyRole, string> = {
   vermesser: "Vermesser",
@@ -160,17 +169,25 @@ export function planProjectUpdate(
   // --- Kontaktdaten
   const before: Required<BauherrInput> = {
     name: contact?.name ?? null,
+    vorname: contact?.vorname ?? null,
+    nachname: contact?.nachname ?? null,
     phone: contact?.phone ?? null,
     email: contact?.email ?? null,
     address: contact?.address ?? null,
     buildingAddress: contact?.buildingAddress ?? null,
     name2: contact?.name2 ?? null,
+    vorname2: contact?.vorname2 ?? null,
+    nachname2: contact?.nachname2 ?? null,
     phone2: contact?.phone2 ?? null,
     email2: contact?.email2 ?? null,
     name3: contact?.name3 ?? null,
+    vorname3: contact?.vorname3 ?? null,
+    nachname3: contact?.nachname3 ?? null,
     phone3: contact?.phone3 ?? null,
     email3: contact?.email3 ?? null,
     name4: contact?.name4 ?? null,
+    vorname4: contact?.vorname4 ?? null,
+    nachname4: contact?.nachname4 ?? null,
     phone4: contact?.phone4 ?? null,
     email4: contact?.email4 ?? null,
     street: contact?.street ?? null,
@@ -186,7 +203,8 @@ export function planProjectUpdate(
   let after = before;
   let bauherr: Required<BauherrInput> | null = null;
   if (patch.bauherr) {
-    const b = patch.bauherr;
+    // Name aus Vorname und Nachname bilden, wo die Teile genannt sind
+    const b = namenErgaenzen(patch.bauherr);
     after = {
       ...before,
       name: b.name === undefined ? before.name : clean(b.name),
@@ -203,7 +221,8 @@ export function planProjectUpdate(
     const diff = (Object.keys(BAUHERR_LABEL) as (keyof BauherrInput)[]).filter((k) => after[k] !== before[k]);
     if (diff.length) {
       bauherr = after;
-      changed.push(...diff.map((k) => BAUHERR_LABEL[k]));
+      // Vorname und Nachname stehen über den Namen im Protokoll (nur geteilt, Name gleich: kein Eintrag)
+      changed.push(...diff.filter((k) => !NAMENS_TEILE.has(k)).map((k) => BAUHERR_LABEL[k]));
     }
   }
 

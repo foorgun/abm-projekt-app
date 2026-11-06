@@ -1,4 +1,4 @@
-import { createContext, Fragment, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { FileText, FileUp } from "lucide-react";
 import { ALWAYS_CHECK, applyDraft, cleanMeta, FORM_SOURCE, formPatchFor, preserveEdited, SIMILAR_LABEL, similarProjects, type AppliedDraft, type FormKey } from "../lib/extract/applyDraft";
@@ -29,7 +29,7 @@ import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from
 import { sourcePage } from "../lib/extract/previewState";
 import { formatBytes, monthStart } from "../lib/format";
 import { folgeAnschrift } from "../lib/projectEdit";
-import { WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
+import { namensFormKey, namenTeilen, WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
 import type { NewProject } from "../lib/repo";
@@ -88,14 +88,14 @@ const FORM_KEYS_OF = Object.fromEntries(DRAFT_FIELDS.map((k) => [k, (Object.keys
 
 /** Feldnamen für Hinweise zu abweichenden Werten */
 const CONFLICT_LABEL: Partial<Record<DraftFieldKey, string>> & Record<string, string> = {
-  bauherrLabel: "Bauherr (Nachname)",
-  bauherrName: "Name des Bauherrn",
+  bauherrLabel: "Nachname (Bauherr 1)",
+  bauherrName: "Vorname (Bauherr 1)",
   phone: "Telefon",
   email: "E-Mail",
   address: "Anschrift",
-  bauherr2Name: "Zweiter Bauherr",
-  bauherr2Phone: "Telefon (zweiter Bauherr)",
-  bauherr2Email: "E-Mail (zweiter Bauherr)",
+  bauherr2Name: "Bauherr 2",
+  bauherr2Phone: "Telefon (Bauherr 2)",
+  bauherr2Email: "E-Mail (Bauherr 2)",
   company: "Hausbaufirma",
   buildingAddress: "Bauadresse",
   location: "Bauort",
@@ -185,7 +185,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
 
   const [v, setV] = useState<NewProject>(
     () =>
-      resumed?.form.project ?? {
+      // Ältere Entwürfe kennen nur den ganzen Namen: Vorname und Nachname daraus vorschlagen
+      (resumed ? { ...resumed.form.project, bauherr: resumed.form.project.bauherr && namenTeilen(resumed.form.project.bauherr, resumed.form.project.bauherrLabel) } : null) ?? {
         kind: "neubau",
         abmNr: null,
         hausbauNr: null,
@@ -239,8 +240,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const [resolved, setResolved] = useState<ReadonlySet<string>>(new Set(resumed?.form.resolved ?? []));
   /** Felder, die der Mensch nach dem Vorbefüllen selbst geändert hat (gelten als geprüft) */
   const [edited, setEdited] = useState<ReadonlySet<string>>(new Set(resumed?.form.edited ?? []));
-  /** Weitere Bauherren, für die Felder angefordert wurden (zweiter bis vierter) */
-  const [weitereAngefordert, setWeitereAngefordert] = useState(0);
+  /** Weitere Bauherren, für die Felder angefordert wurden (Bauherr 2 bis 4; Bauherr 2 steht immer da) */
+  const [weitereAngefordert, setWeitereAngefordert] = useState(1);
   const [dropActive, setDropActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
@@ -297,10 +298,15 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   // Bundesland: solange nicht selbst gewählt, Vorschlag aus dem Bauort (Land oder PLZ beim Bauherrn, sonst PLZ im Bauort)
   const blSuggestion = suggestBundesland({ siteState: v.bauherr?.siteState, sitePostalCode: v.bauherr?.sitePostalCode, location: v.location });
   const bundesland = v.bundesland === undefined ? blSuggestion : v.bundesland;
-  const effective: NewProject = { ...(v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v), bundesland: bundesland || null };
+  const effective: NewProject = {
+    ...(v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v),
+    bundesland: bundesland || null,
+    // Der Nachname von Bauherr 1 ist der Projektname; der Name des Bauherrn wird beim Speichern aus beidem gebildet
+    bauherr: { phone: null, email: null, address: null, buildingAddress: null, ...v.bauherr, nachname: v.bauherrLabel },
+  };
   const missing = missingProjectInfo(infoStateOfNew(effective));
   const setContact = (patch: Partial<NonNullable<NewProject["bauherr"]>>) => {
-    markEdited(Object.keys(patch).map((k) => (k === "name" ? "bauherrName" : k)));
+    markEdited(Object.keys(patch).map(namensFormKey));
     setV((old) => {
       const before = { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr };
       const after = { ...before, ...patch };
@@ -438,7 +444,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
 
   /** Wert aus einem der abweichenden Dokumente übernehmen. */
   function chooseConflict(key: DraftFieldKey, o: ConflictOption) {
-    const patch = formPatchFor(key, o.wert, companies);
+    const patch = formPatchFor(key, o.wert, companies, v.bauherrLabel);
     setV((old) => ({ ...old, ...patch.project, bauherr: patch.bauherr ? { phone: null, email: null, address: null, buildingAddress: null, ...old.bauherr, ...patch.bauherr } : old.bauherr }));
     setUnmatched((old) => (key === "company" ? (patch.unmatchedCompany ? { company: patch.unmatchedCompany } : {}) : old));
     setDraft((old) => (old ? { ...old, felder: { ...old.felder, [key]: o.feld } } : old));
@@ -905,12 +911,80 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                 ]}
               />
             </Field>
-            <Field label="Bauherr (Nachname) *" htmlFor="np-bauherr">
-              <Input id="np-bauherr" value={v.bauherrLabel} onChange={(e) => set({ bauherrLabel: e.target.value })} placeholder="z. B. Hoffmann" autoFocus={!draft} {...invalid("bauherrLabel")} />
-              <Err k="bauherrLabel" />
-              <Src k="bauherrLabel" />
+            <Field label="Eingangsmonat" htmlFor="np-month">
+              <Input
+                id="np-month"
+                type="month"
+                value={v.intakeMonth?.slice(0, 7) ?? ""}
+                max={today.slice(0, 7)}
+                onChange={(e) => set({ intakeMonth: e.target.value ? `${e.target.value}-01` : null })}
+                {...invalid("intakeMonth")}
+              />
+              <Err k="intakeMonth" />
             </Field>
           </div>
+
+          <fieldset className="form-group">
+            <legend>Bauherren</legend>
+            <div className="bauherr-block" role="group" aria-labelledby="np-bh1">
+              <h3 className="bauherr-titel" id="np-bh1">
+                Bauherr 1
+              </h3>
+              <div className="dialog-row">
+                <Field label="Vorname" htmlFor="np-vorname">
+                  <Input id="np-vorname" value={v.bauherr?.vorname ?? ""} onChange={(e) => setContact({ vorname: e.target.value || null })} placeholder="z. B. Jonas" autoFocus={!draft} autoComplete="off" />
+                  <Src k="bauherrName" />
+                </Field>
+                <Field label="Nachname *" htmlFor="np-bauherr" hint={show("bauherrLabel") ? undefined : "Wird zum Projektnamen."}>
+                  <Input id="np-bauherr" value={v.bauherrLabel} onChange={(e) => set({ bauherrLabel: e.target.value })} placeholder="z. B. Hoffmann" autoComplete="off" {...invalid("bauherrLabel")} />
+                  <Err k="bauherrLabel" />
+                  <Src k="bauherrLabel" />
+                </Field>
+              </div>
+              <div className="dialog-row">
+                <Field label="Telefon" htmlFor="np-tel">
+                  <Input id="np-tel" type="tel" value={v.bauherr?.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value || null })} autoComplete="off" />
+                  <Src k="phone" />
+                </Field>
+                <Field label="E-Mail" htmlFor="np-mail">
+                  <Input id="np-mail" type="email" value={v.bauherr?.email ?? ""} onChange={(e) => setContact({ email: e.target.value || null })} autoComplete="off" {...invalid("email")} />
+                  <Err k="email" />
+                  <Src k="email" />
+                </Field>
+              </div>
+            </div>
+            {WEITERE_BAUHERREN.slice(0, weitere).map((b) => (
+              <div key={b.nr} className="bauherr-block" role="group" aria-labelledby={`np-bh${b.nr}`}>
+                <h3 className="bauherr-titel" id={`np-bh${b.nr}`}>
+                  {b.label}
+                </h3>
+                <div className="dialog-row">
+                  <Field label="Vorname" htmlFor={`np-vorname${b.nr}`}>
+                    <Input id={`np-vorname${b.nr}`} value={v.bauherr?.[b.vorname] ?? ""} onChange={(e) => setContact({ [b.vorname]: e.target.value || null })} autoComplete="off" />
+                  </Field>
+                  <Field label="Nachname" htmlFor={`np-nachname${b.nr}`}>
+                    <Input id={`np-nachname${b.nr}`} value={v.bauherr?.[b.nachname] ?? ""} onChange={(e) => setContact({ [b.nachname]: e.target.value || null })} autoComplete="off" />
+                    {b.nr === 2 && <Src k="name2" />}
+                  </Field>
+                </div>
+                <div className="dialog-row">
+                  <Field label="Telefon" htmlFor={`np-tel${b.nr}`}>
+                    <Input id={`np-tel${b.nr}`} type="tel" value={v.bauherr?.[b.phone] ?? ""} onChange={(e) => setContact({ [b.phone]: e.target.value || null })} autoComplete="off" />
+                    {b.nr === 2 && <Src k="phone2" />}
+                  </Field>
+                  <Field label="E-Mail" htmlFor={`np-mail${b.nr}`}>
+                    <Input id={`np-mail${b.nr}`} type="email" value={v.bauherr?.[b.email] ?? ""} onChange={(e) => setContact({ [b.email]: e.target.value || null })} autoComplete="off" />
+                    {b.nr === 2 && <Src k="email2" />}
+                  </Field>
+                </div>
+              </div>
+            ))}
+            {weitere < WEITERE_BAUHERREN.length && (
+              <button type="button" className="hint-action form-more" onClick={() => setWeitereAngefordert(weitere + 1)}>
+                {WEITERE_BAUHERREN[weitere].hinzufuegen}
+              </button>
+            )}
+          </fieldset>
 
           {v.kind === "neubau" && (
             <div className="dialog-row">
@@ -981,20 +1055,6 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
             </Field>
           </div>
 
-          <div className="dialog-row">
-            <Field label="Eingangsmonat" htmlFor="np-month">
-              <Input
-                id="np-month"
-                type="month"
-                value={v.intakeMonth?.slice(0, 7) ?? ""}
-                max={today.slice(0, 7)}
-                onChange={(e) => set({ intakeMonth: e.target.value ? `${e.target.value}-01` : null })}
-                {...invalid("intakeMonth")}
-              />
-              <Err k="intakeMonth" />
-            </Field>
-          </div>
-
           <BaubegleitungField name="np-baubegleitung" value={v.baubegleitung ?? true} onChange={(baubegleitung) => set({ baubegleitung })} />
 
           <div className="dialog-row">
@@ -1052,25 +1112,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
           </div>
 
           <fieldset className="form-group">
-            <legend>Kontakt Bauherr</legend>
-            {draft && (
-              <Field label="Name (Vorname Nachname)" htmlFor="np-name" hint={draft.felder.bauherrName.wert ? undefined : `Leer lassen für „${v.bauherrLabel || "Nachname"}“.`}>
-                <Input id="np-name" value={v.bauherr?.name ?? ""} onChange={(e) => setContact({ name: e.target.value || null })} autoComplete="off" />
-                <Src k="bauherrName" />
-              </Field>
-            )}
-            <div className="dialog-row">
-              <Field label="Telefon" htmlFor="np-tel">
-                <Input id="np-tel" type="tel" value={v.bauherr?.phone ?? ""} onChange={(e) => setContact({ phone: e.target.value || null })} autoComplete="off" />
-                <Src k="phone" />
-              </Field>
-              <Field label="E-Mail" htmlFor="np-mail">
-                <Input id="np-mail" type="email" value={v.bauherr?.email ?? ""} onChange={(e) => setContact({ email: e.target.value || null })} autoComplete="off" {...invalid("email")} />
-                <Err k="email" />
-                <Src k="email" />
-              </Field>
-            </div>
-            <Field label="Anschrift des Bauherrn (Wohnanschrift)" htmlFor="np-anschrift">
+            <legend>Anschrift Bauherr</legend>
+            <Field label="Wohnanschrift (Bauherr 1)" htmlFor="np-anschrift">
               <Input id="np-anschrift" value={v.bauherr?.address ?? ""} onChange={(e) => setContact({ address: e.target.value || null })} placeholder="Straße, PLZ Ort" autoComplete="off" />
               <Src k="address" />
             </Field>
@@ -1124,29 +1167,6 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                 </Field>
               </div>
             </details>
-            {WEITERE_BAUHERREN.slice(0, weitere).map((b) => (
-              <Fragment key={b.nr}>
-                <Field label={`${b.label} (Name)`} htmlFor={`np-name${b.nr}`}>
-                  <Input id={`np-name${b.nr}`} value={v.bauherr?.[b.name] ?? ""} onChange={(e) => setContact({ [b.name]: e.target.value || null })} autoComplete="off" />
-                  {b.nr === 2 && <Src k="name2" />}
-                </Field>
-                <div className="dialog-row">
-                  <Field label={`Telefon (${b.klein})`} htmlFor={`np-tel${b.nr}`}>
-                    <Input id={`np-tel${b.nr}`} type="tel" value={v.bauherr?.[b.phone] ?? ""} onChange={(e) => setContact({ [b.phone]: e.target.value || null })} autoComplete="off" />
-                    {b.nr === 2 && <Src k="phone2" />}
-                  </Field>
-                  <Field label={`E-Mail (${b.klein})`} htmlFor={`np-mail${b.nr}`}>
-                    <Input id={`np-mail${b.nr}`} type="email" value={v.bauherr?.[b.email] ?? ""} onChange={(e) => setContact({ [b.email]: e.target.value || null })} autoComplete="off" />
-                    {b.nr === 2 && <Src k="email2" />}
-                  </Field>
-                </div>
-              </Fragment>
-            ))}
-            {weitere < WEITERE_BAUHERREN.length && (
-              <button type="button" className="hint-action form-more" onClick={() => setWeitereAngefordert(weitere + 1)}>
-                {WEITERE_BAUHERREN[weitere].hinzufuegen}
-              </button>
-            )}
           </fieldset>
 
           {draft && stored.length > 0 && (

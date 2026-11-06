@@ -44,6 +44,7 @@ import {
 import type { SessionUser } from "./session";
 import { CLASSIC_PARTY_ROLES } from "./types";
 import type { Activity, AgentSettings, BueroDaten, Dataset, DraftFileRecord, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import { namenErgaenzen } from "./weitereBauherren";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
 
@@ -295,24 +296,32 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.projects.unshift(p);
       const vermesser = input.vermesser?.trim();
       if (vermesser) db.parties.push({ projectId: p.id, role: "vermesser", name: vermesser, contact: null });
-      const b = input.bauherr;
+      const b = input.bauherr ? namenErgaenzen(input.bauherr) : input.bauherr;
       const val = (v: string | null | undefined) => v?.trim() || null;
-      const extra = b ? ([b.name3, b.phone3, b.email3, b.name4, b.phone4, b.email4, b.street, b.postalCode, b.city, b.mobile, b.siteStreet, b.sitePostalCode, b.siteCity, b.siteDistrict, b.siteState] as (string | null | undefined)[]) : [];
+      const extra = b ? ([b.vorname, b.nachname, b.vorname2, b.nachname2, b.vorname3, b.nachname3, b.vorname4, b.nachname4, b.name3, b.phone3, b.email3, b.name4, b.phone4, b.email4, b.street, b.postalCode, b.city, b.mobile, b.siteStreet, b.sitePostalCode, b.siteCity, b.siteDistrict, b.siteState] as (string | null | undefined)[]) : [];
       if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2) || extra.some(val))) {
         db.bauherren.push({
           projectId: p.id,
           name: val(b.name) ?? p.bauherrLabel,
+          vorname: val(b.vorname),
+          nachname: val(b.nachname),
           address: val(b.address),
           phone: val(b.phone),
           email: val(b.email),
           buildingAddress: val(b.buildingAddress),
           name2: val(b.name2),
+          vorname2: val(b.vorname2),
+          nachname2: val(b.nachname2),
           phone2: val(b.phone2),
           email2: val(b.email2),
           name3: val(b.name3),
+          vorname3: val(b.vorname3),
+          nachname3: val(b.nachname3),
           phone3: val(b.phone3),
           email3: val(b.email3),
           name4: val(b.name4),
+          vorname4: val(b.vorname4),
+          nachname4: val(b.nachname4),
           phone4: val(b.phone4),
           email4: val(b.email4),
           street: val(b.street),

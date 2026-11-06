@@ -133,14 +133,23 @@ export interface BauherrContact {
   phone: string | null;
   email: string | null;
   buildingAddress: string | null;
+  /** Vorname und Nachname getrennt (Migration 0024). `name` ist der daraus gebildete Name; ältere Einträge haben nur ihn. */
+  vorname?: string | null;
+  nachname?: string | null;
   /** Weitere Bauherren (z. B. Ehepartner): nur Name, Telefon und E-Mail, keine eigene Entität. Siehe weitereBauherren.ts. */
   name2?: string | null;
+  vorname2?: string | null;
+  nachname2?: string | null;
   phone2?: string | null;
   email2?: string | null;
   name3?: string | null;
+  vorname3?: string | null;
+  nachname3?: string | null;
   phone3?: string | null;
   email3?: string | null;
   name4?: string | null;
+  vorname4?: string | null;
+  nachname4?: string | null;
   phone4?: string | null;
   email4?: string | null;
   /** Wohnanschrift getrennt (Migration 0013). `address` bleibt als eine Zeile erhalten. */
