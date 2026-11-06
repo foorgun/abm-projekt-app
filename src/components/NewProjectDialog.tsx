@@ -368,7 +368,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const noun = isRequest ? "Anfrage" : "Projekt";
   const dialogTitle = isRequest ? "Neue Anfrage" : "Neues Projekt";
   /** Anfrage ohne Bauherr: Name ist dann der Bauort (Migration 0026); der Nachname von Bauherr 1 bleibt leer */
-  const named = anfrageOhneBauherr(v);
+  const named = anfrageOhneBauherr(v, { today, company: companies.find((c) => c.id === v.companyId)?.name });
   const errors = validateNewProject(named, projects);
   const show = (k: keyof ProjectFormErrors) => (touched ? errors[k] : undefined);
   const markEdited = (keys: string[]) => draft && setEdited((old) => new Set([...old, ...keys]));
@@ -1091,7 +1091,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                     : stored.length > 1
                       ? `Vorschläge aus ${stored.length} Dokumenten, je Feld mit Quelle.`
                       : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen;
-                gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr{isRequest ? " (bei Anfragen: Bauherr oder Bauort)" : ""}.
+                gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. {isRequest ? "Pflichtfelder gibt es bei Anfragen keine." : "Pflicht ist nur der Bauherr."}
               </p>
               {openConflicts.length > 0 && (
                 <p className="form-note" role="status">
@@ -1173,10 +1173,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                     show("bauherrLabel")
                       ? undefined
                       : named.bauherrOffen
-                        ? `Leer gelassen: die Anfrage heißt „${named.bauherrLabel}“ (Bauort), bis der Bauherr feststeht.`
-                        : isRequest
-                          ? "Wird zum Projektnamen. Steht der Bauherr noch nicht fest, leer lassen: dann heißt die Anfrage wie der Bauort."
-                          : "Wird zum Projektnamen."
+                        ? `Freiwillig. Leer gelassen heißt die Anfrage „${named.bauherrLabel}“, bis der Bauherr feststeht.`
+                        : "Wird zum Projektnamen."
                   }
                 >
                   <Input id="np-bauherr" value={v.bauherrLabel} onChange={(e) => set({ bauherrLabel: e.target.value })} placeholder="z. B. Hoffmann" autoComplete="off" {...invalid("bauherrLabel")} />
