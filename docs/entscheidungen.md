@@ -725,3 +725,20 @@ später von Hand durchgesehen.
   hinein; schon vorhandene Anhänge werden dann nicht doppelt hinzugefügt, die Nachricht nicht doppelt eingetragen.
 - **Outlook-Format .msg** (klassisches Outlook) wird nicht gelesen (anderes, binäres Format); der Dialog sagt das. Die Mail im
   Browser-Postfach bzw. im neuen Outlook als .eml herunterladen.
+
+## Anfrage ohne Bauherr (Migration 0026)
+
+Anlass: Verkäufer fragen oft erst einen Bauplatz an (Prüfung Bebauungsplan), ein Bauherr steht noch nicht fest. Bisher
+war der Nachname von Bauherr 1 Pflicht, auch in der Datenbank.
+
+- **Nachname leer lassen:** Bei einer Anfrage heißt sie dann wie der Bauort (`anfrageOhneBauherr`). Fehlt auch der Bauort,
+  meldet das Formular „Nachname oder Bauort eintragen“. Bei Projekten bleibt der Nachname Pflicht.
+- **Kennzeichen `projects.bauherr_offen`** statt eines leeren Namens: `bauherr_label` bleibt Pflicht, Liste, Suche und
+  Titel funktionieren unverändert. Der Projektname gilt dann nicht als Nachname: „Kontakt Bauherr“ schlägt ihn nicht vor,
+  und `set_project_bauherr` speichert ihn nicht als Namen des Bauherrn (sondern „Bauherr noch offen“, nur wenn Kontaktdaten
+  ohne Namen eingetragen werden).
+- **Bauherr eintragen** (Kontakt Bauherr, Nachname) benennt die Anfrage um; ein Trigger nimmt dabei das Kennzeichen weg.
+- **Als Projekt annehmen geht erst mit Bauherr:** Constraint in der Datenbank (Status nur `anfrage` oder `storno`, solange
+  der Bauherr offen ist), dazu eine verständliche Meldung im Frontend. Absagen geht auch ohne Bauherr.
+- Die Aufgabe „Fehlende Angaben nachfragen“ nennt den fehlenden Bauherrn nicht; das Kennzeichen „Bauherr offen“ steht
+  dafür im Kopf der Anfrage.

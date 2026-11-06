@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildDemoDataset } from "../data/demoData";
-import { cleanMasterName, followupForMissingInfo, followupKey, FOLLOWUP_DUE_DAYS, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectInfoState } from "./projectForm";
+import { anfrageOhneBauherr, cleanMasterName, followupForMissingInfo, followupKey, FOLLOWUP_DUE_DAYS, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectInfoState } from "./projectForm";
 import type { NewProject } from "./repo";
 
 const db = buildDemoDataset("2026-10-10");
@@ -87,5 +87,29 @@ describe("Name für neue Stammdaten", () => {
     expect(cleanMasterName(" ", []).ok).toBe(false);
     expect(cleanMasterName("x".repeat(81), []).ok).toBe(false);
     expect(cleanMasterName("bien-zenker", ["Bien-Zenker"])).toEqual({ ok: false, reason: "Diesen Eintrag gibt es schon." });
+  });
+});
+
+describe("anfrageOhneBauherr (Migration 0026)", () => {
+  const base = { kind: "neubau", abmNr: null, hausbauNr: null, bauherrLabel: "", location: "Altheim", companyId: null, salespersonId: null, architectId: null, planerId: null, intakeMonth: "2026-11-01", status: "anfrage" } as NewProject;
+
+  it("leerer Nachname, Bauort bekannt: Anfrage heißt wie der Bauort", () => {
+    const r = anfrageOhneBauherr(base);
+    expect(r).toMatchObject({ bauherrLabel: "Altheim", bauherrOffen: true });
+    expect(validateNewProject(r, [])).toEqual({});
+  });
+  it("mit Nachname bleibt alles wie bisher", () => expect(anfrageOhneBauherr({ ...base, bauherrLabel: "Beispiel" })).toMatchObject({ bauherrLabel: "Beispiel", bauherrOffen: false }));
+  it("nur bei Anfragen", () => {
+    const r = anfrageOhneBauherr({ ...base, status: "aktiv" });
+    expect(r.bauherrOffen).toBe(false);
+    expect(validateNewProject(r, []).bauherrLabel).toMatch(/Nachnamen/);
+    expect(validateNewProject({ ...base, bauherrLabel: "Altheim", bauherrOffen: true, status: "aktiv" }, []).bauherrLabel).toMatch(/nur eine Anfrage/);
+  });
+  it("weder Nachname noch Bauort: verständliche Meldung", () => {
+    expect(validateNewProject(anfrageOhneBauherr({ ...base, location: null }), []).bauherrLabel).toMatch(/Nachname oder Bauort/);
+  });
+  it("Bauort darf Zahlen enthalten, andere Prüfungen gelten weiter", () => {
+    const r = anfrageOhneBauherr({ ...base, location: "89134 Blaustein", abmNr: "123" });
+    expect(validateNewProject(r, [])).toEqual({ abmNr: expect.any(String) });
   });
 });

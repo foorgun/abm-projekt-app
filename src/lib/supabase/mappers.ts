@@ -39,7 +39,7 @@ export const COLS = {
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, baubegleitung, intake_month, notes, anfrage_text, flurstueck, gemarkung, flur, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, baubegleitung, intake_month, notes, anfrage_text, bauherr_offen, flurstueck, gemarkung, flur, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
   bauherren:
@@ -123,6 +123,7 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   intakeMonth: r.intake_month ?? null,
   notes: r.notes ?? null,
   anfrageText: r.anfrage_text ?? null,
+  bauherrOffen: r.bauherr_offen ?? false,
   flurstueck: r.flurstueck ?? null,
   gemarkung: r.gemarkung ?? null,
   flur: r.flur ?? null,
@@ -393,6 +394,7 @@ export function dbErrorMessage(e: { message?: string; code?: string } | null | u
   if (code === "23505" && /projects_abm_nr_unique/.test(msg)) return "Diese ABM-Nr. ist schon vergeben";
   if (code === "23505" && /companies_prefix_unique/.test(msg)) return "Dieser Nummernkreis ist schon einer Hausbaufirma zugeordnet";
   if (code === "23505") return "Diesen Eintrag gibt es schon";
+  if (code === "23514" && /projects_bauherr_offen_nur_anfrage/.test(msg)) return "Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.";
   if (code === "23503") return "Der Eintrag verweist auf etwas, das es nicht (mehr) gibt";
   if (code === "PGRST205" || /schema cache/i.test(msg)) return "Die Datenbank ist noch nicht eingerichtet (Migrationen fehlen). Siehe docs/supabase-einrichten.md";
   if (/failed to fetch|networkerror|load failed/i.test(msg)) return "Keine Verbindung zur Datenbank. Bitte Internetverbindung prüfen.";

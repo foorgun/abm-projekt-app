@@ -190,7 +190,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
                   <Lock size={13} aria-hidden /> Kontaktdaten der Bauherren sind nur für Mitarbeiter sichtbar.
                 </p>
               ) : contact ? (
-                <BauherrenAnsicht contact={contact} projektName={project.bauherrLabel} />
+                <BauherrenAnsicht contact={ohnePlatzhalter(contact, project)} projektName={project.bauherrOffen ? null : project.bauherrLabel} />
               ) : (
                 <p className="muted">Noch keine Kontaktdaten eingetragen. Über den Stift oben rechts lassen sie sich nachtragen.</p>
               )
@@ -244,7 +244,16 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
 }
 
 /** Kontaktdaten je Bauherr: Vorname und Nachname getrennt (ältere Einträge aus dem ganzen Namen geteilt). */
-function BauherrenAnsicht({ contact, projektName }: { contact: BauherrContact; projektName: string }) {
+/**
+ * Bauherr offen (Migration 0026): Projektname (Bauort) und der Platzhalter-Name "Bauherr noch offen" sind keine Namen von
+ * Bauherr 1 und werden nicht in Vorname und Nachname geteilt. Bauherr 2 bis 4 bleiben unverändert.
+ */
+function ohnePlatzhalter<T extends { name?: string | null } | null | undefined>(contact: T, project: { bauherrOffen?: boolean }): T {
+  if (!project.bauherrOffen || !contact) return contact;
+  return { ...contact, name: null };
+}
+
+function BauherrenAnsicht({ contact, projektName }: { contact: BauherrContact; projektName: string | null }) {
   const namen = namenVorbelegen(contact, projektName);
   const tel = (x: string | null | undefined) => x && <a href={`tel:${x.replace(/[^\d+]/g, "")}`}>{x}</a>;
   const mail = (x: string | null | undefined) => x && <a href={`mailto:${x}`}>{x}</a>;
@@ -515,7 +524,8 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
 function ContactForm({ project, data, contact, onClose }: { project: Project; data: Dataset; contact: BauherrContact | null; onClose: () => void }) {
   const { save, busy, error, clearError } = useProjectSave(project, data);
   // Vorname und Nachname: gespeichert oder (ältere Einträge) aus dem Namen vorgeschlagen; Nachname 1 ohne Namen = Projektname
-  const [start] = useState(() => namenVorbelegen(contact, project.bauherrLabel));
+  // Bauherr offen: der Projektname ist der Bauort, kein Nachname (Migration 0026)
+  const [start] = useState(() => namenVorbelegen(ohnePlatzhalter(contact, project), project.bauherrOffen ? null : project.bauherrLabel));
   const [v, setV] = useState({
     ...start,
     address: contact?.address ?? "",

@@ -4,7 +4,7 @@ import { AlertTriangle, Check, ChevronRight, CircleAlert, FolderX, Info, ListPlu
 import { StatusPill } from "../../components/ProjectBits";
 import { TaskForm, TaskList } from "../../components/TaskList";
 import { useToast } from "../../components/Toast";
-import { Button, buttonClass, Card, CardBody, CardHead, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, Skeleton, Stepper, Tabs, type MenuEntry } from "../../components/ui";
+import { Button, buttonClass, Pill, Card, CardBody, CardHead, Dialog, EmptyState, ErrorState, Field, IconButton, Input, Menu, Skeleton, Stepper, Tabs, type MenuEntry } from "../../components/ui";
 import { SEVERITY_TONE } from "../../lib/alertUi";
 import { isPilot, PILOT_PROJECT_TABS } from "../../lib/appMode";
 import { foldersFor } from "../../lib/folders";
@@ -118,6 +118,11 @@ export function ProjectDetail() {
           <div className="project-title-row">
             <h1>{p.bauherrLabel}</h1>
             <StatusPill status={p.status} />
+            {p.bauherrOffen && (
+              <span title="Der Name ist vorläufig (z. B. der Bauort). Den Bauherrn unter Übersicht, Kontakt Bauherr eintragen.">
+                <Pill tone="warn">Bauherr offen</Pill>
+              </span>
+            )}
           </div>
           <p className="project-meta">
             <span>{p.abmNr ?? "ohne ABM-Nr."}</span>
@@ -130,7 +135,15 @@ export function ProjectDetail() {
         {staff && (
           <div className="page-head-actions">
             {p.status === "anfrage" && (
-              <Button variant="primary" icon={<Check size={15} />} onClick={() => void setStatus("aktiv", "Anfrage ist jetzt ein aktives Projekt")}>
+              <Button
+                variant="primary"
+                icon={<Check size={15} />}
+                onClick={() =>
+                  p.bauherrOffen
+                    ? toast("Bauherr fehlt noch", "danger", "Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.")
+                    : void setStatus("aktiv", "Anfrage ist jetzt ein aktives Projekt")
+                }
+              >
                 Als Projekt annehmen
               </Button>
             )}

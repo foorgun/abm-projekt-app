@@ -53,6 +53,11 @@ export interface Project {
   notes: string | null;
   /** Nachricht des Verkäufers zur Anfrage, z. B. Terminvorschläge (Migration 0022). */
   anfrageText?: string | null;
+  /**
+   * Anfrage ohne Bauherr: der Projektname ist dann z. B. der Bauort, nicht der Nachname von Bauherr 1 (Migration 0026).
+   * Wird falsch, sobald der Nachname eingetragen ist. Als Projekt annehmen geht erst danach.
+   */
+  bauherrOffen?: boolean;
   /** Flurstück und Gemarkung des Baugrundstücks (optional; dienen auch der Duplikatprüfung). */
   flurstueck?: string | null;
   gemarkung?: string | null;
