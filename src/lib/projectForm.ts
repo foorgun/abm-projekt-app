@@ -51,22 +51,23 @@ export function validateNewProject(input: NewProject, existing: Project[]): Proj
     // Name ist der Bauort: die Regeln für Nachnamen (z. B. ohne Zahlen) gelten nicht
     const e = validateProjectFields({ ...input, bauherrLabel: "Platzhalter", email: input.bauherr?.email }, existing);
     if (input.status !== "anfrage") e.bauherrLabel = "Ohne Bauherr geht nur eine Anfrage.";
-    else if (input.bauherrLabel.trim().length < 2) e.bauherrLabel = "Nachname oder Bauort eintragen: ohne Bauherr heißt die Anfrage wie der Bauort.";
+    else if (input.bauherrLabel.trim().length < 2) e.bauherrLabel = "Die Anfrage braucht einen Namen.";
     return e;
   }
-  const e = validateProjectFields({ ...input, email: input.bauherr?.email }, existing);
-  if (input.status === "anfrage" && !input.bauherrLabel.trim()) e.bauherrLabel = "Nachname oder Bauort eintragen: ohne Bauherr heißt die Anfrage wie der Bauort.";
-  return e;
+  return validateProjectFields({ ...input, email: input.bauherr?.email }, existing);
 }
 
 /**
- * Anfrage ohne Bauherr (Migration 0026): ist der Nachname leer und der Bauort bekannt, heißt die Anfrage wie der Bauort
- * und trägt das Kennzeichen "Bauherr offen". Sonst bleibt alles, wie es ist.
+ * Anfrage ohne Bauherr (Migration 0026). Bei Anfragen steht der Bauherr meist noch nicht fest, der Nachname ist dort
+ * deshalb freiwillig. Ist er leer, heißt die Anfrage vorläufig wie der Bauort, sonst "Anfrage <Firma> <Datum>", und trägt
+ * das Kennzeichen "Bauherr offen". Bei Projekten bleibt der Nachname Pflicht (unverändert).
  */
-export function anfrageOhneBauherr(input: NewProject): NewProject {
+export function anfrageOhneBauherr(input: NewProject, opts: { today: string; company?: string | null }): NewProject {
+  if (input.status !== "anfrage" || input.bauherrLabel.trim()) return { ...input, bauherrOffen: false };
   const ort = input.location?.trim();
-  if (input.status !== "anfrage" || input.bauherrLabel.trim() || !ort) return { ...input, bauherrOffen: false };
-  return { ...input, bauherrLabel: ort, bauherrOffen: true };
+  const [y, m, d] = opts.today.slice(0, 10).split("-");
+  const name = ort && ort.length >= 2 ? ort : ["Anfrage", opts.company?.trim(), `${d}.${m}.${y}`].filter(Boolean).join(" ");
+  return { ...input, bauherrLabel: name, bauherrOffen: true };
 }
 
 /** Was die Regel "Fehlende Angaben nachfragen" von einem Projekt wissen muss. */

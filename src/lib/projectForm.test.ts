@@ -92,24 +92,28 @@ describe("Name für neue Stammdaten", () => {
 
 describe("anfrageOhneBauherr (Migration 0026)", () => {
   const base = { kind: "neubau", abmNr: null, hausbauNr: null, bauherrLabel: "", location: "Altheim", companyId: null, salespersonId: null, architectId: null, planerId: null, intakeMonth: "2026-11-01", status: "anfrage" } as NewProject;
+  const opts = { today: "2026-11-06", company: "Musterhaus" };
 
   it("leerer Nachname, Bauort bekannt: Anfrage heißt wie der Bauort", () => {
-    const r = anfrageOhneBauherr(base);
+    const r = anfrageOhneBauherr(base, opts);
     expect(r).toMatchObject({ bauherrLabel: "Altheim", bauherrOffen: true });
     expect(validateNewProject(r, [])).toEqual({});
   });
-  it("mit Nachname bleibt alles wie bisher", () => expect(anfrageOhneBauherr({ ...base, bauherrLabel: "Beispiel" })).toMatchObject({ bauherrLabel: "Beispiel", bauherrOffen: false }));
-  it("nur bei Anfragen", () => {
-    const r = anfrageOhneBauherr({ ...base, status: "aktiv" });
+  it("weder Nachname noch Bauort: trotzdem ohne Fehler, Name aus Firma und Datum", () => {
+    const r = anfrageOhneBauherr({ ...base, location: null }, opts);
+    expect(r).toMatchObject({ bauherrLabel: "Anfrage Musterhaus 06.11.2026", bauherrOffen: true });
+    expect(validateNewProject(r, [])).toEqual({});
+    expect(anfrageOhneBauherr({ ...base, location: " " }, { today: "2026-11-06" }).bauherrLabel).toBe("Anfrage 06.11.2026");
+  });
+  it("mit Nachname bleibt alles wie bisher", () => expect(anfrageOhneBauherr({ ...base, bauherrLabel: "Beispiel" }, opts)).toMatchObject({ bauherrLabel: "Beispiel", bauherrOffen: false }));
+  it("bei Projekten bleibt der Nachname Pflicht", () => {
+    const r = anfrageOhneBauherr({ ...base, status: "aktiv" }, opts);
     expect(r.bauherrOffen).toBe(false);
     expect(validateNewProject(r, []).bauherrLabel).toMatch(/Nachnamen/);
     expect(validateNewProject({ ...base, bauherrLabel: "Altheim", bauherrOffen: true, status: "aktiv" }, []).bauherrLabel).toMatch(/nur eine Anfrage/);
   });
-  it("weder Nachname noch Bauort: verständliche Meldung", () => {
-    expect(validateNewProject(anfrageOhneBauherr({ ...base, location: null }), []).bauherrLabel).toMatch(/Nachname oder Bauort/);
-  });
   it("Bauort darf Zahlen enthalten, andere Prüfungen gelten weiter", () => {
-    const r = anfrageOhneBauherr({ ...base, location: "89134 Blaustein", abmNr: "123" });
+    const r = anfrageOhneBauherr({ ...base, location: "89134 Blaustein", abmNr: "123" }, opts);
     expect(validateNewProject(r, [])).toEqual({ abmNr: expect.any(String) });
   });
 });
