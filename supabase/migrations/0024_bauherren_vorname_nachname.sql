@@ -3,8 +3,8 @@
 --     bauherren_staff (0001) gilt auch hier.
 --   * name, name2 … bleiben der ganze Name ("Vorname Nachname"), den Planungsprotokoll, Suche und Anzeige nutzen. Die App
 --     bildet ihn beim Speichern aus Vorname und Nachname. Der Nachname von Bauherr 1 ist der Projektname (bauherr_label).
---   * Bestehende Einträge werden nicht umgeschrieben: das Formular schlägt die Teilung aus dem Namen vor, gespeichert wird
---     sie erst, wenn jemand den Namen bearbeitet.
+--   * Bestehende Einträge werden hier nicht umgeschrieben: das Formular schlägt die Teilung aus dem Namen vor, gespeichert
+--     wird sie beim nächsten Speichern der Kontaktdaten.
 --   * set_project_bauherr wie in 0023, zusätzlich mit den neuen Feldern. Neue Schlüssel ändern nur, wenn sie im JSON stehen
 --     (ältere Aufrufer lassen sie damit unverändert). Der Nachname allein legt keinen Bauherrn an: er ist der Projektname.
 -- Die Datei lässt sich mehrfach ausführen.
