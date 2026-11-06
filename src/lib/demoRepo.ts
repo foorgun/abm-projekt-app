@@ -935,7 +935,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     // ------------------------------------------------------------- Planungsprotokoll (Regeln wie Migration 0013/0014)
 
     async saveBueroDaten(daten: BueroDaten) {
-      if (user.role !== "admin") throw new PermissionError();
+      // Admin und Mitarbeiter (Migration 0025)
+      if (user.role === "freiberufler") throw new PermissionError();
       const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
       const next: BueroDaten = { name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email) };
       if (next.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next.email)) throw new Error("Bitte eine gültige E-Mail-Adresse eintragen.");

@@ -84,11 +84,13 @@ describe("Demo-Modus: Planungsprotokoll", () => {
     expect((await r.load(admin)).planungsprotokolle).toEqual([]);
   });
 
-  it("Bürodaten: nur Admin, bereinigt, E-Mail geprüft", async () => {
+  it("Bürodaten: Admin und Mitarbeiter (0025), nicht Freiberufler; bereinigt, E-Mail geprüft", async () => {
     const r = repo();
-    await r.load(mitarbeiter);
+    await r.load({ name: "Frei", role: "freiberufler" });
     await expect(r.saveBueroDaten({ name: "X", anschrift: null, tel: null, mobil: null, email: null })).rejects.toBeInstanceOf(PermissionError);
-    await r.load(admin);
+    await r.load(mitarbeiter);
+    await r.saveBueroDaten({ name: "Von Mitarbeiterin", anschrift: null, tel: null, mobil: null, email: null });
+    expect((await r.load(admin)).buero?.name).toBe("Von Mitarbeiterin");
     await expect(r.saveBueroDaten({ name: "X", anschrift: null, tel: null, mobil: null, email: "kein-at" })).rejects.toThrow("E-Mail");
     await r.saveBueroDaten({ name: "  ABM   Büro ", anschrift: "Weg 1, 89073 Ulm", tel: " ", mobil: "0170 1", email: "a@example.de" });
     expect((await r.load(mitarbeiter)).buero).toEqual({ name: "ABM Büro", anschrift: "Weg 1, 89073 Ulm", tel: null, mobil: "0170 1", email: "a@example.de" });
