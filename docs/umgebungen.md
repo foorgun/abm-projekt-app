@@ -36,7 +36,8 @@ Alle diese Dateien stehen in `.gitignore`. `npm run check:secrets` sperrt sie zu
 | `secrets:setzen EXTRACTOR_ENABLED=true` | Einstellungen (nur `EXTRACTOR_*`) | Zugangs-Token |
 | `auth:einrichten` | Auth-Einstellungen und Daten-API, nur production | Zugangs-Token |
 | `check:setup` | von außen, ohne Anmeldung | Publishable key |
-| `check:roles` | meldet sich je Konto an | Publishable key, Kontenliste |
+| `check:roles` | meldet sich je Konto an, legt Testanträge (Urlaub 2099) an | Publishable key, Kontenliste |
+| `aufraeumen:pruefdaten` | löscht genau diese Testanträge wieder | Secret key |
 | `check:ki` | Auslesung mit dem erfundenen Dokument `scripts/fixtures/demo-vertrag.png` | Publishable key, Admin-Konto |
 | `check:build` | baut mit den öffentlichen Werten und prüft `dist/` | Publishable key |
 | `export:backup` | Tabellen als JSON, ohne Dateien | Secret key |
@@ -47,11 +48,12 @@ Alle diese Dateien stehen in `.gitignore`. `npm run check:secrets` sperrt sie zu
 
 1. **Branch** von `main`, kleine Schritte, Commit-Sperre läuft automatisch.
 2. **CI** grün: Commit-Sperre, Typprüfung, Tests, Build, Datenbank- und RLS-Tests.
-3. **Test in development:** `db:bundle` und `db:einspielen`, bei Bedarf `functions:deploy`, danach `check:setup`, `check:roles`, `check:repo`. Oberfläche im Browser ansehen.
+3. **Test in development:** `db:bundle` und `db:einspielen`, bei Bedarf `functions:deploy`, danach `check:setup`, `check:roles`, `aufraeumen:pruefdaten`, `check:repo`. Oberfläche im Browser ansehen.
 4. **Sicherung:** `export:backup -- --ziel production`. Sie enthält keine Dateien aus dem Speicher.
 5. **Migration auf production:** `db:bundle -- --ziel production --ab N`, Datei lesen, `db:einspielen`.
 6. **Merge und Deploy:** PR nach `main`, Cloudflare baut den Worker neu. Functions mit `functions:deploy -- --ziel production`.
-7. **Prüfen:** `check:setup` und `check:roles -- --ziel production`.
+7. **Prüfen:** `check:setup`, `check:roles -- --ziel production` und gleich danach `aufraeumen:pruefdaten -- --ziel production`.
+   `check:roles` meldet sich mit jedem Konto an (das ändert dort die letzte Anmeldung) und legt Testanträge an, die sonst im Urlaubskalender stehen bleiben.
 
 ### Regel: Migrationen nur abwärtskompatibel
 
