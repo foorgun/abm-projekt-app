@@ -1,6 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { Building2, Hammer, Hash, Lock, Pencil, Plus, SunMoon } from "lucide-react";
 import { ExtractionCostsCard } from "../components/ExtractionCostsCard";
+import { KontoKarte } from "../components/KontoKarte";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Select, SettingRow, Skeleton } from "../components/ui";
@@ -21,7 +22,7 @@ const FELDER: { key: keyof BueroDaten; label: string; type?: string; placeholder
 ];
 
 /**
- * Einstellungen: Darstellung (jede Rolle, gilt für diesen Browser) und Bürodaten für das Planungsprotokoll
+ * Einstellungen: eigenes Konto mit Passwort ändern und Darstellung (jede Rolle, Darstellung gilt für diesen Browser) und Bürodaten für das Planungsprotokoll
  * (lesen Admin und Mitarbeiter, ändern nur Admins).
  */
 export function Einstellungen() {
@@ -32,6 +33,7 @@ export function Einstellungen() {
       <>
         <PageHead title="Einstellungen" />
         <div className="stack settings-page">
+          <KontoKarte />
           <DarstellungKarte />
           <Card>
             <EmptyState icon={<Lock size={18} />} title="Bürodaten nur für Mitarbeiter" text="Die Einstellungen des Büros sind für Freiberufler nicht freigegeben." />
@@ -42,8 +44,9 @@ export function Einstellungen() {
   }
   return (
     <>
-      <PageHead title="Einstellungen" sub="Darstellung und Daten des Büros. Weitere Einstellungen folgen." />
+      <PageHead title="Einstellungen" sub="Konto, Darstellung und Daten des Büros." />
       <div className="stack settings-page">
+        <KontoKarte />
         <DarstellungKarte />
         {loading || !data ? (
           <Card>
