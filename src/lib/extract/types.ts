@@ -118,7 +118,7 @@ export interface ProjectDraft {
   /** Welche Seiten ausgelesen wurden und wie viele das Dokument hat (nicht gelesene Seiten zeigt die Prüfmaske an). */
   seiten?: { gelesen: number[]; gesamt: number | null };
   /** Woraus die Vorschläge stammen. "dateiname" heißt: nichts lesbar. "ohne": keine Auslesung (manuell ausfüllen). */
-  textquelle: "pdf" | "docx" | "bild" | "dateiname" | "ohne";
+  textquelle: "pdf" | "docx" | "bild" | "dateiname" | "ohne" | "mail";
   extractor: "mock" | "edge";
   /** Scan, Foto oder Handschrift: Sicherheit höchstens "mittel", Telefon und E-Mail immer zur Kontrolle. */
   gescannt: boolean;
@@ -145,7 +145,10 @@ export interface ExtractImage {
 }
 
 export interface ExtractRequest {
-  images: ExtractImage[];
+  /** Seitenbilder eines Dokuments; entfällt bei einer Mail */
+  images?: ExtractImage[];
+  /** Statt Bildern: Betreff und gekürzter Text einer Anfrage-Mail (ohne Signatur und Rechtshinweise) */
+  mail?: { subject: string | null; text: string };
   /** Dokumentart, wenn sie feststeht (vom Menschen gewählt); sonst bestimmt die Auslesung sie selbst. */
   art?: Vertragsart;
   /** Datei im Entwurf (project_draft_files): verbindet die Auslesung im Protokoll mit Entwurf und später dem Projekt. */

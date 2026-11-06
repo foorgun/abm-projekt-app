@@ -1,6 +1,7 @@
-// Edge Function extract-project: liest die ersten Seiten EINES Dokuments (als Bilder) mit einem Bildmodell aus, mit dem
-// Schema seiner Dokumentart, und liefert je Feld {wert, quelle, sicherheit}. Mehrere Dokumente = mehrere Aufrufe; die App
-// führt die Ergebnisse zusammen. Einrichtung: docs/vertrag-extraktion.md.
+// Edge Function extract-project: liest die ersten Seiten EINES Dokuments (als Bilder) bzw. Betreff und gekürzten Text
+// einer Anfrage-Mail mit einem Modell aus: Dokumente mit dem Schema ihrer Dokumentart, Mails mit fester Feldauswahl.
+// Liefert je Feld {wert, quelle, sicherheit}. Mehrere Dokumente = mehrere Aufrufe; die App führt die Ergebnisse zusammen.
+// Einrichtung: docs/vertrag-extraktion.md.
 //
 // Sicherheit:
 //   * Der Schlüssel zum KI-Dienst (ANTHROPIC_API_KEY) liegt nur hier als Secret, nie im Frontend.
@@ -15,7 +16,7 @@ import {
   apiErrorInfo,
   checkLimits,
   DEFAULT_MODEL,
-  describeImages,
+  describeRequest,
   estimateCostEur,
   extractJson,
   isEnabled,
@@ -23,6 +24,8 @@ import {
   JSON_ONLY,
   keyInvalidMessage,
   limitsFromEnv,
+  MAIL_FIELDS,
+  mailQuestion,
   MAX_TOKENS,
   outputConfig,
   parseRequest,
@@ -112,14 +115,16 @@ Deno.serve(async (req) => {
 
   // --- Aufruf des Bildmodells --------------------------------------------------------------------------
   // Nur Maße und Größe der Bilder ins Log (hilft bei abgelehnten Anfragen), nie der Inhalt
-  console.info(`Auslesung: Modell ${model}, ${parsed.images.length} Bild(er): ${describeImages(parsed.images)}`);
+  console.info(`Auslesung: Modell ${model}, ${describeRequest(parsed)}`);
   const client = new Anthropic({ apiKey, timeout: TIMEOUT_MS, maxRetries: 0 });
   const question: Anthropic.MessageParam = {
     role: "user",
-    content: [
-      ...parsed.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
-      { type: "text" as const, text: questionText(parsed.art, parsed.pages) },
-    ],
+    content: parsed.mail
+      ? [{ type: "text" as const, text: mailQuestion(parsed.mail) }]
+      : [
+          ...parsed.images.map((img) => ({ type: "image" as const, source: { type: "base64" as const, media_type: img.mediaType, data: img.data } })),
+          { type: "text" as const, text: questionText(parsed.art, parsed.pages) },
+        ],
   };
   // Tokens über alle Versuche dieser Auslesung (höchstens drei Aufrufe: mit Schema, ohne Schema, eine Nachfrage)
   let inputTokens = 0;
@@ -188,7 +193,7 @@ Deno.serve(async (req) => {
       ]);
     }
 
-    const answer = toResponse(result, parsed.art);
+    const answer = toResponse(result, parsed.art, parsed.mail ? MAIL_FIELDS : null);
     await saveUsage(answer.ok, answer.ok ? answer.dokumentart : parsed.art);
     return json(answer);
   } catch (error) {

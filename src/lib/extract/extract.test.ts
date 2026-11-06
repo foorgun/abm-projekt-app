@@ -300,7 +300,7 @@ describe("Schalter und Edge-Extractor", () => {
     await edge.extract(scan(), { planPage: 7 });
     await edge.extract(scan(), { pages: [5], art: "vermessungsvertrag", draftFileId: "f1" });
     await edge.extract(scan(), { pages: [1, 2, 3, 4, 5, 6] });
-    expect(sent.map((r) => r.images.length)).toEqual([2, 3, 1, 4]);
+    expect(sent.map((r) => r.images?.length)).toEqual([2, 3, 1, 4]);
     expect(sent.map((r) => r.pages)).toEqual([[1, 2], [1, 2, 7], [5], [1, 2, 3, 4]]);
     expect(sent[2]).toMatchObject({ art: "vermessungsvertrag", draftFileId: "f1" });
     // keine stille Kürzung: der Entwurf nennt gelesene und vorhandene Seiten

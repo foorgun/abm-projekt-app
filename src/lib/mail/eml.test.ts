@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { anfrageTextOf, attachmentName, berlinDay, htmlToText, isEmlFile, MAX_MAIL_TEXT, matchSender, MailReadError, readEml, SIGNATURE_IMAGE_BYTES, sortAttachments } from "./eml";
+import { anfrageTextOf, attachmentName, companyKey, displayName, berlinDay, htmlToText, isEmlFile, MAX_MAIL_TEXT, matchSender, MailReadError, readEml, SIGNATURE_IMAGE_BYTES, sortAttachments } from "./eml";
 import { buildEml, DEMO_ANFRAGE_TEXT, demoAnfrageEml } from "./fixtures";
 import type { Company, Salesperson } from "../types";
 
@@ -138,18 +138,51 @@ describe("matchSender", () => {
   const companies: Company[] = [
     { id: "c1", name: "Firma A", numberPrefix: null },
     { id: "c2", name: "Firma B", numberPrefix: null },
+    { id: "c3", name: "Musterhaus GmbH", numberPrefix: null },
+    { id: "c4", name: "Bauwerk-Süd GmbH & Co. KG", numberPrefix: null },
   ];
   const salespeople: Salesperson[] = [
     { id: "s1", companyId: "c1", name: "Reiter", email: "J.Reiter@firma-a.example" },
     { id: "s2", companyId: "c1", name: "Lang", email: "p.lang@firma-a.example" },
     { id: "s3", companyId: "c2", name: "Kunze", email: "r.kunze@gmail.example" },
     { id: "s4", companyId: "c1", name: "Privat", email: "x@gmail.example" },
+    // aus dem Excel-Import: nur Namen, keine Adressen
+    { id: "s5", companyId: "c3", name: "Hubert Strähle", email: null },
+    { id: "s6", companyId: "c3", name: "Weber", email: null },
+    { id: "s7", companyId: "c4", name: "Anna Kurz", email: null },
   ];
-  it("genaue Adresse: Firma und Verkäufer", () => expect(matchSender("j.reiter@firma-a.example", salespeople, companies)).toEqual({ companyId: "c1", salespersonId: "s1" }));
-  it("nur Domain einer Firma: Firma ohne Verkäufer", () => expect(matchSender("neu@firma-a.example", salespeople, companies)).toEqual({ companyId: "c1", salespersonId: null }));
-  it("Domain mehrerer Firmen: nichts", () => expect(matchSender("neu@gmail.example", salespeople, companies)).toBeNull());
+  const m = (name: string | null, email: string | null) => matchSender({ name, email }, salespeople, companies);
+
+  it("genaue Adresse: Firma und Verkäufer", () => expect(m(null, "j.reiter@firma-a.example")).toEqual({ companyId: "c1", salespersonId: "s1", newSalesperson: null }));
+  it("Domain eines Verkäufers einer Firma: Firma, neuer Verkäufer vorgeschlagen", () => expect(m("Neu, Nina", "neu@firma-a.example")).toEqual({ companyId: "c1", salespersonId: null, newSalesperson: "Nina Neu" }));
+
+  it("Firmenname in der Domain, Verkäufer über den Namen (Nachname, Vorname; Umlaute)", () => {
+    expect(m("Strähle, Hubert", "hubert.straehle@musterhaus.example")).toEqual({ companyId: "c3", salespersonId: "s5", newSalesperson: null });
+    expect(m(null, "hubert.straehle@musterhaus.example")).toEqual({ companyId: "c3", salespersonId: "s5", newSalesperson: null });
+  });
+  it("eindeutiger Nachname reicht innerhalb der Firma", () => expect(m("Tobias Weber", "t.weber@musterhaus.example")).toEqual({ companyId: "c3", salespersonId: "s6", newSalesperson: null }));
+  it("Firma erkannt, Verkäufer unbekannt: Vorschlag zum Anlegen", () => expect(m("Grün, Lena", "lena.gruen@musterhaus.example")).toEqual({ companyId: "c3", salespersonId: null, newSalesperson: "Lena Grün" }));
+  it("Firmenname mit Bindestrich und Rechtsform", () => expect(m("Anna Kurz", "a.kurz@bauwerk-sued.example")).toMatchObject({ companyId: "c4", salespersonId: "s7" }));
+  it("Untergeordnete Domain zählt mit der Hauptdomain", () => expect(m(null, "info@vertrieb.musterhaus.example")).toMatchObject({ companyId: "c3" }));
+
+  it("Freemail: Firma nur über einen eindeutigen vollen Namen", () => {
+    expect(m("Hubert Strähle", "hubi@gmail.example")).toEqual({ companyId: "c3", salespersonId: "s5", newSalesperson: null });
+    expect(m("Weber", "w@gmx.example")).toBeNull();
+    expect(m(null, "neu@gmail.example")).toBeNull();
+  });
   it("unbekannt oder leer: nichts", () => {
-    expect(matchSender("a@b.example", salespeople, companies)).toBeNull();
-    expect(matchSender(null, salespeople, companies)).toBeNull();
+    expect(m("Max Muster", "a@b.example")).toBeNull();
+    expect(m(null, null)).toBeNull();
+  });
+});
+
+describe("Namen und Firmen", () => {
+  it("displayName", () => {
+    expect(displayName("Strähle, Hubert")).toBe("Hubert Strähle");
+    expect(displayName("  Hubert   Strähle ")).toBe("Hubert Strähle");
+  });
+  it("companyKey ohne Rechtsform", () => {
+    expect(companyKey("Musterhaus GmbH & Co. KG")).toBe("musterhaus");
+    expect(companyKey("Bauwerk-Süd")).toBe("bauwerksued");
   });
 });

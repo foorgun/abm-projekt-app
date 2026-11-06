@@ -178,19 +178,92 @@ export function berlinDay(iso: string): string {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Berlin" }).format(new Date(iso));
 }
 
+/** Vergleichsform für Namen: klein, Umlaute ausgeschrieben, ohne Akzente ("Grössl" = "groessl"). */
+export function fold(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const tokens = (s: string) => fold(s).split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+
+/** Freemail-Anbieter: die Domain sagt nichts über die Firma. */
+const FREEMAIL = ["gmail", "googlemail", "gmx", "web", "t-online", "outlook", "hotmail", "live", "yahoo", "icloud", "me", "aol", "freenet", "posteo", "mailbox", "arcor", "online", "email", "mail"];
+
+/** Firmenname als Vergleichsform ohne Rechtsform ("Schwabenhaus GmbH & Co. KG" → "schwabenhaus"). */
+export function companyKey(name: string): string {
+  return fold(name)
+    .replace(/\b(gmbh|mbh|ag|kg|ohg|gbr|ug|co|se|e\.?k|haftungsbeschraenkt)\b/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/** "Grössl, Sascha" → "Sascha Grössl"; sonst der Name wie angegeben. */
+export function displayName(name: string): string {
+  const m = name.trim().match(/^([^,]+),\s*([^,]+)$/);
+  return (m ? `${m[2]} ${m[1]}` : name).replace(/\s+/g, " ").trim();
+}
+
+export interface SenderMatch {
+  companyId: string;
+  salespersonId: string | null;
+  /** Firma erkannt, Verkäufer nicht in den Stammdaten: Name aus dem Absender zum Anlegen */
+  newSalesperson: string | null;
+}
+
 /**
- * Hausbaufirma und Verkäufer aus dem Absender: genaue Adresse eines Verkäufers, sonst die Firma, wenn alle Verkäufer
- * mit derselben Mail-Domain zu genau einer Firma gehören.
+ * Hausbaufirma und Verkäufer aus dem Absender:
+ *   1. genaue Adresse eines Verkäufers;
+ *   2. Firma über die Domain: Verkäufer mit derselben Domain gehören zu genau einer Firma, oder der Firmenname steckt in
+ *      der Domain ("schwabenhaus.de" → "Schwabenhaus"); nie bei Freemail-Anbietern;
+ *   3. Verkäufer der Firma über den Namen (Anzeigename und Adresse, Umlaute egal): alle Namensteile oder eindeutig der
+ *      Nachname. Ohne Firma zählt nur ein eindeutiger voller Name (Vor- und Nachname).
  */
-export function matchSender(email: string | null, salespeople: Salesperson[], companies: Company[]): { companyId: string; salespersonId: string | null } | null {
-  if (!email) return null;
-  const addr = email.toLowerCase();
-  const exact = salespeople.find((s) => s.email?.toLowerCase() === addr);
-  if (exact && companies.some((c) => c.id === exact.companyId)) return { companyId: exact.companyId, salespersonId: exact.id };
-  const domain = addr.split("@")[1];
-  if (!domain) return null;
-  const ids = new Set(salespeople.filter((s) => s.email?.toLowerCase().split("@")[1] === domain).map((s) => s.companyId));
-  if (ids.size !== 1) return null;
-  const [companyId] = ids;
-  return companies.some((c) => c.id === companyId) ? { companyId, salespersonId: null } : null;
+export function matchSender(from: { name: string | null; email: string | null }, salespeople: Salesperson[], companies: Company[]): SenderMatch | null {
+  const addr = from.email?.toLowerCase() ?? "";
+  const known = (id: string) => companies.some((c) => c.id === id);
+  const exact = addr ? salespeople.find((s) => s.email?.toLowerCase() === addr && known(s.companyId)) : undefined;
+  if (exact) return { companyId: exact.companyId, salespersonId: exact.id, newSalesperson: null };
+
+  const senderTokens = new Set([...tokens(from.name ?? ""), ...tokens(addr.split("@")[0] ?? "")]);
+  const full = (s: Salesperson) => {
+    const t = tokens(s.name);
+    return t.length > 0 && t.every((x) => senderTokens.has(x));
+  };
+  const lastName = (s: Salesperson) => {
+    const t = tokens(s.name);
+    return t.length > 0 && senderTokens.has(t[t.length - 1]);
+  };
+
+  const domain = addr.split("@")[1] ?? "";
+  const label = domain.split(".").slice(-2, -1)[0] ?? "";
+  let companyId: string | null = null;
+  if (label && !FREEMAIL.includes(label)) {
+    const byStaff = new Set(salespeople.filter((s) => s.email?.toLowerCase().split("@")[1] === domain && known(s.companyId)).map((s) => s.companyId));
+    if (byStaff.size === 1) [companyId] = byStaff;
+    else {
+      const key = label.replace(/[^a-z0-9]/g, "");
+      const byName = companies.filter((c) => {
+        const k = companyKey(c.name);
+        return k.length >= 4 && (key === k || (key.length >= 5 && (key.includes(k) || k.includes(key))));
+      });
+      if (byName.length === 1) companyId = byName[0].id;
+    }
+  }
+
+  if (!companyId) {
+    // ohne Firma: nur ein eindeutiger voller Name zählt (z. B. Verkäufer schreibt von einer privaten Adresse)
+    const people = salespeople.filter((s) => tokens(s.name).length >= 2 && full(s) && known(s.companyId));
+    return people.length === 1 ? { companyId: people[0].companyId, salespersonId: people[0].id, newSalesperson: null } : null;
+  }
+  const own = salespeople.filter((s) => s.companyId === companyId);
+  const byFull = own.filter(full);
+  const byLast = own.filter(lastName);
+  const person = byFull.length === 1 ? byFull[0] : byFull.length === 0 && byLast.length === 1 ? byLast[0] : null;
+  const neu = !person && !byFull.length && !byLast.length && from.name?.trim() ? displayName(from.name) : null;
+  return { companyId, salespersonId: person?.id ?? null, newSalesperson: neu };
 }
