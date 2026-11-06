@@ -20,8 +20,8 @@ insert into public.team_members (id, code, name, role) values
   ('70000000-0000-4000-8000-000000000004', null, 'S. Kohler',    'planer');
 
 insert into public.bauherren (id, name, address, phone, email, notes) values
-  ('b0000000-0000-4000-8000-000000000001', 'Familie Reinhardt', 'Lindenweg 12, 89073 Ulm', '0731 000000', 'reinhardt@example.com', 'Erfundener Datensatz'),
-  ('b0000000-0000-4000-8000-000000000002', 'Familie Engelhardt', 'Gartenweg 5, 70173 Stuttgart', '0711 000000', 'engelhardt@example.com', 'Erfundener Datensatz');
+  ('b0000000-0000-4000-8000-000000000001', 'Petra Reinhardt', 'Lindenweg 12, 89073 Ulm', '0731 000000', 'reinhardt@example.com', 'Erfundener Datensatz'),
+  ('b0000000-0000-4000-8000-000000000002', 'Markus Engelhardt', 'Gartenweg 5, 70173 Stuttgart', '0711 000000', 'engelhardt@example.com', 'Erfundener Datensatz');
 
 insert into public.projects
   (id, abm_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location,

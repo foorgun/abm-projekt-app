@@ -534,7 +534,7 @@ begin;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
 select test.expect('Admin sieht Kontaktdaten der Bauherren', (select count(*) from public.bauherren where phone is not null), 2);
-select public.update_project('a0000000-0000-4000-8000-000000000001', p_bauherr => '{"name": "Familie Reinhardt", "phone": "0731 999999", "email": "neu@example.com"}');
+select public.update_project('a0000000-0000-4000-8000-000000000001', p_bauherr => '{"name": "Petra Reinhardt", "phone": "0731 999999", "email": "neu@example.com"}');
 select test.expect('Admin ändert Kontaktdaten', (select count(*) from public.bauherren where id = 'b0000000-0000-4000-8000-000000000001' and phone = '0731 999999' and email = 'neu@example.com' and address is null), 1);
 select test.throws('Bauherr löschen geht nicht', $$delete from public.bauherren$$);
 rollback;
@@ -969,11 +969,11 @@ select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties =
 select test.expect('Ein genanntes Feld mit null wird geleert', (select count(*) from public.project_parties where project_id = 'a0000000-0000-4000-8000-000000000001' and role = 'kellerbauer' and phone is null and mobile = '0170 2'), 1);
 select test.throws('Unbekannte Rolle wird abgelehnt', $$select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"hausmeister": {"name": "X"}}')$$);
 select public.update_project('a0000000-0000-4000-8000-000000000001', p_project => '{"flur": " 3 "}',
-  p_bauherr => '{"name": "Familie Reinhardt", "address": "Lindenweg 12, 89073 Ulm", "street": " Größlestraße 7 ", "postal_code": "89077", "city": "Ulm", "mobile": "0170 4", "site_street": "Am Hölzle 12", "site_postal_code": "89134", "site_city": "Blaustein", "site_district": "Bermaringen", "site_state": "Baden-Württemberg"}');
+  p_bauherr => '{"name": "Petra Reinhardt", "address": "Lindenweg 12, 89073 Ulm", "street": " Größlestraße 7 ", "postal_code": "89077", "city": "Ulm", "mobile": "0170 4", "site_street": "Am Hölzle 12", "site_postal_code": "89134", "site_city": "Blaustein", "site_district": "Bermaringen", "site_state": "Baden-Württemberg"}');
 select test.expect('Bauherr: getrennte Anschrift, Mobil und Bauort gespeichert, Flur am Projekt',
   (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id where p.id = 'a0000000-0000-4000-8000-000000000001' and b.street = 'Größlestraße 7' and b.postal_code = '89077'
      and b.city = 'Ulm' and b.mobile = '0170 4' and b.site_street = 'Am Hölzle 12' and b.site_district = 'Bermaringen' and b.site_state = 'Baden-Württemberg' and p.flur = '3'), 1);
-select public.set_project_bauherr('a0000000-0000-4000-8000-000000000001', '{"name": "Familie Reinhardt", "phone": "0731 5"}');
+select public.set_project_bauherr('a0000000-0000-4000-8000-000000000001', '{"name": "Petra Reinhardt", "phone": "0731 5"}');
 select test.expect('Aufruf ohne die neuen Schlüssel (ältere App) lässt Anschrift, Mobil und Bauort stehen',
   (select count(*) from public.bauherren b join public.projects p on p.bauherr_id = b.id where p.id = 'a0000000-0000-4000-8000-000000000001' and b.street = 'Größlestraße 7' and b.mobile = '0170 4' and b.site_city = 'Blaustein' and b.phone = '0731 5'), 1);
 select public.create_project('{"bauherr_label": "Flurtest", "flur": "7"}');

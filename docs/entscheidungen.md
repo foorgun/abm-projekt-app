@@ -692,7 +692,8 @@ Anlass: Wunsch von ABM, Bauherren als „Bauherr 1: Vorname, Nachname / Bauherr 
   Kachel „Projektbeteiligte“. Ändert jemand den Nachnamen von Bauherr 1, ändert sich der Projektname mit.
 - **Bestand wird nicht umgeschrieben.** Ältere Einträge haben nur den ganzen Namen. Das Formular schlägt eine Teilung vor
   (bekannter Nachname, „Nachname, Vorname“, sonst letztes Leerzeichen; „Familie“, „Herr“, „Frau“ fallen weg). Gespeichert
-  wird sie erst, wenn jemand einen Namen ändert. Ein nur vorgeschlagenes Teilen ändert „Familie Nagel“ also nicht.
+  wird sie beim nächsten Speichern der Kachel „Kontakt Bauherr“: aus „Familie Nagel“ wird dann „Nagel“ (Wunsch von ABM:
+  kein „Familie“ mehr, nur Vorname und Nachname). Demo- und Testdaten nutzen erfundene Vornamen.
 - **Bauherr 2 steht immer im Formular**, Bauherr 3 und 4 auf Knopfdruck. Telefon und E-Mail stehen beim jeweiligen
   Bauherrn; die Wohnanschrift bleibt eine (die von Bauherr 1).
 - **Firmen als Bauherr:** Firmenname ins Feld Nachname, Vorname leer lassen.

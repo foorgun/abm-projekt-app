@@ -31,6 +31,9 @@ import { allStepDefinitions, buildFolderTemplates } from "./templates";
 
 export const DEMO_SEED = 20261009;
 
+/** Erfundene Vornamen der Demo-Bauherren */
+const DEMO_VORNAMEN = ["Anna", "Jonas", "Lena", "Markus", "Sabine", "Tobias", "Julia", "Stefan", "Miriam", "Daniel"];
+
 const BG = "09 Baugenehmigung, Baufreigabe,Baubeginnsanzeige";
 
 export const COMPANIES: Company[] = [
@@ -355,7 +358,10 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     const home = `${r.pick(STREETS)} ${r.int(1, 60)}`;
     bauherren.push({
       projectId: id,
-      name: `Familie ${name}`,
+      // Vorname fest aus dem Nachnamen gewählt: keine weitere Zufallszahl, der übrige Demo-Bestand bleibt gleich
+      name: `${DEMO_VORNAMEN[(name!.charCodeAt(0) + name!.length) % DEMO_VORNAMEN.length]} ${name}`,
+      vorname: DEMO_VORNAMEN[(name!.charCodeAt(0) + name!.length) % DEMO_VORNAMEN.length],
+      nachname: name,
       address: `${home}, ${plz} ${town}`,
       phone: "0731 000000",
       email: `${name!.toLowerCase().replace(/[^a-z]/g, "")}@example.com`,

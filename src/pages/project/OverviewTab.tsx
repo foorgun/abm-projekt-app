@@ -517,13 +517,8 @@ function ContactForm({ project, data, contact, onClose }: { project: Project; da
   const id = `pc-${project.id}`;
 
   function submit() {
-    // Vorname und Nachname nur senden, wenn geändert oder schon getrennt gespeichert: ein nur vorgeschlagenes Teilen
-    // ändert den bisherigen Namen nicht (z. B. "Familie Hoffmann")
-    const namen: Record<string, string> = {};
-    for (const f of NAMENS_FELDER) {
-      const gespeichert = contact?.[f.vorname] != null || contact?.[f.nachname] != null;
-      if (gespeichert || v[f.vorname] !== start[f.vorname] || v[f.nachname] !== start[f.nachname]) Object.assign(namen, { [f.vorname]: v[f.vorname], [f.nachname]: v[f.nachname] });
-    }
+    // Der Name wird immer aus Vorname und Nachname gebildet: ältere Einträge ("Familie Hoffmann") werden dabei umgestellt
+    const namen = Object.fromEntries(NAMENS_FELDER.flatMap((f) => [[f.vorname, v[f.vorname]], [f.nachname, v[f.nachname]]]));
     // Der Nachname von Bauherr 1 ist der Projektname: geändert, ändert er ihn mit
     const projektName = v.nachname.trim() !== start.nachname.trim() ? { project: { bauherrLabel: v.nachname } } : {};
     void save(
