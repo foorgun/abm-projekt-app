@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type DragEvent, type FormEvent, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { FileText, FileUp } from "lucide-react";
+import { FileText, FileUp, Mail, X } from "lucide-react";
 import { ALWAYS_CHECK, applyDraft, cleanMeta, FORM_SOURCE, formPatchFor, preserveEdited, SIMILAR_LABEL, similarProjects, type AppliedDraft, type FormKey } from "../lib/extract/applyDraft";
 import { initialJob, metaOf, readDocuments } from "../lib/extract/batch";
 import { mergeDrafts, sourceLabel, type ConflictOption, type MergedDraft } from "../lib/extract/merge";
@@ -27,7 +27,10 @@ import { suggestBundesland } from "../lib/bundesland";
 import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
 import { sourcePage } from "../lib/extract/previewState";
-import { formatBytes, monthStart } from "../lib/format";
+import { extension } from "../lib/files";
+import { formatBytes, formatDate, monthStart } from "../lib/format";
+import { anfrageTextOf, berlinDay, isEmlFile, MAIL_FOLDER, matchSender, readEml, type ParsedMail } from "../lib/mail/eml";
+import { demoAnfrageEml } from "../lib/mail/fixtures";
 import { folgeAnschrift } from "../lib/projectEdit";
 import { namensFormKey, namenTeilen, WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
 import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
@@ -43,7 +46,7 @@ import { DocumentCards, pagesText, UploadList, type DocEntry } from "./DraftDocu
 import { DocumentPreview } from "./DocumentPreview";
 import { useToast } from "./Toast";
 import { SelectOrCreate } from "./SelectOrCreate";
-import { AiSpinner, Button, Checkbox, Dialog, Field, Input, Pill, Select, type Tone } from "./ui";
+import { AiSpinner, Button, Checkbox, Dialog, Field, IconButton, Input, Pill, Select, type Tone } from "./ui";
 
 /** Öffnet den Dialog "Neues Projekt"; mit der ID eines Entwurfs wird dieser fortgesetzt. */
 // Als Klick-Handler bekommt die Funktion ein Ereignis statt einer ID, deshalb "unknown": nur Zeichenketten zählen
@@ -105,6 +108,63 @@ const CONFLICT_LABEL: Partial<Record<DraftFieldKey, string>> & Record<string, st
   rechtsform: "Rechtsform",
   foerderung: "Förderung",
 };
+
+/** Eine hineingezogene Mail (.eml): wird mit dem Projekt samt der nicht auslesbaren Anhänge in MAIL_FOLDER abgelegt. */
+interface MailEntry {
+  key: string;
+  file: File;
+  mail: ParsedMail;
+  /** Hausbaufirma (und Verkäufer) aus dem Absender übernommen */
+  sender: "verkaeufer" | "firma" | null;
+}
+
+const MAIL_ACCEPT = ".eml,message/rfc822";
+
+const count = (n: number, eins: string, mehr: string) => (n === 1 ? `1 ${eins}` : `${n} ${mehr}`);
+
+/** Was aus einer Mail übernommen wird und wohin ihre Teile gehen (Startschritt). */
+function MailList({ mails, request, onRemove }: { mails: MailEntry[]; request: boolean; onRemove: (m: MailEntry) => void }) {
+  if (!mails.length) return null;
+  return (
+    <ul className="job-list" aria-label="Mails">
+      {mails.map((m) => {
+        const { mail } = m;
+        const von = mail.fromName ?? mail.fromEmail ?? "unbekanntem Absender";
+        return (
+          <li key={m.key} className="job-item mail-item">
+            <Mail size={18} aria-hidden className="job-icon" />
+            <span className="job-name" title={mail.subject ?? m.file.name}>
+              {mail.subject ?? m.file.name}
+            </span>
+            <span className="job-size muted">{formatBytes(m.file.size)}</span>
+            <span className="job-art muted">
+              von {von}
+              {mail.date ? ` · ${formatDate(berlinDay(mail.date))}` : ""}
+            </span>
+            <span className="job-actions">
+              <IconButton size="sm" label={`Mail ${m.file.name} entfernen`} onClick={() => onRemove(m)}>
+                <X size={14} />
+              </IconButton>
+            </span>
+            <ul className="mail-facts">
+              <li>{!mail.text ? "Mail ohne Text" : request ? "Nachricht übernommen" : "Nachricht bleibt in der Mail"}{m.sender === "verkaeufer" ? ", Hausbaufirma und Verkäufer am Absender erkannt" : m.sender === "firma" ? ", Hausbaufirma am Absender erkannt" : ""}.</li>
+              <li>{mail.readable.length ? `${count(mail.readable.length, "Anhang wird", "Anhänge werden")} ausgelesen (unten).` : "Kein Anhang zum Auslesen."}</li>
+              <li>
+                Beim Anlegen abgelegt in „{MAIL_FOLDER}“: die Mail
+                {mail.other.length ? ` und ${mail.other.map((f) => f.name).join(", ")}` : ""}.
+              </li>
+              {mail.skipped.length > 0 && (
+                <li className="mail-skipped">
+                  Nicht übernommen: {mail.skipped.map((x) => `${x.name} (${x.reason.replace(/\.$/, "")})`).join(", ")}.
+                </li>
+              )}
+            </ul>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 const PHASE_OF: Record<DraftFileRecord["status"], DocEntry["phase"]> = { offen: "fehler", ausgelesen: "fertig", fehler: "fehler", entfernt: "abgelehnt", abgelegt: "fertig" };
 
@@ -244,6 +304,10 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const [weitereAngefordert, setWeitereAngefordert] = useState(1);
   const [dropActive, setDropActive] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  /** Hineingezogene Mails; sie liegen nur im Dialog (nicht im Entwurf) und werden beim Anlegen abgelegt */
+  const [mails, setMails] = useState<MailEntry[]>([]);
+  const mailsRef = useRef(mails);
+  mailsRef.current = mails;
   const fileInput = useRef<HTMLInputElement>(null);
   const active = docs.find((d) => d.key === activeKey) ?? docs.find((d) => d.phase !== "abgelehnt") ?? null;
   const updateDoc = (key: string, patch: Partial<DocEntry>) => setDocs((old) => old.map((d) => (d.key === key ? { ...d, ...patch } : d)));
@@ -340,9 +404,27 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
 
   /** Dateien hinzufügen: prüfen, speichern (legt den Entwurf an), je Datei auslesen. */
   async function addFiles(list: FileList | File[] | null | undefined) {
-    const files = [...(list ?? [])];
-    if (!files.length) return;
+    const all = [...(list ?? [])];
+    if (!all.length) return;
     setFileError(null);
+    // Mails (.eml): Nachricht und Absender übernehmen, die Anhänge laufen wie hineingezogene Dokumente weiter
+    const problems: string[] = [];
+    const fromMails: File[] = [];
+    for (const f of all.filter(isEmlFile)) {
+      if (mailsRef.current.some((m) => m.file.name === f.name && m.file.size === f.size)) continue;
+      try {
+        const mail = await readEml(f);
+        addMail(f, mail);
+        fromMails.push(...mail.readable);
+      } catch (e) {
+        problems.push(`${f.name}: ${e instanceof Error ? e.message : "nicht gelesen"}`);
+      }
+    }
+    for (const f of all.filter((x) => extension(x.name) === "msg")) problems.push(`${f.name}: Outlook-Format .msg wird nicht gelesen. Bitte die Mail als .eml speichern (z. B. im Browser-Postfach „Herunterladen“).`);
+    if (problems.length) setFileError(problems.join(" "));
+    // Dieselbe Datei nicht doppelt (z. B. dieselbe Mail nach dem Fortsetzen eines Entwurfs noch einmal hineingezogen)
+    const files = [...all.filter((f) => !isEmlFile(f) && extension(f.name) !== "msg"), ...fromMails].filter((f) => !docsRef.current.some((d) => d.phase !== "abgelehnt" && d.name === f.name && d.size === f.size));
+    if (!files.length) return;
     const jobs = files.map((f, i) => ({ ...initialJob(f, `${Date.now()}-${docs.length + i}`), blob: f as Blob }) as DocEntry);
     setDocs((old) => [...old, ...jobs]);
     if (!activeKey) setActiveKey(jobs.find((j) => j.phase !== "abgelehnt")?.key ?? null);
@@ -365,6 +447,40 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       },
     );
     await reload();
+  }
+
+  /**
+   * Mail übernehmen: Nachricht ins Feld "Nachricht des Verkäufers" (bei Anfragen), Eingangsmonat aus dem Sendedatum,
+   * Hausbaufirma und Verkäufer aus dem Absender (nur wenn noch keine Firma gewählt ist). Gilt auch für das leere Formular,
+   * damit die Prüfmaske die Werte beim Zusammenführen der Dokumente nicht wieder verwirft.
+   */
+  function addMail(file: File, mail: ParsedMail) {
+    const match = matchSender(mail.fromEmail, data?.salespeople ?? [], companies);
+    const first = mailsRef.current.length === 0;
+    const text = anfrageTextOf(mail);
+    const day = mail.date ? berlinDay(mail.date) : null;
+    const sender: MailEntry["sender"] = match && v.kind === "neubau" && !v.companyId ? (match.salespersonId ? "verkaeufer" : "firma") : null;
+    const withMail = (old: NewProject): NewProject => {
+      const next = { ...old };
+      if (old.status === "anfrage" && !old.anfrageText?.includes(text)) next.anfrageText = old.anfrageText?.trim() ? `${old.anfrageText.trim()}\n\n---\n\n${text}` : text;
+      if (first && day && day <= today) next.intakeMonth = monthStart(day);
+      if (match && old.kind === "neubau" && !old.companyId) {
+        next.companyId = match.companyId;
+        next.salespersonId = match.salespersonId;
+        if (!old.abmNr) next.abmNr = suggestAbmNr(companies.find((c) => c.id === match.companyId)?.numberPrefix, projects) || null;
+      }
+      return next;
+    };
+    blank.current = withMail(blank.current);
+    setV(withMail);
+    const entry: MailEntry = { key: `mail-${Date.now()}-${mailsRef.current.length}`, file, mail, sender };
+    mailsRef.current = [...mailsRef.current, entry];
+    setMails(mailsRef.current);
+  }
+
+  function removeMail(m: MailEntry) {
+    mailsRef.current = mailsRef.current.filter((x) => x.key !== m.key);
+    setMails(mailsRef.current);
   }
 
   /** Alle ausgelesenen Dokumente zusammenführen und die Prüfmaske füllen; selbst Geändertes bleibt stehen. */
@@ -463,7 +579,8 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       const merged = draft ?? displayDraft(docs, mergeOf(docs));
       for (const d of docs) if (d.fileId) await repo.updateDraftFile(d.fileId, { docType: d.art, meta: d.meta }).catch(() => undefined);
       const res = await mutate((r) => r.saveProjectDraft({ id: savedId, draft: merged, form: formState(), docType: docs.find((d) => d.phase === "fertig")?.art ?? "sonstiges", file: merged.datei }));
-      if (res.ok) toast("Entwurf gespeichert", "ok", pilot ? "Weiter über die Projektliste: „Angefangene Projekte“." : "Weiter über die Prüfliste: „Neues Projekt vorgeschlagen“.");
+      const mailHint = mails.length ? " Die Mail selbst ist nicht im Entwurf gespeichert: beim Fortsetzen die .eml noch einmal hineinziehen, damit sie mit abgelegt wird." : "";
+      if (res.ok) toast("Entwurf gespeichert", "ok", `${pilot ? "Weiter über die Projektliste: „Angefangene Projekte“." : "Weiter über die Prüfliste: „Neues Projekt vorgeschlagen“."}${mailHint}`);
     }
     onClose();
   }
@@ -481,9 +598,10 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
    * Alle Dateien im Projekt ablegen (auch die, deren Auslesung scheiterte) und den Entwurf abschließen.
    * Liefert die Fehlermeldungen je Datei.
    */
-  async function fileInto(projectId: string): Promise<{ filed: string[]; errors: string[] }> {
+  async function fileInto(projectId: string): Promise<{ filed: string[]; errors: string[]; mailErrors: string[] }> {
     const filed: string[] = [];
     const errors: string[] = [];
+    const mailErrors: string[] = [];
     for (const d of stored) {
       const res = await mutate((r) =>
         r.fileContract({ projectId, docType: d.art, meta: cleanMeta(d.meta), file: { name: d.name, size: d.size, type: d.type }, blob: d.blob ?? undefined, draftId: d.legacy ? savedId : null, draftFileId: d.fileId }),
@@ -495,7 +613,25 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       const res = await mutate((r) => r.completeProjectDraft(savedId, projectId));
       if (!res.ok) errors.push(res.error);
     }
-    return { filed, errors };
+    // Mails und ihre nicht auslesbaren Anhänge: in den Schriftverkehr mit der Hausbaufirma (nicht Teil des Entwurfs)
+    const extra = mails.flatMap((m) => [m.file, ...m.mail.other]);
+    for (const f of extra) {
+      const res = await mutate((r) => r.uploadDocument({ projectId, folderPath: MAIL_FOLDER, file: { name: f.name, size: f.size, type: f.type }, blob: f }));
+      if (!res.ok) mailErrors.push(`${f.name}: ${res.error}`);
+    }
+    const mailsFiled = extra.length - mailErrors.length;
+    if (mailsFiled > 0) filed.push(`${mailsFiled === 1 ? "eine Datei" : `${mailsFiled} Dateien`} aus der Mail im Schriftverkehr mit der Hausbaufirma`);
+    return { filed, errors, mailErrors };
+  }
+
+  /** Mail nicht abgelegt: die Datei ist nur im Dialog, also von Hand im Projekt hochladen. */
+  function toastMailErrors(mailErrors: string[]) {
+    if (mailErrors.length)
+      toast(
+        mailErrors.length === 1 ? "Eine Datei aus der Mail nicht abgelegt" : `${mailErrors.length} Dateien aus der Mail nicht abgelegt`,
+        "danger",
+        `${mailErrors.join(" ")} Bitte im Projekt unter Dokumente in „${MAIL_FOLDER}“ hochladen.`,
+      );
   }
 
   async function createProject() {
@@ -508,8 +644,9 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
     }
     const notes = [v.createFolders ? "Projektordner aus der Vorlage angelegt." : "Ohne Projektordner angelegt."];
     if (missing.length && !pilot) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
-    const { filed, errors: filingErrors } = await fileInto(res.value.id);
+    const { filed, errors: filingErrors, mailErrors } = await fileInto(res.value.id);
     setBusy(false);
+    toastMailErrors(mailErrors);
     if (filed.length) notes.push(`Abgelegt: ${filed.join(", ")}.`);
     toast(`${noun} ${res.value.bauherrLabel} angelegt`, "ok", notes.join(" "));
     if (filingErrors.length)
@@ -525,9 +662,10 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   /** Duplikat: kein neues Projekt, die Dokumente kommen zum bestehenden. */
   async function addToExisting(p: Project) {
     setBusy(true);
-    const { filed, errors: filingErrors } = await fileInto(p.id);
+    const { filed, errors: filingErrors, mailErrors } = await fileInto(p.id);
     setBusy(false);
     if (filingErrors.length) return setServerError(filingErrors.join(" "));
+    toastMailErrors(mailErrors);
     toast(`${filed.length === 1 ? "Dokument" : "Dokumente"} zu ${projectTitle(p)} hinzugefügt`, "ok", `${filed.join(", ")} abgelegt. Es wurde kein neues Projekt angelegt.`);
     onClose();
     navigate(`/projekte/${p.id}?tab=dokumente`);
@@ -636,7 +774,9 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   };
 
   if (step === "start") {
-    const ready = stored.length > 0 && !running;
+    // Mit Mail geht es auch ohne auslesbaren Anhang weiter (dann das Formular mit der übernommenen Nachricht)
+    const ready = (stored.length > 0 || mails.length > 0) && !running;
+    const next = () => (stored.length ? toReview() : setStep("form"));
     return (
       <Dialog
         title={dialogTitle}
@@ -648,15 +788,15 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
             <Button onClick={() => void closeDialog()} disabled={running}>
               {savedId && stored.length ? "Später weitermachen" : "Abbrechen"}
             </Button>
-            {docs.length > 0 && (
-              <Button variant="primary" onClick={() => toReview()} disabled={!ready}>
+            {(docs.length > 0 || mails.length > 0) && (
+              <Button variant="primary" onClick={next} disabled={!ready}>
                 {running ? "Wird gelesen …" : `Weiter zur Prüfung${stored.length > 1 ? ` (${stored.length} Dokumente)` : ""}`}
               </Button>
             )}
           </>
         }
       >
-        <div className="contract-start" data-has-files={docs.length > 0 || undefined}>
+        <div className="contract-start" data-has-files={docs.length > 0 || mails.length > 0 || undefined}>
           <div
             className="contract-drop"
             data-drop={dropActive}
@@ -669,10 +809,15 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
             onDrop={onDrop}
           >
             <FileUp size={28} aria-hidden />
-            <p className="contract-drop-title">{docs.length ? "Weitere Dokumente hierher ziehen oder auswählen" : "Dokumente hierher ziehen oder auswählen"}</p>
+            <p className="contract-drop-title">
+              {docs.length || mails.length ? "Weitere Dokumente hierher ziehen oder auswählen" : isRequest ? "Anfrage-Mail (.eml) oder Dokumente hierher ziehen" : "Dokumente hierher ziehen oder auswählen"}
+            </p>
             <p className="muted">
-              Zum Beispiel Werkvertrag und Vermesservertrag zusammen. PDF, DOCX oder Bild, höchstens 30 MB je Datei. Jede Datei wird gespeichert und einzeln
-              ausgelesen; die App füllt die Projektfelder vor, du prüfst und bestätigst.
+              {isRequest
+                ? "Am einfachsten die Mail des Verkäufers als .eml: die App übernimmt die Nachricht, erkennt Firma und Verkäufer am Absender und liest die Anhänge aus. "
+                : "Zum Beispiel Werkvertrag und Vermesservertrag zusammen, oder eine Mail (.eml) mit Anhängen. "}
+              PDF, DOCX oder Bild, höchstens 30 MB je Datei. Jede Datei wird gespeichert und einzeln ausgelesen; die App füllt die Felder vor, du prüfst und
+              bestätigst.
               {edge && " Zum Auslesen gehen je Dokument die ersten zwei Seiten als Bild an den KI-Dienst; jedes Dokument zählt einzeln gegen das Tageslimit."}
             </p>
             <Button variant="primary" onClick={() => fileInput.current?.click()} disabled={running}>
@@ -681,7 +826,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
             <input
               ref={fileInput}
               type="file"
-              accept={CONTRACT_ACCEPT}
+              accept={`${CONTRACT_ACCEPT},${MAIL_ACCEPT}`}
               multiple
               hidden
               aria-label="Dokumente auswählen"
@@ -691,6 +836,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
               }}
             />
           </div>
+          <MailList mails={mails} request={isRequest} onRemove={removeMail} />
           <UploadList docs={docs} onArt={changeArt} onRemove={(d) => void removeDoc(d)} onRetry={(d) => void reread(d)} />
           {fileError && (
             <p className="form-error" role="alert">
@@ -700,6 +846,10 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
           {repo.mode === "demo" && (
             <p className="contract-samples">
               Zum Ausprobieren (erfundene Beispiele):{" "}
+              <button type="button" className="hint-action" onClick={() => void addFiles([demoAnfrageEml()])} disabled={running}>
+                Anfrage-Mail vom Verkäufer (.eml)
+              </button>{" "}
+              ·{" "}
               <button type="button" className="hint-action" onClick={async () => void addFiles([await scanWerkvertragFile(), vermesservertragFile()])} disabled={running}>
                 Werkvertrag und Vermesservertrag
               </button>{" "}
@@ -713,7 +863,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
               </button>
             </p>
           )}
-          {!docs.length && (
+          {!docs.length && !mails.length && (
             <button type="button" className="hint-action contract-manual" onClick={() => setStep("form")}>
               Ohne Dokument manuell anlegen
             </button>
@@ -893,8 +1043,16 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
             </p>
           )}
 
+          {mails.length > 0 && (
+            <p className="form-note" role="status">
+              {mails.length === 1 ? `Aus der Mail „${mails[0].mail.subject ?? mails[0].file.name}“` : `Aus ${mails.length} Mails`} übernommen:{" "}
+              {[isRequest && "Nachricht", "Eingangsmonat", mails.some((m) => m.sender) && "Hausbaufirma am Absender"].filter(Boolean).join(", ")}. Beim Anlegen
+              kommt die Mail{mails.some((m) => m.mail.other.length) ? " mit den übrigen Anhängen" : ""} in „{MAIL_FOLDER}“.
+            </p>
+          )}
+
           {isRequest && (
-            <Field label="Nachricht des Verkäufers" htmlFor="np-anfrage" hint="Zum Beispiel die Mail mit den Terminvorschlägen hier einfügen. Optional.">
+            <Field label="Nachricht des Verkäufers" htmlFor="np-anfrage" hint={mails.length ? "Aus der Mail übernommen, änderbar." : "Zum Beispiel die Mail mit den Terminvorschlägen hier einfügen oder oben die .eml hineinziehen. Optional."}>
               <textarea id="np-anfrage" className="input textarea" rows={6} value={v.anfrageText ?? ""} onChange={(e) => set({ anfrageText: e.target.value || null })} />
             </Field>
           )}

@@ -698,3 +698,22 @@ Anlass: Wunsch von ABM, Bauherren als „Bauherr 1: Vorname, Nachname / Bauherr 
 - **Bauherr 2 steht immer im Formular**, Bauherr 3 und 4 auf Knopfdruck. Telefon und E-Mail stehen beim jeweiligen
   Bauherrn; die Wohnanschrift bleibt eine (die von Bauherr 1).
 - **Firmen als Bauherr:** Firmenname ins Feld Nachname, Vorname leer lassen.
+
+## Anfrage aus einer Mail (.eml)
+
+Anlass: Verkäufer schicken Anfragen per Mail (Nachricht plus Unterlagen); bisher wurde die Mail als .eml gespeichert und
+später von Hand durchgesehen.
+
+- **Gelesen wird im Browser** (`src/lib/mail/eml.ts`, Bibliothek `postal-mime`, MIT-0, ohne weitere Abhängigkeiten). Die Mail
+  geht an keinen Dienst; nur die auslesbaren Anhänge laufen wie hineingezogene Dokumente durch die KI-Auslesung.
+- **Übernommen werden:** Nachricht (mit Von, Datum, Betreff) ins Feld „Nachricht des Verkäufers“, Eingangsmonat aus dem
+  Sendedatum, Hausbaufirma und Verkäufer aus dem Absender (genaue Adresse eines Verkäufers; sonst die Firma, wenn die
+  Mail-Domain zu genau einer Firma gehört). Ist schon eine Firma gewählt, bleibt sie.
+- **Anhänge:** PDF, DOCX und Bilder bis 30 MB werden ausgelesen und je Dokumentart abgelegt (wie bisher). Andere erlaubte
+  Dateien (z. B. Excel) und die Mail selbst kommen beim Anlegen nach „02 Schriftverkehr/02 Schriftverkehr mit Hausbaufirma“
+  (ohne Datumsunterordner). CAD und ausführbare Dateien werden nicht übernommen (wie überall), kleine Inline-Bilder unter
+  20 KB gelten als Signatur. Weitergeleitete Mails werden mitgelesen.
+- **Die Mail liegt nur im Dialog**, nicht im Entwurf. Wer „Später weitermachen“ wählt, zieht die .eml beim Fortsetzen erneut
+  hinein; schon vorhandene Anhänge werden dann nicht doppelt hinzugefügt, die Nachricht nicht doppelt eingetragen.
+- **Outlook-Format .msg** (klassisches Outlook) wird nicht gelesen (anderes, binäres Format); der Dialog sagt das. Die Mail im
+  Browser-Postfach bzw. im neuen Outlook als .eml herunterladen.
