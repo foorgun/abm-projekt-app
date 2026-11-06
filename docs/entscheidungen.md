@@ -586,7 +586,8 @@ Stilbeschreibung in `docs/design-v2.md` (die Vorbilder liegen nicht im Repo).
   `data-theme` vor dem ersten Rendern durch `public/theme-init.js`: eine eigene Datei, weil die Content-Security-Policy
   keine Inline-Skripte erlaubt. Kontrast beider Farbsätze prüft `src/styles/contrast.test.ts`.
 - **Einstellungen im Pilot für alle Rollen:** Die Darstellung ist persönlich. Bürodaten sehen weiterhin nur Admin und
-  Mitarbeiter, ändern nur Admins.
+  Mitarbeiter. Ändern dürfen sie seit Migration 0025 ebenfalls Admin und Mitarbeiter (Wunsch von ABM: die Büroleitung
+  ist Mitarbeiterin); die ABM-Nummernkreise ändern weiterhin nur Admins.
 
 
 ## ABM-Nr. mit Nummernkreis, Spalten der Projektliste (Migration 0017)

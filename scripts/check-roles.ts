@@ -325,13 +325,10 @@ for (const k of mitPasswort) {
     expectRows(who, "neue Spalten lesbar (project_parties.mobile)", await count(ref.sb, "project_parties", undefined, "project_id"), await count(sb, "project_parties", undefined, "mobile"));
     expectRows(who, "neue Spalten lesbar (bauherren.site_state)", all.bauherren, await count(sb, "bauherren", undefined, "site_state"));
     expectRows(who, "neue Spalten lesbar (projects.flur)", all.projects, await count(sb, "projects", undefined, "flur"));
-    if (k.rolle === "admin") {
-      // ungültige E-Mail: die Datenbank lehnt erst NACH der Berechtigungsprüfung ab (Trigger), es ändert sich nichts
-      const bad = await attemptRule(sb.from("buero_daten").update({ email: "rollenpruefung-ohne-at" }).eq("id", true).select("id"));
-      record(who, "Bürodaten ändern: Berechtigung vorhanden", "abgelehnt nur wegen ungültiger E-Mail", show(bad), bad.kind === "gesperrt" && /E-Mail/.test(bad.detail));
-    } else {
-      expectBlocked(who, "Bürodaten ändern (nur Admin)", await attempt(sb.from("buero_daten").update({ name: "Rollenprüfung" }).eq("id", true).select("id")));
-    }
+    // Admin und Mitarbeiter (0025). Ungültige E-Mail: die Datenbank lehnt erst NACH der Berechtigungsprüfung ab (Trigger),
+    // es ändert sich nichts
+    const bad = await attemptRule(sb.from("buero_daten").update({ email: "rollenpruefung-ohne-at" }).eq("id", true).select("id"));
+    record(who, "Bürodaten ändern: Berechtigung vorhanden", "abgelehnt nur wegen ungültiger E-Mail", show(bad), bad.kind === "gesperrt" && /E-Mail/.test(bad.detail));
   }
 
   if (k.rolle === "admin" || k.rolle === "mitarbeiter") {

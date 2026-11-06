@@ -23,7 +23,7 @@ const FELDER: { key: keyof BueroDaten; label: string; type?: string; placeholder
 
 /**
  * Einstellungen: eigenes Konto mit Passwort ändern und Darstellung (jede Rolle, Darstellung gilt für diesen Browser) und Bürodaten für das Planungsprotokoll
- * (lesen Admin und Mitarbeiter, ändern nur Admins).
+ * (lesen Admin und Mitarbeiter, ändern ebenfalls beide, Migration 0025).
  */
 export function Einstellungen() {
   const { user } = useSession();
@@ -56,7 +56,8 @@ export function Einstellungen() {
           </Card>
         ) : (
           <>
-            <BueroKarte buero={data.buero} admin={user.role === "admin"} />
+            {/* Bürodaten ändern Admin und Mitarbeiter (Migration 0025); Freiberufler sehen diesen Teil gar nicht */}
+            <BueroKarte buero={data.buero} canEdit />
             <NummernkreisKarte companies={data.companies} admin={user.role === "admin"} />
             {user.role === "admin" && <ExtractionCostsCard />}
           </>
@@ -98,7 +99,7 @@ export function DarstellungKarte() {
   );
 }
 
-function BueroKarte({ buero, admin }: { buero: BueroDaten | null; admin: boolean }) {
+function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boolean }) {
   const { mutate } = useData();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
@@ -125,7 +126,7 @@ function BueroKarte({ buero, admin }: { buero: BueroDaten | null; admin: boolean
         icon={<Building2 size={16} />}
         sub="Stehen im Planungsprotokoll beim Architekten. Ein Sachbearbeiter im Projekt ersetzt Tel., Mobil und E-Mail."
         actions={
-          admin && !editing ? (
+          canEdit && !editing ? (
             <IconButton
               size="sm"
               label="Bürodaten bearbeiten"
@@ -171,9 +172,9 @@ function BueroKarte({ buero, admin }: { buero: BueroDaten | null; admin: boolean
                 </div>
               ))}
             </dl>
-            {!admin && (
+            {!canEdit && (
               <p className="muted locked">
-                <Lock size={13} aria-hidden /> Ändern können nur Admins.
+                <Lock size={13} aria-hidden /> Ändern können Admins und Mitarbeiter.
               </p>
             )}
           </>

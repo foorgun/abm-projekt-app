@@ -954,7 +954,11 @@ set local role authenticated;
 -- Mitarbeiterin: Beteiligte mit neuen Rollen und getrennten Feldern, Bauherr und Bauort getrennt, Protokoll anlegen
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
 select test.expect('Mitarbeiterin liest die Bürodaten (eine Zeile)', (select count(*) from public.buero_daten), 1);
-select test.expect('Mitarbeiterin ändert die Bürodaten nicht', test.affected($$update public.buero_daten set name = 'X'$$), 0);
+select test.expect('Mitarbeiterin ändert die Bürodaten (0025)', test.affected($$update public.buero_daten set mobil = ' 0170 1 '$$), 1);
+select test.expect('Mitarbeiterin: Wert bereinigt, Stempel gesetzt',
+  (select count(*) from public.buero_daten where mobil = '0170 1' and geaendert_von = auth.uid() and geaendert_am is not null), 1);
+select test.throws('Mitarbeiterin: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set email = 'kein-at'$$);
+select test.throws('Mitarbeiterin löscht die Bürodaten nicht (kein Recht)', $$delete from public.buero_daten$$);
 select test.throws('Bürodaten: keine zweite Zeile', $$insert into public.buero_daten (id, name) values (true, 'X')$$);
 select test.throws('Mitarbeiterin darf die Datenübernahme nicht aufrufen', $$select public.stammdaten_0013_uebernehmen()$$);
 select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"kellerbauer": {"name": "Keller Löffler", "phone": "0731 1", "mobile": "0170 2", "email": "k@example.de", "address": "Weg 1, 89000 Ort"}, "sachbearbeiter": {"name": "Dörte Fuß", "mobile": "0170 3"}, "gemeinde": {"name": "Gemeinde Blaustein", "fax": "0731 8"}}');
