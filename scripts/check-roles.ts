@@ -12,6 +12,7 @@ import { todayIso } from "../src/lib/format";
 import { getSupabase } from "../src/lib/supabase/client";
 import { createSupabaseRepo } from "../src/lib/supabaseRepo";
 import { die, publicClient, readKonten, table, waehleZiel, type Konto } from "./lib/server";
+import { TEST_BIS, TEST_NOTIZ, TEST_VON } from "./lib/pruefdaten";
 
 await waehleZiel("Rollenprüfung, legt kurz Testanträge an und zieht sie zurück");
 
@@ -172,11 +173,8 @@ async function vorlagenAnzahl(sb: SupabaseClient): Promise<Outcome> {
   return outcome(res.error as DbError | null, (res.data ?? []).filter((f) => f.name.endsWith(".pdf")).length);
 }
 const KLASSISCH = ["vermesser", "erdbauer", "strom", "wasser", "elektriker_baustrom"];
-// Testanträge der Rollenprüfung liegen weit in der Zukunft (2. und 3. März 2099, Montag und Dienstag) und werden am Ende
-// zurückgezogen bzw. abgelehnt. Solche Zeilen zählen in keinem laufenden Jahr und blockieren spätere Läufe nicht.
-const TEST_VON = "2099-03-02";
-const TEST_BIS = "2099-03-03";
-const TEST_NOTIZ = "Rollenprüfung (check:roles), kann ignoriert werden";
+// Testanträge der Rollenprüfung (scripts/lib/pruefdaten.ts) werden am Ende zurückgezogen bzw. abgelehnt. Löschen darf sie
+// mit Anmeldung niemand; danach räumt `npm run aufraeumen:pruefdaten` sie mit dem Secret key weg.
 const NEVER = { fields: {}, form: {}, file_name: "rollenpruefung.pdf", file_size: -1 }; // file_size -1: die Datenbank lehnt den Wert erst NACH der Berechtigungsprüfung ab
 
 const konten = readKonten();
@@ -560,5 +558,6 @@ await ref.sb.auth.signOut();
 console.log(table(["Konto", "Prüfung", "Erwartet", "Ist", "Ergebnis"], rows));
 const skipped = rows.filter((r) => r[4] === "–").length;
 console.log(failed ? `\n${failed} Prüfung(en) FEHLGESCHLAGEN.` : `\nAlle ${rows.filter((r) => r[4] === "ok").length} Prüfungen bestanden.`);
+console.log("Die Testanträge (2099) bleiben als zurückgezogen/abgelehnt stehen: danach `npm run aufraeumen:pruefdaten -- --ziel …`.");
 if (skipped) console.log(`${skipped} Konto/Konten übersprungen (kein Passwort in der Kontenliste): für diese Rolle ist damit nichts geprüft.`);
 process.exit(failed ? 1 : 0);

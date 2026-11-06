@@ -5376,6 +5376,21 @@ li:first-child > .doc-card {
   border-top: 1px dashed var(--border);
 }
 
+/* Kachel "Kontakt Bauherr": je Bauherr eine Überschrift und seine Zeilen */
+.bauherren-ansicht {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.bauherren-ansicht > section + section {
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--border);
+}
+
+.bauherren-ansicht .bauherr-titel {
+  margin-bottom: var(--sp-2);
+}
+
 .bauherr-titel {
   margin: 0;
   font-size: var(--fs-13);

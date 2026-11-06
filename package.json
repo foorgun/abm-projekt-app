@@ -19,6 +19,7 @@
     "konten:anlegen": "vite-node scripts/konten-anlegen.ts --",
     "export:backup": "vite-node scripts/export-backup.ts --",
     "check:roles": "vite-node scripts/check-roles.ts --",
+    "aufraeumen:pruefdaten": "vite-node scripts/aufraeumen-pruefdaten.ts --",
     "check:repo": "vite-node scripts/check-repo.ts --",
     "check:build": "vite-node scripts/check-build.mjs --",
     "check:secrets": "vite-node scripts/check-secrets.ts --",

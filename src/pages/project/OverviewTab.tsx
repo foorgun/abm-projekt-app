@@ -1,4 +1,4 @@
-import { Fragment, useState, type FormEvent, type ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { Lock, Pencil } from "lucide-react";
 import { AbmHinweise } from "../../components/AbmHinweise";
 import { BaubegleitungField } from "../../components/BaubegleitungField";
@@ -190,23 +190,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
                   <Lock size={13} aria-hidden /> Kontaktdaten der Bauherren sind nur für Mitarbeiter sichtbar.
                 </p>
               ) : contact ? (
-                <dl className="dl">
-                  <Row label="Bauherr 1">{contact.name}</Row>
-                  <Row label="Anschrift">{contact.address}</Row>
-                  <Row label="Telefon">{contact.phone && <a href={`tel:${contact.phone.replace(/[^\d+]/g, "")}`}>{contact.phone}</a>}</Row>
-                  <Row label="E-Mail">{contact.email && <a href={`mailto:${contact.email}`}>{contact.email}</a>}</Row>
-                  {WEITERE_BAUHERREN.map((b) => {
-                    const [name, phone, email] = [contact[b.name], contact[b.phone], contact[b.email]];
-                    if (!name && !phone && !email) return null;
-                    return (
-                      <Fragment key={b.nr}>
-                        <Row label={b.label}>{name}</Row>
-                        <Row label={`Telefon (${b.nr})`}>{phone && <a href={`tel:${phone.replace(/[^\d+]/g, "")}`}>{phone}</a>}</Row>
-                        <Row label={`E-Mail (${b.nr})`}>{email && <a href={`mailto:${email}`}>{email}</a>}</Row>
-                      </Fragment>
-                    );
-                  })}
-                </dl>
+                <BauherrenAnsicht contact={contact} projektName={project.bauherrLabel} />
               ) : (
                 <p className="muted">Noch keine Kontaktdaten eingetragen. Über den Stift oben rechts lassen sie sich nachtragen.</p>
               )
@@ -255,6 +239,39 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
           }
         />
       </div>
+    </div>
+  );
+}
+
+/** Kontaktdaten je Bauherr: Vorname und Nachname getrennt (ältere Einträge aus dem ganzen Namen geteilt). */
+function BauherrenAnsicht({ contact, projektName }: { contact: BauherrContact; projektName: string }) {
+  const namen = namenVorbelegen(contact, projektName);
+  const tel = (x: string | null | undefined) => x && <a href={`tel:${x.replace(/[^\d+]/g, "")}`}>{x}</a>;
+  const mail = (x: string | null | undefined) => x && <a href={`mailto:${x}`}>{x}</a>;
+  const weitere = WEITERE_BAUHERREN.filter((b) => contact[b.name] || contact[b.phone] || contact[b.email]);
+  return (
+    <div className="bauherren-ansicht">
+      <section aria-label="Bauherr 1">
+        <h3 className="bauherr-titel">Bauherr 1</h3>
+        <dl className="dl">
+          <Row label="Vorname">{namen.vorname}</Row>
+          <Row label="Nachname">{namen.nachname}</Row>
+          <Row label="Anschrift">{contact.address}</Row>
+          <Row label="Telefon">{tel(contact.phone)}</Row>
+          <Row label="E-Mail">{mail(contact.email)}</Row>
+        </dl>
+      </section>
+      {weitere.map((b) => (
+        <section key={b.nr} aria-label={b.label}>
+          <h3 className="bauherr-titel">{b.label}</h3>
+          <dl className="dl">
+            <Row label="Vorname">{namen[b.vorname]}</Row>
+            <Row label="Nachname">{namen[b.nachname]}</Row>
+            <Row label="Telefon">{tel(contact[b.phone])}</Row>
+            <Row label="E-Mail">{mail(contact[b.email])}</Row>
+          </dl>
+        </section>
+      ))}
     </div>
   );
 }
