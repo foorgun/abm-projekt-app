@@ -277,6 +277,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         kind: input.kind,
         status: input.status ?? "aktiv",
         anfrageText: input.anfrageText?.trim() || null,
+        bauherrOffen: input.status === "anfrage" && Boolean(input.bauherrOffen),
         companyId: input.companyId,
         salespersonId: input.salespersonId,
         bauherrLabel: input.bauherrLabel.trim(),
@@ -302,7 +303,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (b && (val(b.phone) || val(b.email) || val(b.address) || val(b.buildingAddress) || val(b.name) || val(b.name2) || val(b.phone2) || val(b.email2) || extra.some(val))) {
         db.bauherren.push({
           projectId: p.id,
-          name: val(b.name) ?? p.bauherrLabel,
+          name: val(b.name) ?? (p.bauherrOffen ? "Bauherr noch offen" : p.bauherrLabel),
           vorname: val(b.vorname),
           nachname: val(b.nachname),
           address: val(b.address),
@@ -348,10 +349,13 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       const plan = planProjectUpdate(db, projectId, patch, todayIso());
       const first = Object.values(plan.errors)[0];
       if (first) throw new Error(first);
+      // wie der Trigger in der Datenbank (0026): neuer Projektname = Bauherr eingetragen
+      const renamed = plan.project.bauherrLabel !== undefined && plan.project.bauherrLabel !== p.bauherrLabel;
       Object.assign(p, plan.project);
+      if (renamed) p.bauherrOffen = false;
       if (plan.baubegleitung !== undefined) p.baubegleitung = plan.baubegleitung;
       if (plan.bauherr) {
-        const row = { projectId, ...plan.bauherr, name: plan.bauherr.name ?? p.bauherrLabel };
+        const row = { projectId, ...plan.bauherr, name: plan.bauherr.name ?? (p.bauherrOffen ? "Bauherr noch offen" : p.bauherrLabel) };
         const cur = db.bauherren.find((b) => b.projectId === projectId);
         if (cur) Object.assign(cur, row);
         else db.bauherren.push(row);
@@ -411,6 +415,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       requireStaff();
       const p = project(projectId);
       if (p.status === status) return done(undefined);
+      // wie der Constraint in der Datenbank (0026)
+      if (p.bauherrOffen && status !== "anfrage" && status !== "storno") throw new Error("Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.");
       const text = { anfrage: "Zurück zu den Anfragen", aktiv: p.status === "anfrage" ? "Anfrage als Projekt angenommen" : "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
       p.status = status;
       log({ projectId, kind: "projekt", text });

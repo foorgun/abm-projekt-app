@@ -47,7 +47,26 @@ export function validateProjectFields(
 }
 
 export function validateNewProject(input: NewProject, existing: Project[]): ProjectFormErrors {
-  return validateProjectFields({ ...input, email: input.bauherr?.email }, existing);
+  if (input.bauherrOffen) {
+    // Name ist der Bauort: die Regeln für Nachnamen (z. B. ohne Zahlen) gelten nicht
+    const e = validateProjectFields({ ...input, bauherrLabel: "Platzhalter", email: input.bauherr?.email }, existing);
+    if (input.status !== "anfrage") e.bauherrLabel = "Ohne Bauherr geht nur eine Anfrage.";
+    else if (input.bauherrLabel.trim().length < 2) e.bauherrLabel = "Nachname oder Bauort eintragen: ohne Bauherr heißt die Anfrage wie der Bauort.";
+    return e;
+  }
+  const e = validateProjectFields({ ...input, email: input.bauherr?.email }, existing);
+  if (input.status === "anfrage" && !input.bauherrLabel.trim()) e.bauherrLabel = "Nachname oder Bauort eintragen: ohne Bauherr heißt die Anfrage wie der Bauort.";
+  return e;
+}
+
+/**
+ * Anfrage ohne Bauherr (Migration 0026): ist der Nachname leer und der Bauort bekannt, heißt die Anfrage wie der Bauort
+ * und trägt das Kennzeichen "Bauherr offen". Sonst bleibt alles, wie es ist.
+ */
+export function anfrageOhneBauherr(input: NewProject): NewProject {
+  const ort = input.location?.trim();
+  if (input.status !== "anfrage" || input.bauherrLabel.trim() || !ort) return { ...input, bauherrOffen: false };
+  return { ...input, bauherrLabel: ort, bauherrOffen: true };
 }
 
 /** Was die Regel "Fehlende Angaben nachfragen" von einem Projekt wissen muss. */

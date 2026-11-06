@@ -375,6 +375,7 @@ export function createSupabaseRepo(): Repo {
           }),
           kind: input.kind,
           status: input.status ?? "aktiv",
+          bauherr_offen: input.status === "anfrage" && Boolean(input.bauherrOffen),
           baubegleitung: input.baubegleitung ?? true,
         },
         p_bauherr: input.bauherr ? bauherrJson(input.bauherr) : null,

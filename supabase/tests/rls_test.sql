@@ -1444,6 +1444,35 @@ select test.throws('0022: Freiberufler legt keine Anfrage an',
   $$select public.create_project('{"bauherr_label": "Unzulässig", "status": "anfrage"}')$$);
 rollback;
 
+-- Migration 0026: Anfrage ohne Bauherr
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select public.create_project('{"bauherr_label": "Bauplatzort", "status": "anfrage", "bauherr_offen": true}', '{"phone": "0731 1"}');
+select public.create_project('{"bauherr_label": "Mitbauherr", "status": "aktiv", "bauherr_offen": true}');
+select test.expect('0026: Anfrage ohne Bauherr, Kontakt ohne den Ort als Namen',
+  (select count(*) from public.projects p join public.bauherren b on b.id = p.bauherr_id
+    where p.bauherr_label = 'Bauplatzort' and p.bauherr_offen and b.name = 'Bauherr noch offen' and b.nachname is null), 1);
+select test.expect('0026: Bauherr offen nur bei Anfragen',
+  (select count(*) from public.projects where bauherr_label = 'Mitbauherr' and not bauherr_offen), 1);
+select test.throws('0026: ohne Bauherr nicht als Projekt annehmen',
+  $$update public.projects set status = 'aktiv' where bauherr_label = 'Bauplatzort'$$);
+select test.expect('0026: Absage geht auch ohne Bauherr',
+  test.affected($$update public.projects set status = 'storno' where bauherr_label = 'Bauplatzort'$$), 1);
+update public.projects set status = 'anfrage' where bauherr_label = 'Bauplatzort';
+select public.update_project((select id from public.projects where bauherr_label = 'Bauplatzort'), '{"anfrage_text": "Neu"}');
+select test.expect('0026: anderes Feld ändern lässt den Bauherrn offen',
+  (select count(*) from public.projects where bauherr_label = 'Bauplatzort' and bauherr_offen), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Bauplatzort'), '{"bauherr_label": "Beispiel"}', '{"nachname": "Beispiel", "name": "Eva Beispiel"}');
+select test.expect('0026: mit Nachname ist der Bauherr nicht mehr offen',
+  (select count(*) from public.projects p join public.bauherren b on b.id = p.bauherr_id
+    where p.bauherr_label = 'Beispiel' and not p.bauherr_offen and b.name = 'Eva Beispiel'), 1);
+select test.expect('0026: danach annehmen geht',
+  test.affected($$update public.projects set status = 'aktiv' where bauherr_label = 'Beispiel'$$), 1);
+select test.throws('0026: ohne Namen keine Anfrage',
+  $$select public.create_project('{"bauherr_label": "", "status": "anfrage", "bauherr_offen": true}')$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 18 Schritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions), 18);
 select test.expect('0021: Baubegleitung in Ordnerreihenfolge',

@@ -53,6 +53,8 @@ export interface NewProject {
   status?: "anfrage" | "aktiv";
   /** Nachricht des Verkäufers zur Anfrage */
   anfrageText?: string | null;
+  /** Anfrage ohne Bauherr: bauherrLabel ist dann der Bauort (siehe anfrageOhneBauherr) */
+  bauherrOffen?: boolean;
   /** Baubegleitung beauftragt? Nicht genannt gilt als ja (ältere Entwürfe). */
   baubegleitung?: boolean;
   /** Name des Vermessers (Firma). Wird als Projektbeteiligter gespeichert. */

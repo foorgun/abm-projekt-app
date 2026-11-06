@@ -34,7 +34,7 @@ import { extractProjectFromMail, MAIL_DRAFT_FIELDS } from "../lib/mail/extractMa
 import { demoAnfrageEml } from "../lib/mail/fixtures";
 import { folgeAnschrift } from "../lib/projectEdit";
 import { namensFormKey, namenTeilen, WEITERE_BAUHERREN, weitereSichtbar } from "../lib/weitereBauherren";
-import { infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
+import { anfrageOhneBauherr, infoStateOfNew, missingProjectInfo, validateNewProject, type ProjectFormErrors } from "../lib/projectForm";
 import { projectTitle } from "../lib/projects";
 import type { NewProject } from "../lib/repo";
 import { useSession } from "../lib/session";
@@ -367,7 +367,9 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const isRequest = v.status === "anfrage";
   const noun = isRequest ? "Anfrage" : "Projekt";
   const dialogTitle = isRequest ? "Neue Anfrage" : "Neues Projekt";
-  const errors = validateNewProject(v, projects);
+  /** Anfrage ohne Bauherr: Name ist dann der Bauort (Migration 0026); der Nachname von Bauherr 1 bleibt leer */
+  const named = anfrageOhneBauherr(v);
+  const errors = validateNewProject(named, projects);
   const show = (k: keyof ProjectFormErrors) => (touched ? errors[k] : undefined);
   const markEdited = (keys: string[]) => draft && setEdited((old) => new Set([...old, ...keys]));
   const set = (patch: Partial<NewProject>) => {
@@ -394,7 +396,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const blSuggestion = suggestBundesland({ siteState: v.bauherr?.siteState, sitePostalCode: v.bauherr?.sitePostalCode, location: v.location });
   const bundesland = v.bundesland === undefined ? blSuggestion : v.bundesland;
   const effective: NewProject = {
-    ...(v.kind === "bauvoranfrage" ? { ...v, abmNr: null, companyId: null, salespersonId: null } : v),
+    ...(v.kind === "bauvoranfrage" ? { ...named, abmNr: null, companyId: null, salespersonId: null } : named),
     bundesland: bundesland || null,
     // Der Nachname von Bauherr 1 ist der Projektname; der Name des Bauherrn wird beim Speichern aus beidem gebildet
     bauherr: { phone: null, email: null, address: null, buildingAddress: null, ...v.bauherr, nachname: v.bauherrLabel },
@@ -1089,7 +1091,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                     : stored.length > 1
                       ? `Vorschläge aus ${stored.length} Dokumenten, je Feld mit Quelle.`
                       : "Vorschläge aus dem Dokument."} Bitte jedes Feld prüfen;
-                gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr.
+                gelb markierte Felder sind unsicher{draft.gescannt ? ", Telefon und E-Mail bei Scans immer" : ""}. Pflicht ist nur der Bauherr{isRequest ? " (bei Anfragen: Bauherr oder Bauort)" : ""}.
               </p>
               {openConflicts.length > 0 && (
                 <p className="form-note" role="status">
@@ -1164,7 +1166,19 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                   <Input id="np-vorname" value={v.bauherr?.vorname ?? ""} onChange={(e) => setContact({ vorname: e.target.value || null })} placeholder="z. B. Jonas" autoFocus={!draft} autoComplete="off" />
                   <Src k="bauherrName" />
                 </Field>
-                <Field label="Nachname *" htmlFor="np-bauherr" hint={show("bauherrLabel") ? undefined : "Wird zum Projektnamen."}>
+                <Field
+                  label={isRequest ? "Nachname" : "Nachname *"}
+                  htmlFor="np-bauherr"
+                  hint={
+                    show("bauherrLabel")
+                      ? undefined
+                      : named.bauherrOffen
+                        ? `Leer gelassen: die Anfrage heißt „${named.bauherrLabel}“ (Bauort), bis der Bauherr feststeht.`
+                        : isRequest
+                          ? "Wird zum Projektnamen. Steht der Bauherr noch nicht fest, leer lassen: dann heißt die Anfrage wie der Bauort."
+                          : "Wird zum Projektnamen."
+                  }
+                >
                   <Input id="np-bauherr" value={v.bauherrLabel} onChange={(e) => set({ bauherrLabel: e.target.value })} placeholder="z. B. Hoffmann" autoComplete="off" {...invalid("bauherrLabel")} />
                   <Err k="bauherrLabel" />
                   <Src k="bauherrLabel" />
