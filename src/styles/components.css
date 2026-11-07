@@ -678,6 +678,50 @@ kbd {
   overflow-x: auto;
 }
 
+/* Breite Tabellen: eigene Scrollleiste unten am Bildschirmrand (siehe HScroll in DataTable), die eingebaute entfällt */
+.table-wrap[data-hscroll] {
+  scrollbar-width: none;
+}
+
+.table-wrap[data-hscroll]::-webkit-scrollbar {
+  display: none;
+}
+
+.table-hscroll {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  /* Chrome nutzt die ::-webkit-scrollbar-Regeln nur ohne scrollbar-width/-color; so bleibt die Leiste auch auf macOS sichtbar */
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+.table-hscroll > div {
+  height: 1px;
+}
+
+.table-hscroll::-webkit-scrollbar {
+  height: 12px;
+}
+
+.table-hscroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-hscroll::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid var(--surface);
+  border-radius: 6px;
+}
+
+.table-hscroll::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
 .table {
   width: 100%;
   border-collapse: separate;
