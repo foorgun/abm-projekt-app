@@ -106,7 +106,7 @@ select test.expect('Freiberufler sieht Schritte seines Projekts', (select count(
 select test.expect('Freiberufler sieht KEINE Rechnungen',         (select count(*) from public.invoices), 0);
 select test.expect('Freiberufler sieht KEINE Bauherren-Kontakte', (select count(*) from public.bauherren), 0);
 select test.expect('Freiberufler sieht keine Firmenstammdaten',   (select count(*) from public.companies), 0);
-select test.expect('Freiberufler sieht die Schrittnamen',         (select count(*) from public.step_definitions), 18);
+select test.expect('Freiberufler sieht die Schrittnamen (18 Projekt- und 3 Anfrageschritte, 0027)', (select count(*) from public.step_definitions), 21);
 select test.expect('Alle Schritte haben eine Stufe (0003)',       (select count(*) from public.step_definitions where stage is null), 0);
 select test.expect('Freiberufler sieht nur Dateien seines Projekts', (select count(*) from storage.objects), 1);
 select test.throws('Freiberufler darf kein Projekt anlegen',
@@ -1513,7 +1513,7 @@ select test.expect('0021: Baubegleitung in Ordnerreihenfolge',
   (select count(*) from (select string_agg(key, ',' order by sort_order) as keys from public.step_definitions where stage = 'Baubegleitung') x
    where keys = 'ausschreibung,hausanschluesse_beantragt,ausfuehrungsplaene,bauanlaufgespraech,vermesser_baubegleitung,strassensperrung,bp_kellerbaufirma,hausaufstellung,baustellentermine'), 1);
 select test.expect('0021: Baufreigabe ist der neunte Schritt',
-  (select count(*) from public.step_definitions where sort_order < (select sort_order from public.step_definitions where key = 'baufreigabe')), 8);
+  (select count(*) from public.step_definitions where stage <> 'Anfrage' and sort_order < (select sort_order from public.step_definitions where key = 'baufreigabe')), 8);
 select test.expect('Seed: genau eine fällige, nicht versendete Rechnung',
   (select count(*) from public.invoices where status = 'faellig' and sent_on is null), 1);
 
