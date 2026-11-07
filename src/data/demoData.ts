@@ -26,7 +26,7 @@ import type {
   TeamMember,
 } from "../lib/types";
 import { isBaubegleitungFolder } from "../lib/folders";
-import { BAUBEGLEITUNG_STAGE } from "../lib/steps";
+import { ANFRAGE_EINGEGANGEN, ANFRAGE_STEPS, BAUBEGLEITUNG_STAGE } from "../lib/steps";
 import { allStepDefinitions, buildFolderTemplates } from "./templates";
 
 export const DEMO_SEED = 20261009;
@@ -37,9 +37,9 @@ const DEMO_VORNAMEN = ["Anna", "Jonas", "Lena", "Markus", "Sabine", "Tobias", "J
 const BG = "09 Baugenehmigung, Baufreigabe,Baubeginnsanzeige";
 
 export const COMPANIES: Company[] = [
-  { id: "c-bz", name: "Bien-Zenker", numberPrefix: "8161" },
-  { id: "c-lh", name: "Living Haus", numberPrefix: "8260" },
-  { id: "c-sh", name: "Schwabenhaus", numberPrefix: "8185" },
+  { id: "c-bz", name: "Bien-Zenker", numberPrefix: "8161", kuerzel: "BZ" },
+  { id: "c-lh", name: "Living Haus", numberPrefix: "8260", kuerzel: "LH" },
+  { id: "c-sh", name: "Schwabenhaus", numberPrefix: "8185", kuerzel: "SH" },
 ];
 
 export const SALESPEOPLE: Salesperson[] = [
@@ -284,6 +284,8 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   const bauherren: BauherrContact[] = [];
   // Laufende Nummern ohne führende Nullen, unterschiedlich lang (wie im Büro: 8161-1588, 8185-633, 8260-321)
   const numberCounters: Record<string, number> = { "8161": 1571, "8260": 305, "8185": 617 };
+  /** Laufende Anfrage-Nummern je Kürzel (A-SH-1, …), Migration 0027 */
+  const anfrageCounters: Record<string, number> = {};
 
   specs.forEach((spec, idx) => {
     const id = `p-${pad(idx + 1)}`;
@@ -321,12 +323,15 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
       }
     }
     for (const k of spec.skip ?? []) delete dates[k];
+    if (spec.status === "anfrage") dates[ANFRAGE_EINGEGANGEN] = addDays(today, -spec.lastAgo);
     const firstDate = done.length ? dates[done[0].key] ?? addDays(today, cursor) : addDays(today, -spec.lastAgo);
 
     const abmNr =
       kind === "bauvoranfrage"
         ? "Bauvoranfrage"
-        : company?.numberPrefix
+        : spec.status === "anfrage" && company?.kuerzel
+          ? `A-${company.kuerzel}-${(anfrageCounters[company.kuerzel] = (anfrageCounters[company.kuerzel] ?? 0) + 1)}`
+          : company?.numberPrefix
           ? `${company.numberPrefix}-${numberCounters[company.numberPrefix]++}`
           : null;
 
@@ -580,6 +585,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     projects,
     invoices,
     stepDefinitions: steps,
+    anfrageSteps: ANFRAGE_STEPS,
     folderTemplates,
     parties,
     bauherren,

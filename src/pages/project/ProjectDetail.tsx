@@ -9,6 +9,7 @@ import { SEVERITY_TONE } from "../../lib/alertUi";
 import { isPilot, PILOT_PROJECT_TABS } from "../../lib/appMode";
 import { foldersFor } from "../../lib/folders";
 import { formatDate } from "../../lib/format";
+import { ANFRAGE_BEAUFTRAGT } from "../../lib/steps";
 import { missingSteps, nextStep, phaseOf, progressOf, projectTitle, stepsFor } from "../../lib/projects";
 import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
@@ -65,7 +66,9 @@ export function ProjectDetail() {
   }
 
   const p: Project = project;
-  const steps = data.stepDefinitions;
+  // Anfragen haben einen eigenen, kurzen Ablauf (Migration 0027): eingegangen, bearbeitet, beauftragt
+  const isAnfrage = project.status === "anfrage";
+  const steps = isAnfrage ? data.anfrageSteps : data.stepDefinitions;
   const phase = phaseOf(p, steps);
   const progress = progressOf(p, steps);
   const missing = missingSteps(p, steps);
@@ -84,11 +87,22 @@ export function ProjectDetail() {
   const setStatus = async (st: Project["status"], message: string) => {
     const res = await mutate((r) => r.setProjectStatus(p.id, st));
     toast(res.ok ? message : res.error, res.ok ? "ok" : "danger");
+    return res.ok;
   };
+  /** Als Projekt annehmen: setzt in der Datenbank auch "Beauftragt" (heute); ein anderes Datum danach eintragen. */
+  async function accept(date?: string) {
+    if (p.bauherrOffen) return toast("Bauherr fehlt noch", "danger", "Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.");
+    const ok = await setStatus("aktiv", "Anfrage ist jetzt ein aktives Projekt");
+    if (ok && date && date !== today) await mutate((r) => r.setStepDate(p.id, ANFRAGE_BEAUFTRAGT, date));
+  }
 
   const pilot = isPilot();
   const visibleTabs = TABS.filter(
-    (t) => (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll")) && (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)),
+    (t) =>
+      (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll")) &&
+      (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)) &&
+      // Anfragen haben noch kein Planungsprotokoll
+      !(isAnfrage && t === "planungsprotokoll"),
   );
   const requested = params.get("tab") as TabKey | null;
   const tab: TabKey = requested && visibleTabs.includes(requested) ? requested : "uebersicht";
@@ -135,15 +149,7 @@ export function ProjectDetail() {
         {staff && (
           <div className="page-head-actions">
             {p.status === "anfrage" && (
-              <Button
-                variant="primary"
-                icon={<Check size={15} />}
-                onClick={() =>
-                  p.bauherrOffen
-                    ? toast("Bauherr fehlt noch", "danger", "Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.")
-                    : void setStatus("aktiv", "Anfrage ist jetzt ein aktives Projekt")
-                }
-              >
+              <Button variant="primary" icon={<Check size={15} />} onClick={() => void accept()}>
                 Als Projekt annehmen
               </Button>
             )}
@@ -212,7 +218,7 @@ export function ProjectDetail() {
               </>
             }
             actions={
-              staff && next && p.status === "aktiv" ? (
+              staff && next && (p.status === "aktiv" || (isAnfrage && next.key !== ANFRAGE_BEAUFTRAGT)) ? (
                 <Button size="sm" icon={<Check size={14} />} onClick={() => void changeDate(next.key, today)}>
                   {next.label} heute erledigt
                 </Button>
@@ -220,7 +226,11 @@ export function ProjectDetail() {
             }
           />
           <CardBody>
-            <Stepper items={stepsFor(p, steps).map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))} onChangeDate={staff ? (k, d) => void changeDate(k, d) : undefined} />
+            <Stepper
+              items={stepsFor(p, steps).map((s) => ({ key: s.key, label: s.label, date: p.steps[s.key] ?? null }))}
+              // Bei Anfragen heißt "Beauftragt" eintragen: als Projekt annehmen
+              onChangeDate={staff ? (k, d) => void (isAnfrage && k === ANFRAGE_BEAUFTRAGT && d ? accept(d) : changeDate(k, d)) : undefined}
+            />
           </CardBody>
         </Card>
 

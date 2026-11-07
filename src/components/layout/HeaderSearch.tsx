@@ -175,7 +175,7 @@ export function HeaderSearch({ placeholder, onNewProject }: { placeholder: strin
                       <span className="list-item-main">
                         <span className="list-item-title">{projectTitle(p)}</span>
                         <span className="list-item-sub">
-                          {[p.location, p.companyId ? companyName.get(p.companyId) : null, data ? phaseOf(p, data.stepDefinitions).label : null].filter(Boolean).join(" · ")}
+                          {[p.location, p.companyId ? companyName.get(p.companyId) : null, data ? phaseOf(p, p.status === "anfrage" ? data.anfrageSteps : data.stepDefinitions).label : null].filter(Boolean).join(" · ")}
                         </span>
                       </span>
                       {p.status !== "aktiv" && <span className="muted">{STATUS_LABEL[p.status]}</span>}

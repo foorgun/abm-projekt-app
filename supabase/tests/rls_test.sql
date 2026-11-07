@@ -1473,8 +1473,42 @@ select test.throws('0026: ohne Namen keine Anfrage',
   $$select public.create_project('{"bauherr_label": "", "status": "anfrage", "bauherr_offen": true}')$$);
 rollback;
 
+-- Migration 0027: Anfrage-Nummer und Schritte der Anfrage
+select test.expect('0027: Kürzel LH, SH, BZ vorbelegt',
+  (select count(*) from public.companies where (name, kuerzel) in (('Living Haus', 'LH'), ('Schwabenhaus', 'SH'), ('Bien-Zenker', 'BZ'))), 3);
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('0027: Mitarbeiter ändert kein Kürzel (Zeilenregel, 0 Zeilen)',
+  test.affected($$update public.companies set kuerzel = 'XX' where name = 'Schwabenhaus'$$), 0);
+select test.throws('0027: Mitarbeiter legt keine Firma mit Kürzel an', $$insert into public.companies (name, kuerzel) values ('Okal', 'OK')$$);
+select public.create_project('{"bauherr_label": "Schrittort", "status": "anfrage", "bauherr_offen": true, "abm_nr": "A-SH-7"}');
+select test.expect('0027: Anfrage eingegangen beim Anlegen gesetzt',
+  (select count(*) from public.project_steps s join public.projects p on p.id = s.project_id where p.bauherr_label = 'Schrittort' and s.step_key = 'anfrage_eingegangen'), 1);
+select test.throws('0027: Anfrage-Nummer je Kürzel eindeutig (als Zahl)',
+  $$select public.create_project('{"bauherr_label": "Doppelt", "status": "anfrage", "abm_nr": "A-SH-07"}')$$);
+select public.create_project('{"bauherr_label": "Andersort", "status": "anfrage", "abm_nr": "A-LH-7"}');
+select test.expect('0027: gleiche Nummer bei anderem Kürzel geht', (select count(*) from public.projects where abm_nr = 'A-LH-7'), 1);
+select public.update_project((select id from public.projects where bauherr_label = 'Andersort'), '{}', '{"nachname": "Andersort"}');
+update public.projects set status = 'aktiv' where bauherr_label = 'Andersort';
+select test.expect('0027: Annehmen setzt Beauftragt',
+  (select count(*) from public.project_steps s join public.projects p on p.id = s.project_id where p.bauherr_label = 'Andersort' and s.step_key = 'anfrage_beauftragt'), 1);
+update public.projects set status = 'anfrage' where bauherr_label = 'Andersort';
+select test.expect('0027: Zurück zur Anfrage nimmt Beauftragt heraus',
+  (select count(*) from public.project_steps s join public.projects p on p.id = s.project_id where p.bauherr_label = 'Andersort' and s.step_key = 'anfrage_beauftragt'), 0);
+select public.create_project('{"bauherr_label": "Direktprojekt"}');
+select test.expect('0027: Projekte bekommen keine Schritte der Anfrage',
+  (select count(*) from public.project_steps s join public.projects p on p.id = s.project_id where p.bauherr_label = 'Direktprojekt'), 0);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0027: Admin ändert das Kürzel', test.affected($$update public.companies set kuerzel = 'SW' where name = 'Schwabenhaus'$$), 1);
+select test.throws('0027: Kürzel nur Großbuchstaben', $$update public.companies set kuerzel = 'sw' where name = 'Schwabenhaus'$$);
+select test.throws('0027: Kürzel eindeutig', $$update public.companies set kuerzel = 'LH' where name = 'Schwabenhaus'$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
-select test.expect('Seed: 18 Schritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions), 18);
+select test.expect('Seed: 18 Projektschritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions where stage <> 'Anfrage'), 18);
+select test.expect('0027: drei Schritte der Anfrage, vor allen Projektschritten',
+  (select count(*) from public.step_definitions where stage = 'Anfrage' and sort_order < (select min(sort_order) from public.step_definitions where stage <> 'Anfrage')), 3);
 select test.expect('0021: Baubegleitung in Ordnerreihenfolge',
   (select count(*) from (select string_agg(key, ',' order by sort_order) as keys from public.step_definitions where stage = 'Baubegleitung') x
    where keys = 'ausschreibung,hausanschluesse_beantragt,ausfuehrungsplaene,bauanlaufgespraech,vermesser_baubegleitung,strassensperrung,bp_kellerbaufirma,hausaufstellung,baustellentermine'), 1);

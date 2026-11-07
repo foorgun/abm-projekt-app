@@ -262,6 +262,8 @@ export interface Repo {
   createCompany(name: string, numberPrefix?: string | null): Promise<Company>;
   /** Nummernkreis einer Hausbaufirma setzen oder leeren (vier Ziffern, eindeutig; nur Admin, Migration 0017). Auch beim Anlegen nur Admin. */
   setCompanyPrefix(companyId: string, numberPrefix: string | null): Promise<void>;
+  /** Kürzel für die Anfrage-Nummer (z. B. "SH"), nur Admins (Migration 0027). */
+  setCompanyKuerzel(companyId: string, kuerzel: string | null): Promise<void>;
   createSalesperson(companyId: string, name: string): Promise<Salesperson>;
   createTeamMember(name: string, role: TeamMember["role"]): Promise<TeamMember>;
   setProjectStatus(projectId: string, status: Project["status"]): Promise<void>;

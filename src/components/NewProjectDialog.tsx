@@ -22,7 +22,7 @@ import {
   type Sicherheit,
   type Vertragsart,
 } from "../lib/extract";
-import { companyForAbm, suggestAbmNr } from "../lib/abmNr";
+import { companyForAbm, suggestNummer } from "../lib/abmNr";
 import { suggestBundesland } from "../lib/bundesland";
 import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
@@ -379,12 +379,13 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
   const salespeople = (data?.salespeople ?? []).filter((s) => s.companyId === v.companyId);
   const surveyors = [...new Set([...(data?.parties ?? []).filter((p) => p.role === "vermesser").map((p) => p.name), ...newSurveyors])].sort((a, b) => a.localeCompare(b, "de"));
   const company = companies.find((c) => c.id === v.companyId);
-  const suggestion = v.kind === "neubau" ? suggestAbmNr(company?.numberPrefix ?? null, projects) : "";
+  // Anfragen bekommen eine eigene Nummer A-<Kürzel>-<Nummer> (Migration 0027), Projekte die ABM-Nr. des Nummernkreises
+  const suggestion = v.kind === "neubau" ? suggestNummer(company, projects, v.status === "anfrage") : "";
   /** Firma gewählt: ist die ABM-Nr. leer (oder noch der letzte Vorschlag), wird die nächste Nummer der Firma eingetragen */
   const chooseCompany = (id: string) => {
     const next = companies.find((c) => c.id === id);
     const auto = !v.abmNr || v.abmNr === suggestion;
-    set({ companyId: id || null, salespersonId: null, ...(auto ? { abmNr: suggestAbmNr(next?.numberPrefix, projects) || null } : {}) });
+    set({ companyId: id || null, salespersonId: null, ...(auto ? { abmNr: suggestNummer(next, projects, v.status === "anfrage") || null } : {}) });
   };
   /** ABM-Nr. eingegeben: ist noch keine Firma gewählt, wird die Firma des Nummernkreises vorgeschlagen (änderbar) */
   const typeAbm = (value: string) => {
@@ -500,7 +501,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       if (match && old.kind === "neubau" && !old.companyId) {
         next.companyId = match.companyId;
         next.salespersonId = match.salespersonId;
-        if (!old.abmNr) next.abmNr = suggestAbmNr(companies.find((c) => c.id === match.companyId)?.numberPrefix, projects) || null;
+        if (!old.abmNr) next.abmNr = suggestNummer(companies.find((c) => c.id === match.companyId), projects, old.status === "anfrage") || null;
       }
       return next;
     };
@@ -1269,13 +1270,25 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
 
           <div className="dialog-row">
             {v.kind === "neubau" && (
-              <Field label="ABM-Nr." htmlFor="np-abm">
-                <Input id="np-abm" value={v.abmNr ?? ""} onChange={(e) => typeAbm(e.target.value)} placeholder="z. B. 8161-1588" inputMode="numeric" autoComplete="off" {...invalid("abmNr")} />
+              <Field label={isRequest ? "Anfrage-Nr." : "ABM-Nr."} htmlFor="np-abm">
+                <Input
+                  id="np-abm"
+                  value={v.abmNr ?? ""}
+                  onChange={(e) => typeAbm(e.target.value)}
+                  placeholder={isRequest ? "z. B. A-SH-12" : "z. B. 8161-1588"}
+                  inputMode={isRequest ? "text" : "numeric"}
+                  autoComplete="off"
+                  {...invalid("abmNr")}
+                />
                 <Err k="abmNr" />
                 <AbmHinweise abmNr={v.abmNr} companyId={v.companyId} companies={companies} onUseCompany={(c) => chooseCompany(c.id)} />
                 {!show("abmNr") && (!v.abmNr || v.abmNr === suggestion) && (
                   <span className="field-hint">
-                    {v.abmNr ? "Vorschlag: nächste freie Nummer dieser Hausbaufirma, änderbar." : "Optional, lässt sich nachtragen."}
+                    {v.abmNr
+                      ? `Vorschlag: nächste freie ${isRequest ? "Anfrage-Nummer" : "Nummer"} dieser Hausbaufirma, änderbar.`
+                      : isRequest && company && !company.kuerzel
+                        ? `Für ${company.name} ist noch kein Kürzel eingetragen (Einstellungen, Hausbaufirmen). Optional, lässt sich nachtragen.`
+                        : "Optional, lässt sich nachtragen."}
                     {suggestion && !v.abmNr && (
                       <>
                         {" "}

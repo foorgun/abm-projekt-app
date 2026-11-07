@@ -33,7 +33,7 @@ export type Row = Record<string, any>;
 // Spaltenlisten: immer ausdrücklich, nie "*". Bei mailboxes ist secret_ref per Spaltenrecht gesperrt,
 // und neue Spalten sollen nicht unbemerkt in den Browser gelangen.
 export const COLS = {
-  companies: "id, name, number_prefix",
+  companies: "id, name, number_prefix, kuerzel",
   salespeople: "id, company_id, name, email",
   team_members: "id, code, name, role",
   step_definitions: "key, label, sort_order, stage",
@@ -79,7 +79,7 @@ export function localStamp(ts: string | null | undefined): string | null {
 const stamp = (ts: string): string => localStamp(ts) ?? ts;
 const num = (v: unknown): number | null => (v == null ? null : Number(v));
 
-export const toCompany = (r: Row): Company => ({ id: r.id, name: r.name, numberPrefix: r.number_prefix ?? null });
+export const toCompany = (r: Row): Company => ({ id: r.id, name: r.name, numberPrefix: r.number_prefix ?? null, kuerzel: r.kuerzel ?? null });
 export const toSalesperson = (r: Row): Salesperson => ({ id: r.id, companyId: r.company_id, name: r.name, email: r.email ?? null });
 export const toTeamMember = (r: Row): TeamMember => ({ id: r.id, code: r.code ?? null, name: r.name, role: r.role });
 export const toStepDefinition = (r: Row): StepDefinition => ({ key: r.key, label: r.label, sortOrder: r.sort_order, stage: r.stage });
@@ -393,6 +393,8 @@ export function dbErrorMessage(e: { message?: string; code?: string } | null | u
   if (code === "42501" || /permission denied|row-level security/i.test(msg)) return "Keine Berechtigung für diese Aktion";
   if (code === "23505" && /projects_abm_nr_unique/.test(msg)) return "Diese ABM-Nr. ist schon vergeben";
   if (code === "23505" && /companies_prefix_unique/.test(msg)) return "Dieser Nummernkreis ist schon einer Hausbaufirma zugeordnet";
+  if (code === "23505" && /companies_kuerzel_unique/.test(msg)) return "Dieses Kürzel ist schon einer Hausbaufirma zugeordnet";
+  if (code === "23505" && /projects_anfrage_nr_unique/.test(msg)) return "Diese Anfrage-Nummer ist schon vergeben";
   if (code === "23505") return "Diesen Eintrag gibt es schon";
   if (code === "23514" && /projects_bauherr_offen_nur_anfrage/.test(msg)) return "Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.";
   if (code === "23503") return "Der Eintrag verweist auf etwas, das es nicht (mehr) gibt";

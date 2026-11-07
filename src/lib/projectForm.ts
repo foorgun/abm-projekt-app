@@ -2,7 +2,7 @@
 // Reine Funktionen; dieselben Regeln nutzen das Demo-Repo und das Supabase-Repo.
 // Pflicht ist nur der Bauherr. Alles andere darf fehlen und wird dann per Aufgabe nachgefragt.
 
-import { ABM_RE, parseAbm } from "./abmNr";
+import { ABM_RE, parseAbm, parseAnfrageNr } from "./abmNr";
 import { addDays } from "./format";
 import type { NewProject } from "./repo";
 import type { Project } from "./types";
@@ -25,8 +25,19 @@ export function validateProjectFields(
 
   // Freiwillige Angaben: nur prüfen, wenn etwas eingetragen ist
   const abm = input.kind === "neubau" ? input.abmNr?.trim() : "";
-  if (abm) {
-    if (!ABM_RE.test(abm)) e.abmNr = "Format: vier Ziffern, Bindestrich, Nummer ohne führende Nullen, z. B. 8161-1588.";
+  const anfrage = abm ? parseAnfrageNr(abm) : null;
+  if (anfrage) {
+    // Anfrage-Nummer (Migration 0027): eindeutig je Kürzel, Nummer als Zahl
+    if (/^A-[A-Z]+-0/.test(abm!)) e.abmNr = `Ohne führende Nullen, also A-${anfrage.kuerzel}-${anfrage.num}.`;
+    else {
+      const dup = existing.find((p) => {
+        const b = parseAnfrageNr(p.abmNr);
+        return b?.kuerzel === anfrage.kuerzel && b.num === anfrage.num;
+      });
+      if (dup) e.abmNr = `Diese Anfrage-Nummer ist schon vergeben (${dup.bauherrLabel}${dup.status === "storno" ? ", abgesagt" : ""}).`;
+    }
+  } else if (abm) {
+    if (!ABM_RE.test(abm)) e.abmNr = "Format: vier Ziffern, Bindestrich, Nummer ohne führende Nullen, z. B. 8161-1588 (bei Anfragen z. B. A-SH-12).";
     else if (/^\d{4}-0/.test(abm)) e.abmNr = `Ohne führende Nullen, also ${abm.slice(0, 5)}${Number(abm.slice(5))}.`;
     else {
       // eindeutig auch gegenüber stornierten Projekten (wie in der Datenbank, Migration 0017)

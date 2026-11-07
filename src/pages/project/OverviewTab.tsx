@@ -6,7 +6,7 @@ import { BundeslandSelect } from "../../components/BundeslandSelect";
 import { SelectOrCreate } from "../../components/SelectOrCreate";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, Field, IconButton, Input, Select } from "../../components/ui";
-import { companyForAbm, suggestAbmNr } from "../../lib/abmNr";
+import { companyForAbm, suggestNummer } from "../../lib/abmNr";
 import { bundeslandName, suggestBundesland } from "../../lib/bundesland";
 import { isPilot } from "../../lib/appMode";
 import { formatMonth } from "../../lib/format";
@@ -205,7 +205,7 @@ export function OverviewTab({ project, data, contact, staff, pilot = false }: { 
             <>
             <dl className="dl">
               <Row label="Art">{project.kind === "bauvoranfrage" ? "Bauvoranfrage" : "Neubau"}</Row>
-              {project.kind === "neubau" && <Row label="ABM-Nr.">{project.abmNr}</Row>}
+              {project.kind === "neubau" && <Row label={project.status === "anfrage" ? "Anfrage-Nr." : "ABM-Nr."}>{project.abmNr}</Row>}
               <Row label="Hausbaufirma">{company?.name}</Row>
               <Row label="Bauadresse">
                 {staff ? (
@@ -392,13 +392,14 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
   const blSuggestion = suggestBundesland({ siteState: contact?.siteState, sitePostalCode: contact?.sitePostalCode, location: v.location });
   const bundesland = blTouched ? v.bundesland : (blSuggestion ?? "");
   const others = data.projects.filter((x) => x.id !== project.id);
-  const prefixOf = (companyId: string) => data.companies.find((c) => c.id === companyId)?.numberPrefix;
-  const suggestion = suggestAbmNr(prefixOf(v.companyId), others);
+  // Anfragen: Anfrage-Nummer A-<Kürzel>-<Nummer> (Migration 0027)
+  const nummerOf = (companyId: string) => suggestNummer(data.companies.find((c) => c.id === companyId), others, project.status === "anfrage");
+  const suggestion = nummerOf(v.companyId);
   /** Firma gewählt: leere ABM-Nr. (oder der letzte Vorschlag) wird mit der nächsten Nummer der Firma vorbelegt */
   const chooseCompany = (companyId: string) =>
     setV((old) => {
-      const auto = !old.abmNr.trim() || old.abmNr === suggestAbmNr(prefixOf(old.companyId), others);
-      return { ...old, companyId, ...(auto ? { abmNr: suggestAbmNr(prefixOf(companyId), others) } : {}) };
+      const auto = !old.abmNr.trim() || old.abmNr === nummerOf(old.companyId);
+      return { ...old, companyId, ...(auto ? { abmNr: nummerOf(companyId) } : {}) };
     });
   /** ABM-Nr. eingegeben: fehlt die Firma, wird sie aus dem Nummernkreis vorgeschlagen */
   const typeAbm = (abmNr: string) =>
@@ -452,10 +453,17 @@ function ProjectDataForm({ project, data, contact, onClose }: { project: Project
         </Field>
       )}
       {project.kind === "neubau" && (
-        <Field label="ABM-Nr." htmlFor={`${id}-abm`}>
-          <Input id={`${id}-abm`} value={v.abmNr} onChange={(e) => typeAbm(e.target.value)} placeholder="z. B. 8161-1588" inputMode="numeric" autoComplete="off" />
+        <Field label={project.status === "anfrage" ? "Anfrage-Nr." : "ABM-Nr."} htmlFor={`${id}-abm`}>
+          <Input
+            id={`${id}-abm`}
+            value={v.abmNr}
+            onChange={(e) => typeAbm(e.target.value)}
+            placeholder={project.status === "anfrage" ? "z. B. A-SH-12" : "z. B. 8161-1588"}
+            inputMode={project.status === "anfrage" ? "text" : "numeric"}
+            autoComplete="off"
+          />
           <AbmHinweise abmNr={v.abmNr} companyId={v.companyId} companies={data.companies} onUseCompany={(c) => chooseCompany(c.id)} />
-          {suggestion && v.abmNr === suggestion && v.abmNr !== project.abmNr && <span className="field-hint">Vorschlag: nächste freie Nummer dieser Hausbaufirma, änderbar.</span>}
+          {suggestion && v.abmNr === suggestion && v.abmNr !== project.abmNr && <span className="field-hint">Vorschlag: nächste freie {project.status === "anfrage" ? "Anfrage-Nummer" : "Nummer"} dieser Hausbaufirma, änderbar.</span>}
         </Field>
       )}
       <Field label="Bauadresse" htmlFor={`${id}-ba`}>

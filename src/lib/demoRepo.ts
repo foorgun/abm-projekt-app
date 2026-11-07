@@ -19,7 +19,8 @@ import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
 import { demoStandort } from "./planungsprotokoll/standort";
 import { isAllowedFolder, templateOf } from "./folders";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
-import { cleanPrefix } from "./abmNr";
+import { cleanKuerzel, cleanPrefix } from "./abmNr";
+import { ANFRAGE_BEAUFTRAGT, ANFRAGE_EINGEGANGEN } from "./steps";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, followupKey, infoStateOfNew, validateNewProject } from "./projectForm";
 import { todayIso } from "./format";
@@ -125,7 +126,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
   const log = (a: Omit<Activity, "id" | "at" | "actor">) => {
     db.activities.unshift({ id: newId("a"), at: now(), actor: user.name, ...a });
   };
-  const stepLabel = (key: string) => db.stepDefinitions.find((s) => s.key === key)?.label ?? key;
+  const stepLabel = (key: string) => [...db.stepDefinitions, ...db.anfrageSteps].find((s) => s.key === key)?.label ?? key;
   /** Wer "ich" ist (Demo: je Rolle eine erfundene Person). Freiberufler haben keinen Zugang zu Urlaub und Krankheit. */
   const requireMe = (): string => {
     const me = DEMO_ME[user.role];
@@ -256,7 +257,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
 
     async setStepDate(projectId, stepKey, date) {
       requireStaff();
-      if (!db.stepDefinitions.some((s) => s.key === stepKey)) throw new Error(`Unbekannter Schritt ${stepKey}`);
+      if (![...db.stepDefinitions, ...db.anfrageSteps].some((s) => s.key === stepKey)) throw new Error(`Unbekannter Schritt ${stepKey}`);
       const p = project(projectId);
       if (date) p.steps[stepKey] = date;
       else delete p.steps[stepKey];
@@ -292,7 +293,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
         flurstueck: input.flurstueck?.trim() || null,
         gemarkung: input.gemarkung?.trim() || null,
         flur: input.flur?.trim() || null,
-        steps: {},
+        // wie der Trigger in der Datenbank (0027)
+        steps: input.status === "anfrage" ? { [ANFRAGE_EINGEGANGEN]: todayIso() } : {},
       };
       db.projects.unshift(p);
       const vermesser = input.vermesser?.trim();
@@ -392,6 +394,16 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       return done(undefined);
     },
 
+    async setCompanyKuerzel(companyId, kuerzel) {
+      if (user.role !== "admin") throw new PermissionError();
+      const row = db.companies.find((x) => x.id === companyId);
+      if (!row) throw new Error("Hausbaufirma nicht gefunden");
+      const k = cleanKuerzel(kuerzel ?? "", companyId, db.companies);
+      if (!k.ok) throw new Error(k.reason);
+      row.kuerzel = k.kuerzel;
+      return done(undefined);
+    },
+
     async createSalesperson(companyId, name) {
       requireStaff();
       if (!db.companies.some((x) => x.id === companyId)) throw new Error("Hausbaufirma nicht gefunden");
@@ -417,6 +429,12 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       if (p.status === status) return done(undefined);
       // wie der Constraint in der Datenbank (0026)
       if (p.bauherrOffen && status !== "anfrage" && status !== "storno") throw new Error("Erst den Bauherrn eintragen (Übersicht, Kontakt Bauherr), dann als Projekt annehmen.");
+      // wie der Trigger in der Datenbank (0027): annehmen setzt "Beauftragt", zurück zur Anfrage nimmt es heraus
+      if (p.status === "anfrage" && status === "aktiv" && !p.steps[ANFRAGE_BEAUFTRAGT]) p.steps = { ...p.steps, [ANFRAGE_BEAUFTRAGT]: todayIso() };
+      if (status === "anfrage") {
+        const { [ANFRAGE_BEAUFTRAGT]: _weg, ...rest } = p.steps;
+        p.steps = rest;
+      }
       const text = { anfrage: "Zurück zu den Anfragen", aktiv: p.status === "anfrage" ? "Anfrage als Projekt angenommen" : "Projekt wieder aktiv", abgeschlossen: "Projekt abgeschlossen", storno: "Projekt storniert" }[status];
       p.status = status;
       log({ projectId, kind: "projekt", text });

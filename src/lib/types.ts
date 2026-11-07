@@ -14,6 +14,8 @@ export interface Company {
   id: string;
   name: string;
   numberPrefix: string | null;
+  /** Kürzel für die Anfrage-Nummer, z. B. "SH" in A-SH-12 (Migration 0027) */
+  kuerzel?: string | null;
 }
 
 export interface Salesperson {
@@ -404,7 +406,10 @@ export interface AgentFeedback {
 // ---------------------------------------------------------------------------
 
 export interface Dataset extends Snapshot {
+  /** Schritte eines Projekts (ohne die der Anfrage) */
   stepDefinitions: StepDefinition[];
+  /** Schritte einer Anfrage: eingegangen, bearbeitet, beauftragt (Migration 0027) */
+  anfrageSteps: StepDefinition[];
   folderTemplates: FolderTemplate[];
   parties: ProjectParty[];
   /** Leer für Freiberufler (RLS). */
