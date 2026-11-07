@@ -4,6 +4,7 @@
 
 import { ABM_RE, parseAbm, parseAnfrageNr } from "./abmNr";
 import { addDays } from "./format";
+import { splitAnschrift } from "./planungsprotokoll/daten";
 import type { NewProject } from "./repo";
 import type { Project } from "./types";
 
@@ -69,15 +70,27 @@ export function validateNewProject(input: NewProject, existing: Project[]): Proj
 }
 
 /**
+ * Name einer Anfrage ohne Bauherr: PLZ und Ort des Bauorts, z. B. "74235 Flein" (Wunsch von ABM). PLZ und Ort kommen aus
+ * den getrennten Feldern des Bauorts, sonst aus der Bauadresse; der Ort sonst aus dem Feld Bauort. Ohne Ort: null.
+ */
+export function anfrageName(input: Pick<NewProject, "location" | "bauherr">): string | null {
+  const b = input.bauherr;
+  const aus = splitAnschrift(b?.buildingAddress);
+  const ort = (b?.siteCity?.trim() || input.location?.trim() || aus.ort?.trim() || "").replace(/^\d{5}\s+/, "");
+  if (ort.length < 2) return null;
+  const plz = b?.sitePostalCode?.trim() || aus.plz?.trim() || input.location?.trim().match(/^(\d{5})\s/)?.[1] || null;
+  return plz ? `${plz} ${ort}` : ort;
+}
+
+/**
  * Anfrage ohne Bauherr (Migration 0026). Bei Anfragen steht der Bauherr meist noch nicht fest, der Nachname ist dort
- * deshalb freiwillig. Ist er leer, heißt die Anfrage vorläufig wie der Bauort, sonst "Anfrage <Firma> <Datum>", und trägt
- * das Kennzeichen "Bauherr offen". Bei Projekten bleibt der Nachname Pflicht (unverändert).
+ * deshalb freiwillig. Ist er leer, heißt die Anfrage vorläufig nach PLZ und Ort (anfrageName), ohne Ort
+ * "Anfrage <Firma> <Datum>", und trägt das Kennzeichen "Bauherr offen". Bei Projekten bleibt der Nachname Pflicht.
  */
 export function anfrageOhneBauherr(input: NewProject, opts: { today: string; company?: string | null }): NewProject {
   if (input.status !== "anfrage" || input.bauherrLabel.trim()) return { ...input, bauherrOffen: false };
-  const ort = input.location?.trim();
   const [y, m, d] = opts.today.slice(0, 10).split("-");
-  const name = ort && ort.length >= 2 ? ort : ["Anfrage", opts.company?.trim(), `${d}.${m}.${y}`].filter(Boolean).join(" ");
+  const name = anfrageName(input) ?? ["Anfrage", opts.company?.trim(), `${d}.${m}.${y}`].filter(Boolean).join(" ");
   return { ...input, bauherrLabel: name, bauherrOffen: true };
 }
 
