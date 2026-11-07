@@ -6,7 +6,7 @@
 | Adresse der App | Worker `abm-dev` (noch anzulegen) | `https://abm-pilot.fcetin19.workers.dev` |
 | Stand der Migrationen | bis 0027 | bis 0027 |
 | Anthropic | Workspace `abm-dev` | Workspace `abm-prod` |
-| KI-Auslesung | an | **aus**, bis der AVV unterschrieben ist |
+| KI-Auslesung | an | **an**, seit 03.11.2026 |
 | Lokale Werte | `.env.ziel.development` | `.env.ziel.production` |
 | Konten | `konten.development.local.json` | `konten.production.local.json` |
 | Sicherungen | `backups/development/` | `backups/production/` |
@@ -89,7 +89,9 @@ Bei abgelaufenem oder ungültigem KI-Schlüssel sehen Admins in der App „KI-Sc
 
 Der AVV besteht zwischen Furkan Cetin als Auftragsverarbeiter und ABM als Verantwortlichem. Anthropic und Supabase sind Unterauftragnehmer von Furkan Cetin.
 
-Die KI-Auslesung sendet Seiten von Verträgen mit personenbezogenen Daten der Bauherren an Anthropic. Sie bleibt in production ausgeschaltet (`EXTRACTOR_ENABLED=false`), bis der AVV unterschrieben ist. Tests vorher nur mit dem erfundenen Dokument. Freischalten: `secrets:setzen -- --ziel production EXTRACTOR_ENABLED=true` und im Worker `VITE_PROJECT_EXTRACTOR=edge`.
+**Stand des AVV: noch nicht bestätigt, wird hier nachgetragen.**
+
+Die KI-Auslesung sendet Seiten von Verträgen mit personenbezogenen Daten der Bauherren an Anthropic. In production ist sie seit dem 03.11.2026 eingeschaltet (`EXTRACTOR_ENABLED=true`). Dafür muss im Worker `VITE_PROJECT_EXTRACTOR=edge` gesetzt sein. Ausschalten wirkt sofort: `secrets:setzen -- --ziel production EXTRACTOR_ENABLED=false`.
 
 ## Oberfläche in production
 
