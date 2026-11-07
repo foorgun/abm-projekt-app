@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight } from "lucide-react";
 
 export interface Column<T> {
@@ -150,7 +150,7 @@ export function DataTable<T>({
   }
 
   return (
-    <div className="table-wrap">
+    <HScroll>
       <table className={["table", stickyFirst && "table-sticky-first", compact && "table-compact"].filter(Boolean).join(" ")} aria-label={label}>
         <thead>
           <tr>
@@ -214,6 +214,49 @@ export function DataTable<T>({
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setLimit((n) => n + (pageSize ?? 25))}>
             Weitere anzeigen ({Math.min(limit, sorted.length)} von {sorted.length})
           </button>
+        </div>
+      )}
+    </HScroll>
+  );
+}
+
+/**
+ * Horizontaler Scrollbereich mit eigener Scrollleiste, die am unteren Bildschirmrand klebt, solange die Tabelle im Bild
+ * ist. Mit der Maus muss man so nicht erst bis zum Tabellenende scrollen, um die Leiste zu erreichen; außerdem bleibt sie
+ * auch bei ausgeblendeten Scrollbalken (macOS) sichtbar. Die Leiste erscheint nur, wenn die Tabelle breiter ist als der Platz.
+ */
+function HScroll({ children }: { children: ReactNode }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState({ scroll: 0, client: 0 });
+  const overflow = width.scroll > width.client + 1;
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const measure = () => setWidth((w) => (w.scroll === wrap.scrollWidth && w.client === wrap.clientWidth ? w : { scroll: wrap.scrollWidth, client: wrap.clientWidth }));
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    // Breite der Tabelle ändert sich auch ohne Größenänderung des Rahmens (Spalten ein-/ausblenden, Zeilen aufklappen)
+    for (const child of Array.from(wrap.children)) ro.observe(child);
+    return () => ro.disconnect();
+  }, []);
+
+  // Beide Richtungen abgleichen; das Ziel nur setzen, wenn es abweicht (sonst Echo-Schleife)
+  function sync(from: HTMLDivElement | null, to: HTMLDivElement | null) {
+    if (from && to && to.scrollLeft !== from.scrollLeft) to.scrollLeft = from.scrollLeft;
+  }
+
+  return (
+    <div className="table-scroller">
+      <div ref={wrapRef} className="table-wrap" data-hscroll={overflow || undefined} onScroll={() => sync(wrapRef.current, barRef.current)}>
+        {children}
+      </div>
+      {overflow && (
+        <div ref={barRef} className="table-hscroll" aria-hidden onScroll={() => sync(barRef.current, wrapRef.current)}>
+          <div style={{ width: width.scroll }} />
         </div>
       )}
     </div>
