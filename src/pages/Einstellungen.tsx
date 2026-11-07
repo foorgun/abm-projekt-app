@@ -5,7 +5,7 @@ import { KontoKarte } from "../components/KontoKarte";
 import { PageHead } from "../components/layout/PageHead";
 import { useToast } from "../components/Toast";
 import { Button, Card, CardBody, CardHead, EmptyState, Field, IconButton, Input, Select, SettingRow, Skeleton } from "../components/ui";
-import { cleanPrefix } from "../lib/abmNr";
+import { cleanKuerzel, cleanPrefix } from "../lib/abmNr";
 import { isPilot } from "../lib/appMode";
 import { cleanMasterName } from "../lib/projectForm";
 import { useSession } from "../lib/session";
@@ -193,14 +193,17 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
   const toast = useToast();
   const [editing, setEditing] = useState(false);
   const [prefixes, setPrefixes] = useState<Record<string, string>>({});
-  const [neu, setNeu] = useState({ name: "", prefix: "" });
+  /** Kürzel für die Anfrage-Nummer (A-SH-12), Migration 0027 */
+  const [kuerzel, setKuerzel] = useState<Record<string, string>>({});
+  const [neu, setNeu] = useState({ name: "", prefix: "", kuerzel: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sorted = [...companies].sort((a, b) => (a.numberPrefix ?? "9999").localeCompare(b.numberPrefix ?? "9999") || a.name.localeCompare(b.name, "de"));
 
   function start() {
     setPrefixes(Object.fromEntries(companies.map((c) => [c.id, c.numberPrefix ?? ""])));
-    setNeu({ name: "", prefix: "" });
+    setKuerzel(Object.fromEntries(companies.map((c) => [c.id, c.kuerzel ?? ""])));
+    setNeu({ name: "", prefix: "", kuerzel: "" });
     setError(null);
     setEditing(true);
   }
@@ -215,13 +218,21 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
       const p = cleanPrefix(prefixes[c.id] ?? "", c.id, after);
       if (!p.ok) return setError(`${c.name}: ${p.reason}`);
     }
+    const afterK = companies.map((c) => ({ ...c, kuerzel: kuerzel[c.id]?.trim().toUpperCase() || null }));
+    const changedK = companies.filter((c) => (kuerzel[c.id]?.trim().toUpperCase() || null) !== (c.kuerzel ?? null));
+    for (const c of changedK) {
+      const k = cleanKuerzel(kuerzel[c.id] ?? "", c.id, afterK);
+      if (!k.ok) return setError(`${c.name}: ${k.reason}`);
+    }
     const addName = neu.name.trim();
-    if (!addName && neu.prefix.trim()) return setError("Für den neuen Nummernkreis den Namen der Hausbaufirma eintragen.");
+    if (!addName && (neu.prefix.trim() || neu.kuerzel.trim())) return setError("Für den neuen Nummernkreis bzw. das Kürzel den Namen der Hausbaufirma eintragen.");
     if (addName) {
       const n = cleanMasterName(addName, companies.map((c) => c.name));
       if (!n.ok) return setError(n.reason);
       const p = cleanPrefix(neu.prefix, null, after);
       if (!p.ok) return setError(`${addName}: ${p.reason}`);
+      const k = cleanKuerzel(neu.kuerzel, null, afterK);
+      if (!k.ok) return setError(`${addName}: ${k.reason}`);
     }
     setBusy(true);
     // Erst leeren, dann setzen: so stört ein Tausch nicht an der Eindeutigkeit in der Datenbank
@@ -235,9 +246,24 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
       const res = await mutate((r) => r.setCompanyPrefix(c.id, value));
       if (!res.ok) return (setBusy(false), setError(res.error));
     }
+    // Kürzel wie Nummernkreise: erst leeren, dann setzen (Tausch zwischen zwei Firmen)
+    for (const c of changedK.filter((x) => x.kuerzel)) {
+      const res = await mutate((r) => r.setCompanyKuerzel(c.id, null));
+      if (!res.ok) return (setBusy(false), setError(res.error));
+    }
+    for (const c of changedK) {
+      const value = kuerzel[c.id]?.trim() || null;
+      if (!value) continue;
+      const res = await mutate((r) => r.setCompanyKuerzel(c.id, value));
+      if (!res.ok) return (setBusy(false), setError(res.error));
+    }
     if (addName) {
       const res = await mutate((r) => r.createCompany(addName, neu.prefix.trim() || null));
       if (!res.ok) return (setBusy(false), setError(res.error));
+      if (neu.kuerzel.trim()) {
+        const k = await mutate((r) => r.setCompanyKuerzel(res.value.id, neu.kuerzel));
+        if (!k.ok) return (setBusy(false), setError(k.error));
+      }
     }
     setBusy(false);
     toast("Nummernkreise gespeichert", "ok");
@@ -249,7 +275,7 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
       <CardHead
         title="Hausbaufirmen und Nummernkreise"
         icon={<Hash size={16} />}
-        sub="Die ersten vier Ziffern der ABM-Nr. (z. B. 8161-1588) bestimmen die Hausbaufirma und die nächste Nummer."
+        sub="Die ersten vier Ziffern der ABM-Nr. (z. B. 8161-1588) bestimmen die Hausbaufirma und die nächste Nummer. Das Kürzel steht in der Anfrage-Nummer (z. B. A-SH-12)."
         actions={
           admin && !editing ? (
             <IconButton size="sm" label="Nummernkreise bearbeiten" onClick={start}>
@@ -262,18 +288,23 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
         {editing ? (
           <form className="edit-form" onSubmit={(e) => void submit(e)} noValidate onKeyDown={(e) => e.key === "Escape" && !busy && setEditing(false)}>
             {sorted.map((c, i) => (
-              <Field key={c.id} label={c.name} htmlFor={`nk-${c.id}`}>
-                <Input
-                  id={`nk-${c.id}`}
-                  value={prefixes[c.id] ?? ""}
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="z. B. 8161"
-                  autoFocus={i === 0}
-                  autoComplete="off"
-                  onChange={(e) => setPrefixes({ ...prefixes, [c.id]: e.target.value })}
-                />
-              </Field>
+              <div className="dialog-row" key={c.id}>
+                <Field label={`${c.name}: Nummernkreis`} htmlFor={`nk-${c.id}`}>
+                  <Input
+                    id={`nk-${c.id}`}
+                    value={prefixes[c.id] ?? ""}
+                    inputMode="numeric"
+                    maxLength={4}
+                    placeholder="z. B. 8161"
+                    autoFocus={i === 0}
+                    autoComplete="off"
+                    onChange={(e) => setPrefixes({ ...prefixes, [c.id]: e.target.value })}
+                  />
+                </Field>
+                <Field label="Kürzel für Anfragen" htmlFor={`nk-k-${c.id}`}>
+                  <Input id={`nk-k-${c.id}`} value={kuerzel[c.id] ?? ""} maxLength={4} placeholder="z. B. SH" autoComplete="off" onChange={(e) => setKuerzel({ ...kuerzel, [c.id]: e.target.value.toUpperCase() })} />
+                </Field>
+              </div>
             ))}
             <div className="dialog-row">
               <Field label="Weitere Hausbaufirma" htmlFor="nk-neu-name">
@@ -281,6 +312,9 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
               </Field>
               <Field label="Nummernkreis" htmlFor="nk-neu-prefix">
                 <Input id="nk-neu-prefix" value={neu.prefix} inputMode="numeric" maxLength={4} placeholder="vier Ziffern" autoComplete="off" onChange={(e) => setNeu({ ...neu, prefix: e.target.value })} />
+              </Field>
+              <Field label="Kürzel" htmlFor="nk-neu-kuerzel">
+                <Input id="nk-neu-kuerzel" value={neu.kuerzel} maxLength={4} placeholder="z. B. SH" autoComplete="off" onChange={(e) => setNeu({ ...neu, kuerzel: e.target.value.toUpperCase() })} />
               </Field>
             </div>
             {error && (
@@ -303,7 +337,11 @@ function NummernkreisKarte({ companies, admin }: { companies: Company[]; admin: 
               {sorted.map((c) => (
                 <div className="dl-row" key={c.id}>
                   <dt>{c.name}</dt>
-                  <dd>{c.numberPrefix ?? <span className="muted">–</span>}</dd>
+                  <dd>
+                    {c.numberPrefix ?? <span className="muted">–</span>}
+                    <span className="muted"> · Anfragen: </span>
+                    {c.kuerzel ? `A-${c.kuerzel}-…` : <span className="muted">kein Kürzel</span>}
+                  </dd>
                 </div>
               ))}
             </dl>

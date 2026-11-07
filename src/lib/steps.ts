@@ -22,6 +22,19 @@ export const CORE_STEPS: StepDefinition[] = [
   { key: "baugenehmigung", label: "Genehmigung", sortOrder: 50, stage: "Genehmigung" },
 ];
 
+/**
+ * Stufe der Anfragen (Migration 0027): eigener, kurzer Ablauf, solange ein Projekt den Status "anfrage" hat. Diese Schritte
+ * stehen in Dataset.anfrageSteps, nie in stepDefinitions (Pipeline, Liste, Dashboard und Warnungen sehen sie nicht).
+ */
+export const ANFRAGE_STAGE = "Anfrage";
+export const ANFRAGE_EINGEGANGEN = "anfrage_eingegangen";
+export const ANFRAGE_BEAUFTRAGT = "anfrage_beauftragt";
+export const ANFRAGE_STEPS: StepDefinition[] = [
+  { key: ANFRAGE_EINGEGANGEN, label: "Anfrage eingegangen", sortOrder: 1, stage: ANFRAGE_STAGE },
+  { key: "anfrage_bearbeitet", label: "Bearbeitet", sortOrder: 2, stage: ANFRAGE_STAGE },
+  { key: ANFRAGE_BEAUFTRAGT, label: "Beauftragt", sortOrder: 3, stage: ANFRAGE_STAGE },
+];
+
 /** Stufe, die nur Projekte mit Baubegleitung durchlaufen; ohne endet der Prozess mit der Stufe davor (Baufreigabe). */
 export const BAUBEGLEITUNG_STAGE = "Baubegleitung";
 

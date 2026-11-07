@@ -33,10 +33,53 @@ export function suggestAbmNr(prefix: string | null | undefined, projects: Pick<P
   return `${prefix}-${max + 1}`;
 }
 
-/** Hausbaufirma zum Nummernkreis einer ABM-Nr., oder null (unbekannt oder ungültig). */
+// ---------------------------------------------------------------------------
+// Anfrage-Nummer: "A-" + Kürzel der Hausbaufirma + laufende Nummer ohne führende Nullen, z. B. A-SH-12 (Migration 0027)
+// ---------------------------------------------------------------------------
+
+/** Gültiges Format. Die Datenbank erzwingt die Eindeutigkeit je Kürzel (Nummer als Zahl, Migration 0027). */
+export const ANFRAGE_RE = /^A-[A-Z]{1,4}-\d+$/;
+export const KUERZEL_RE = /^[A-Z]{1,4}$/;
+
+export function parseAnfrageNr(s: string | null | undefined): { kuerzel: string; num: number } | null {
+  const t = s?.trim() ?? "";
+  if (!ANFRAGE_RE.test(t)) return null;
+  const [, kuerzel, num] = t.split("-");
+  return { kuerzel, num: Number(num) };
+}
+
+/** Nächste Anfrage-Nummer zum Kürzel: höchste vorhandene Nummer + 1 (auch über angenommene und abgesagte). Ohne Kürzel: "". */
+export function suggestAnfrageNr(kuerzel: string | null | undefined, projects: Pick<Project, "abmNr">[]): string {
+  if (!kuerzel) return "";
+  let max = 0;
+  for (const p of projects) {
+    const a = parseAnfrageNr(p.abmNr);
+    if (a && a.kuerzel === kuerzel && a.num > max) max = a.num;
+  }
+  return `A-${kuerzel}-${max + 1}`;
+}
+
+/** Nächste Nummer für ein Projekt (ABM-Nr. aus dem Nummernkreis) bzw. eine Anfrage (A-<Kürzel>-<Nummer>). */
+export function suggestNummer(company: Pick<Company, "numberPrefix" | "kuerzel"> | null | undefined, projects: Pick<Project, "abmNr">[], anfrage: boolean): string {
+  return anfrage ? suggestAnfrageNr(company?.kuerzel, projects) : suggestAbmNr(company?.numberPrefix, projects);
+}
+
+/** Kürzel für die Einstellungen prüfen: ein bis vier Buchstaben, wird groß geschrieben, eindeutig. Leer = keins. */
+export function cleanKuerzel(raw: string, companyId: string | null, companies: Company[]): { ok: true; kuerzel: string | null } | { ok: false; reason: string } {
+  const t = raw.trim().toUpperCase();
+  if (!t) return { ok: true, kuerzel: null };
+  if (!KUERZEL_RE.test(t)) return { ok: false, reason: "Ein bis vier Buchstaben ohne Umlaute, z. B. SH." };
+  const other = companies.find((c) => c.kuerzel === t && c.id !== companyId);
+  if (other) return { ok: false, reason: `${t} ist schon ${other.name} zugeordnet.` };
+  return { ok: true, kuerzel: t };
+}
+
+/** Hausbaufirma zum Nummernkreis einer ABM-Nr. bzw. zum Kürzel einer Anfrage-Nummer, oder null. */
 export function companyForAbm(abmNr: string | null | undefined, companies: Company[]): Company | null {
   const a = parseAbm(abmNr);
-  return a ? (companies.find((c) => c.numberPrefix === a.prefix) ?? null) : null;
+  if (a) return companies.find((c) => c.numberPrefix === a.prefix) ?? null;
+  const r = parseAnfrageNr(abmNr);
+  return r ? (companies.find((c) => c.kuerzel === r.kuerzel) ?? null) : null;
 }
 
 export interface AbmHint {

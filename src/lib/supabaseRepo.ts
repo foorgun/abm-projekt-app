@@ -14,7 +14,8 @@ import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
-import { cleanPrefix } from "./abmNr";
+import { cleanKuerzel, cleanPrefix } from "./abmNr";
+import { ANFRAGE_STAGE } from "./steps";
 import { planProjectUpdate } from "./projectEdit";
 import { cleanMasterName, followupForMissingInfo, infoStateOfNew, validateNewProject } from "./projectForm";
 import {
@@ -209,7 +210,7 @@ export function createSupabaseRepo(): Repo {
     return data as unknown as Row;
   }
   const templates = () => last?.folderTemplates ?? [];
-  const stepLabel = (key: string) => last?.stepDefinitions.find((s) => s.key === key)?.label ?? key;
+  const stepLabel = (key: string) => [...(last?.stepDefinitions ?? []), ...(last?.anfrageSteps ?? [])].find((s) => s.key === key)?.label ?? key;
 
   /**
    * Protokolleintrag über die Funktion log_activity (Migration 0016; Name und Benutzer setzt die Datenbank).
@@ -300,7 +301,8 @@ export function createSupabaseRepo(): Repo {
         companies: companies.map(toCompany),
         salespeople: salespeople.map(toSalesperson),
         team: team.map(toTeamMember),
-        stepDefinitions: stepDefs.map(toStepDefinition),
+        stepDefinitions: stepDefs.map(toStepDefinition).filter((s) => s.stage !== ANFRAGE_STAGE),
+        anfrageSteps: stepDefs.map(toStepDefinition).filter((s) => s.stage === ANFRAGE_STAGE),
         folderTemplates: folders.map(toFolderTemplate),
         // neueste zuerst, wie im Demo-Modus
         projects: projects.map((p) => toProject(p, stepsByProject.get(p.id) ?? {})).reverse(),
@@ -333,7 +335,7 @@ export function createSupabaseRepo(): Repo {
 
     async setStepDate(projectId, stepKey, date) {
       requireStaff();
-      if (last && !last.stepDefinitions.some((s) => s.key === stepKey)) throw new Error(`Unbekannter Schritt ${stepKey}`);
+      if (last && ![...last.stepDefinitions, ...last.anfrageSteps].some((s) => s.key === stepKey)) throw new Error(`Unbekannter Schritt ${stepKey}`);
       if (date) {
         const { data, error } = await sb
           .from("project_steps")
@@ -434,6 +436,16 @@ export function createSupabaseRepo(): Repo {
       // Die Zeilenregel companies_update_admin lässt nur Admins ändern; trifft das Update keine Zeile, fehlt die Berechtigung
       const { data, error } = await sb.from("companies").update({ number_prefix: p.prefix }).eq("id", companyId).select("id");
       if (error) fail(error, "Nummernkreis konnte nicht gespeichert werden");
+      if (!data?.length) throw new PermissionError();
+    },
+
+    async setCompanyKuerzel(companyId, kuerzel) {
+      if (user.role !== "admin") throw new PermissionError();
+      const k = cleanKuerzel(kuerzel ?? "", companyId, last?.companies ?? []);
+      if (!k.ok) throw new Error(k.reason);
+      // Zeilenregel companies_update_admin: trifft das Update keine Zeile, fehlt die Berechtigung
+      const { data, error } = await sb.from("companies").update({ kuerzel: k.kuerzel }).eq("id", companyId).select("id");
+      if (error) fail(error, "Kürzel konnte nicht gespeichert werden");
       if (!data?.length) throw new PermissionError();
     },
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { abmHints, abmSortKey, cleanPrefix, companyForAbm, parseAbm, suggestAbmNr } from "./abmNr";
+import { abmHints, abmSortKey, cleanKuerzel, cleanPrefix, companyForAbm, parseAbm, parseAnfrageNr, suggestAbmNr, suggestAnfrageNr } from "./abmNr";
 import { compareAbm } from "./projectFilters";
 import { validateProjectFields } from "./projectForm";
 import type { Company, Project } from "./types";
@@ -116,5 +116,40 @@ describe("Nummernkreis in den Einstellungen", () => {
     expect(cleanPrefix("830", "fh", companies)).toMatchObject({ ok: false, reason: expect.stringMatching(/vier Ziffern/) });
     expect(cleanPrefix("8161", "fh", companies)).toMatchObject({ ok: false, reason: "8161 ist schon Bien-Zenker zugeordnet." });
     expect(cleanPrefix("8161", "bz", companies)).toEqual({ ok: true, prefix: "8161" }); // eigener Wert bleibt erlaubt
+  });
+});
+
+describe("Anfrage-Nummer (Migration 0027)", () => {
+  const companies = [
+    { id: "c1", name: "Schwabenhaus", numberPrefix: "8185", kuerzel: "SH" },
+    { id: "c2", name: "Living Haus", numberPrefix: "8260", kuerzel: "LH" },
+  ];
+  it("parseAnfrageNr", () => {
+    expect(parseAnfrageNr("A-SH-12")).toEqual({ kuerzel: "SH", num: 12 });
+    expect(parseAnfrageNr("A-sh-12")).toBeNull();
+    expect(parseAnfrageNr("8185-12")).toBeNull();
+    expect(parseAbm("A-SH-12")).toBeNull();
+  });
+  it("nächste Nummer je Kürzel, ab 1", () => {
+    const projects = [{ abmNr: "A-SH-9" }, { abmNr: "A-SH-10" }, { abmNr: "A-LH-40" }, { abmNr: "8185-700" }, { abmNr: null }];
+    expect(suggestAnfrageNr("SH", projects)).toBe("A-SH-11");
+    expect(suggestAnfrageNr("BZ", projects)).toBe("A-BZ-1");
+    expect(suggestAnfrageNr(null, projects)).toBe("");
+  });
+  it("Firma zum Kürzel", () => expect(companyForAbm("A-LH-3", companies)?.id).toBe("c2"));
+  it("cleanKuerzel", () => {
+    expect(cleanKuerzel(" sh ", "c1", companies)).toEqual({ ok: true, kuerzel: "SH" });
+    expect(cleanKuerzel("", "c1", companies)).toEqual({ ok: true, kuerzel: null });
+    expect(cleanKuerzel("LH", "c1", companies)).toMatchObject({ ok: false });
+    expect(cleanKuerzel("SCHWA", "c1", companies)).toMatchObject({ ok: false });
+    expect(cleanKuerzel("SÜ", "c1", companies)).toMatchObject({ ok: false });
+  });
+  it("Prüfung im Formular: Format, führende Nullen, doppelt", () => {
+    const base = { bauherrLabel: "Beispiel", kind: "neubau" as const, hausbauNr: null, intakeMonth: null };
+    const existing = [{ abmNr: "A-SH-5", bauherrLabel: "Altheim", status: "anfrage" }] as never;
+    expect(validateProjectFields({ ...base, abmNr: "A-SH-6" }, existing)).toEqual({});
+    expect(validateProjectFields({ ...base, abmNr: "A-SH-05" }, existing).abmNr).toMatch(/A-SH-5/);
+    expect(validateProjectFields({ ...base, abmNr: "A-SH-5" }, existing).abmNr).toMatch(/schon vergeben/);
+    expect(validateProjectFields({ ...base, abmNr: "A-LH-5" }, existing)).toEqual({});
   });
 });

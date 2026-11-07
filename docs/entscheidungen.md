@@ -743,3 +743,23 @@ war der Nachname von Bauherr 1 Pflicht, auch in der Datenbank.
   der Bauherr offen ist), dazu eine verständliche Meldung im Frontend. Absagen geht auch ohne Bauherr.
 - Die Aufgabe „Fehlende Angaben nachfragen“ nennt den fehlenden Bauherrn nicht; das Kennzeichen „Bauherr offen“ steht
   dafür im Kopf der Anfrage.
+
+## Anfrage-Nummer und Ablauf der Anfrage (Migration 0027)
+
+Anlass: Wunsch von ABM. Anfragen sollen nicht schon eine ABM-Nr. aus dem Nummernkreis belegen und einen eigenen, kurzen
+Ablauf haben.
+
+- **Anfrage-Nummer `A-<Kürzel>-<Nummer>`**, z. B. A-SH-12. Laufende Nummer je Kürzel ab 1, ohne führende Nullen
+  (wie bei der ABM-Nr.), gezählt über alle Projekte mit dieser Form (auch angenommene und abgesagte). Eindeutig je Kürzel,
+  in der Datenbank wie in der App. Das Format gilt auch nach dem Annehmen weiter; eine ABM-Nr. vergibt die App dabei nicht
+  von selbst.
+- **Kürzel der Hausbaufirma** (`companies.kuerzel`, ein bis vier Großbuchstaben, eindeutig), pflegen nur Admins unter
+  Einstellungen, Hausbaufirmen. Die Migration belegt LH (Living Haus), SH (Schwabenhaus) und BZ (Bien-Zenker) vor, nur wenn
+  der Name genau eine Firma trifft. Ohne Kürzel gibt es keinen Vorschlag, der Dialog sagt warum.
+- **Ablauf der Anfrage:** Anfrage eingegangen, Bearbeitet, Beauftragt. Eigene Schritte der Stufe „Anfrage“ in
+  `step_definitions` (vor allen Projektschritten); die App führt sie getrennt (`Dataset.anfrageSteps`), Pipeline,
+  Projektliste, Dashboard und Warnungen sehen nur die Projektschritte.
+- **Automatisch:** „Anfrage eingegangen“ beim Anlegen, „Beauftragt“ beim Annehmen als Projekt (Trigger). Wer „Beauftragt“
+  im Ablauf einträgt, nimmt die Anfrage damit an (mit der Prüfung auf den Bauherrn). Danach zeigt die Seite den Ablauf
+  des Projekts.
+- **Kein Planungsprotokoll** bei Anfragen: der Reiter erscheint erst nach dem Annehmen.
