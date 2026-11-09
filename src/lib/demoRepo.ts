@@ -18,6 +18,7 @@ import { checkFile } from "./files";
 import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
 import { demoStandort } from "./planungsprotokoll/standort";
 import { isAllowedFolder, templateOf } from "./folders";
+import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
 import { cleanKuerzel, cleanPrefix } from "./abmNr";
 import { ANFRAGE_BEAUFTRAGT, ANFRAGE_EINGEGANGEN } from "./steps";
@@ -33,6 +34,7 @@ import {
   type DraftInput,
   type MailboxInput,
   type ProjectPatch,
+  type EinverstaendnisAblage,
   type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
@@ -44,7 +46,7 @@ import {
 } from "./repo";
 import type { SessionUser } from "./session";
 import { CLASSIC_PARTY_ROLES } from "./types";
-import type { Activity, AgentSettings, BueroDaten, Dataset, DraftFileRecord, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import type { Activity, AgentSettings, BueroDaten, Dataset, DraftFileRecord, Einverstaendnis, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 import { namenErgaenzen } from "./weitereBauherren";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
@@ -105,6 +107,8 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     buero: null,
     planungsprotokolle: [],
     standortAngaben: [],
+    // undefined statt leer: keine Warnung "Einverständniserklärung fehlt" für Freiberufler
+    einverstaendnisse: undefined,
   };
 }
 
@@ -143,6 +147,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
   const draftBlobs = new Map<string, Blob>();
   /** Erzeugte Planungsprotokolle (PDF) je Fassung: nur in dieser Sitzung, wie alles im Demo-Modus */
   const protokollBlobs = new Map<string, Blob>();
+  const erklaerungBlobs = new Map<string, Blob>();
 
   /** Legt eine Kopie ab (Metadaten). Bei Namenskonflikt Zähler anhängen, nie überschreiben. */
   function storeDocument(input: {
@@ -455,6 +460,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.agentRules = keep(db.agentRules);
       for (const x of db.planungsprotokolle.filter((x) => x.projectId === p.id)) protokollBlobs.delete(x.id);
       db.planungsprotokolle = keep(db.planungsprotokolle);
+      for (const x of (db.einverstaendnisse ?? []).filter((x) => x.projectId === p.id)) erklaerungBlobs.delete(x.id);
+      db.einverstaendnisse = keep(db.einverstaendnisse ?? []);
       db.standortAngaben = keep(db.standortAngaben);
       // im Demo-Modus hängt der Kontakt am Projekt: er geht mit
       db.bauherren = keep(db.bauherren);
@@ -995,6 +1002,41 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     async planungsprotokollDatei(protokoll) {
       requireStaff();
       const blob = protokollBlobs.get(protokoll.id);
+      if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
+      return blob;
+    },
+
+    async setBauvorhaben(projectId, bauvorhaben) {
+      requireStaff();
+      project(projectId).bauvorhaben = bauvorhaben?.replace(/\s+/g, " ").trim().slice(0, 200) || null;
+      return done(undefined);
+    },
+
+    async saveArchitektAngaben(teamMemberId, a) {
+      requireStaff();
+      const t = db.team.find((x) => x.id === teamMemberId);
+      if (!t) throw new Error("Architekt nicht gefunden");
+      const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
+      const email = c(a.email);
+      if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Die E-Mail-Adresse ist ungültig.");
+      Object.assign(t, { anrede: a.anrede ?? null, titel: c(a.titel), anschrift: c(a.anschrift), tel: c(a.tel), email });
+      return done(undefined);
+    },
+
+    async saveEinverstaendnis({ projectId, fileName, blob }: EinverstaendnisAblage) {
+      requireStaff();
+      project(projectId);
+      const doc = storeDocument({ projectId, folderPath: EINVERSTAENDNIS_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, source: "upload", sourceItemId: null, receivedOn: todayIso() });
+      const row: Einverstaendnis = { id: newId("ev"), projectId, erstelltVon: user.name, erstelltAm: now(), dokumentId: doc.id };
+      db.einverstaendnisse = [row, ...(db.einverstaendnisse ?? [])];
+      erklaerungBlobs.set(row.id, blob);
+      log({ projectId, kind: "datei", text: `${fileName} abgelegt` });
+      return done(structuredClone(row));
+    },
+
+    async einverstaendnisDatei(e) {
+      requireStaff();
+      const blob = erklaerungBlobs.get(e.id);
       if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
       return blob;
     },

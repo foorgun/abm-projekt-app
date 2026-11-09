@@ -16,6 +16,7 @@ import type { StandortWert,
   Company,
   ContractMeta,
   Dataset,
+  Einverstaendnis,
   DocumentType,
   KalenderEintrag,
   Mailbox,
@@ -127,6 +128,16 @@ export interface ProtokollAblage {
   fileName: string;
   blob: Blob;
 }
+
+/** Erzeugte Einverständniserklärung ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
+export interface EinverstaendnisAblage {
+  projectId: string;
+  fileName: string;
+  blob: Blob;
+}
+
+/** Angaben des Architekten für die Einverständniserklärung (Migration 0028). Leere Werte leeren das Feld. */
+export type ArchitektAngaben = Pick<TeamMember, "anrede" | "titel" | "anschrift" | "tel" | "email">;
 
 /** Felder des Projekts, die sich auf der Projektseite bearbeiten lassen (Status und Art gehören nicht dazu). */
 export type ProjectFields = Pick<
@@ -350,6 +361,16 @@ export interface Repo {
   savePlanungsprotokoll(input: ProtokollAblage): Promise<Planungsprotokoll>;
   /** Datei einer Fassung zum Herunterladen. */
   planungsprotokollDatei(protokoll: Planungsprotokoll): Promise<Blob>;
+
+  // --- Einverständniserklärung (nur Admin und Mitarbeiter; Migration 0028) ---
+  /** Bezeichnung des Bauvorhabens setzen (leer = entfernen). Kein Verlaufseintrag (den bekommt erst das abgelegte PDF). */
+  setBauvorhaben(projectId: string, bauvorhaben: string | null): Promise<void>;
+  /** Anrede, Berufsbezeichnung und Kontakt eines Architekten speichern (gilt für alle seine Projekte). */
+  saveArchitektAngaben(teamMemberId: string, angaben: ArchitektAngaben): Promise<void>;
+  /** Erzeugte Erklärung im Projektordner ablegen und als neue Fassung eintragen (nie überschreiben). */
+  saveEinverstaendnis(input: EinverstaendnisAblage): Promise<Einverstaendnis>;
+  /** Datei einer Fassung zum Herunterladen. */
+  einverstaendnisDatei(e: Einverstaendnis): Promise<Blob>;
   /**
    * Schornsteinfeger zur Bauadresse vorschlagen (Echtbetrieb: Edge Function schornsteinfeger-suche, Demo: feste Beispielantwort).
    * Wirft nie wegen der Quelle: Fehler kommen als { ok: false } bzw. Status quelle_nicht_erreichbar zurück.

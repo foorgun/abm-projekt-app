@@ -120,3 +120,12 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - **Lizenz:** Lärmdienst HLNUG (`laerm_oden`) und die UIS-Nutzungsvereinbarung der LUBW regeln automatische Abfragen nicht ausdrücklich. Bei HLNUG und LUBW nachfragen?
 - **Adresssuche:** Photon läuft ohne Zusage (Fair Use). Reicht das, oder später ein Dienst mit Vertrag?
 - **Höhe:** Öffentliche API von Open Topo Data ohne Zusage und ohne Nutzungsbedingungen. Reicht das, oder später auf das DGM des BKG wechseln?
+
+## Zur Einverständniserklärung / Vollmacht (Migration 0028)
+
+- **Auslöser der Aufgabe:** Annahme: ab „Vertrag zurück“ bis zur Übergabe des Baugesuchs, nur bei Neubauten (`ALERT_RULES.einverstaendnisAbSchritt`).
+  Beim ersten Start bekommen alle laufenden Projekte in diesem Abschnitt eine Aufgabe, auch wenn die Vollmacht dort schon auf Papier vorliegt.
+  Die Aufgabe dann einfach abhaken (das blendet die Warnung aus). Passt der Schritt, oder lieber später (z. B. „Entwurf freigegeben“)?
+- **Text:** fest wie in der bisherigen Vorlage, bei einer Person „bevollmächtige ich“ statt „wir“. „als Vertreter“ bleibt auch bei einer Architektin. So lassen?
+- **Ortsteil:** Das Baugrundstück steht als „PLZ Ort-Ortsteil“ (z. B. „72401 Haigerloch-Owingen“). Gilt das so für alle Gemeinden?
+- **Unterschrift:** Die Erklärung ist ein PDF zum Ausdrucken und Unterschreiben. Versand per Mail und Rücklauf (unterschrieben zurück) kommen später.

@@ -33,6 +33,7 @@ export const BACKUP_TABLES: Record<string, string[]> = {
   user_roles: ["user_id"],
   buero_daten: ["id"],
   planungsprotokolle: ["id"],
+  einverstaendniserklaerungen: ["id"],
   schornsteinfeger_suche: ["plz", "strasse_key"],
   schornsteinfeger_details: ["bsm_id"],
   schornsteinfeger_abrufe: ["id"],
