@@ -1,6 +1,7 @@
 // Einverständniserklärung / Vollmacht: aus Projekt, Bauherr, Architekt und Bürodaten die Werte bilden. Reine Funktionen.
 // Fehlt etwas, bleibt der Wert null (im PDF steht dann eine leere Linie zum Ausfüllen von Hand); es gibt keinen Fehler.
 
+import { bundeslandFromText } from "../bundesland";
 import { formatDate } from "../format";
 import type { BauherrContact, BueroDaten, Dataset, Project, TeamMember } from "../types";
 
@@ -25,6 +26,42 @@ export const VOLLMACHT_PUNKTE = [
   "Entgegennahme der Baugenehmigung",
 ] as const;
 
+/**
+ * Wer als Entwurfsverfasser und Vertreter in der Erklärung steht (Vorgabe von ABM, über die Kürzel der Architekten):
+ * Mehmet (MC) nur, wenn er der Architekt des Projekts ist und der Bauort in Baden-Württemberg liegt. In allen anderen
+ * Fällen Willi (BE), auch ohne eingetragenen Architekten.
+ */
+export const ENTWURFSVERFASSER_REGEL = { standard: "BE", nurInBW: "MC", bundesland: "BW" } as const;
+
+export interface EntwurfsverfasserWahl {
+  /** Gewähltes Teammitglied; undefined, wenn es das Kürzel im Team nicht gibt */
+  mitglied: TeamMember | undefined;
+  /** Kurze Begründung für die Anzeige */
+  grund: string;
+  /** Mehmet ist eingetragen, das Bundesland des Bauorts aber unbekannt: dann Willi, mit Hinweis */
+  bundeslandFehlt: boolean;
+}
+
+/** Bundesland des Bauorts: Feld am Projekt, sonst der ausgeschriebene Name beim Bauort. Keine Vermutung aus der PLZ. */
+export function bundeslandDesBauorts(project: Pick<Project, "bundesland">, contact: BauherrContact | null): string | null {
+  return bundeslandFromText(project.bundesland) ?? bundeslandFromText(contact?.siteState);
+}
+
+export function entwurfsverfasserWaehlen(project: Pick<Project, "architectId" | "bundesland">, team: TeamMember[], contact: BauherrContact | null): EntwurfsverfasserWahl {
+  const R = ENTWURFSVERFASSER_REGEL;
+  const nachKuerzel = (code: string) => team.find((t) => t.code?.trim().toUpperCase() === code);
+  const eingetragen = team.find((t) => t.id === project.architectId);
+  const istAusnahme = eingetragen?.code?.trim().toUpperCase() === R.nurInBW;
+  const land = bundeslandDesBauorts(project, contact);
+  if (istAusnahme && land === R.bundesland) return { mitglied: eingetragen, grund: `Architekt ${R.nurInBW}, Bauort in Baden-Württemberg`, bundeslandFehlt: false };
+  const grund = istAusnahme
+    ? land
+      ? `Architekt ${R.nurInBW}, aber Bauort nicht in Baden-Württemberg: immer ${R.standard}`
+      : `Architekt ${R.nurInBW}, Bundesland des Bauorts fehlt: vorerst ${R.standard}`
+    : `außer bei ${R.nurInBW} in Baden-Württemberg immer ${R.standard}`;
+  return { mitglied: nachKuerzel(R.standard), grund, bundeslandFehlt: istAusnahme && !land };
+}
+
 export const BETREFF = "Einreichung Bauantrag, Führung Schriftverkehr und Entgegennahme der Baugenehmigung";
 
 export interface EinverstaendnisDaten {
@@ -36,6 +73,8 @@ export interface EinverstaendnisDaten {
   personen: string[];
   /** Datum "Aufgestellt", TT.MM.JJJJ */
   datum: string;
+  /** Wer Entwurfsverfasser ist und warum (siehe ENTWURFSVERFASSER_REGEL) */
+  wahl: { teamMemberId: string | null; grund: string; bundeslandFehlt: boolean };
 }
 
 const clean = (v: string | null | undefined): string | null => {
@@ -135,14 +174,15 @@ export function einverstaendnisDaten(data: Pick<Dataset, "projects" | "bauherren
   if (!project) throw new Error("Projekt nicht gefunden");
   const contact = data.bauherren.find((b) => b.projectId === projectId) ?? null;
   const personen = bauherrPersonen(contact);
-  const architekt = data.team.find((t) => t.id === project.architectId);
+  const wahl = entwurfsverfasserWaehlen(project, data.team, contact);
   return {
     bauherrschaft: { namen: bauherrschaftZeile(personen), ...wohnanschrift(contact) },
     bauvorhaben: clean(project.bauvorhaben),
     grundstueck: grundstueck(contact, project),
-    entwurfsverfasser: entwurfsverfasser(architekt, data.buero),
+    entwurfsverfasser: entwurfsverfasser(wahl.mitglied, data.buero),
     personen: personen.map((p) => p.voll),
     datum: formatDate(heute),
+    wahl: { teamMemberId: wahl.mitglied?.id ?? null, grund: wahl.grund, bundeslandFehlt: wahl.bundeslandFehlt },
   };
 }
 
@@ -159,7 +199,8 @@ export function fehlendeAngaben(d: EinverstaendnisDaten): string[] {
   pruefe(d.grundstueck.plzOrt, "PLZ und Ort des Baugrundstücks");
   pruefe(d.grundstueck.strasse, "Straße des Baugrundstücks");
   pruefe(d.grundstueck.flurstueck, "Flurstück");
-  pruefe(d.entwurfsverfasser.name, "Architekt (Entwurfsverfasser)");
+  if (d.wahl.bundeslandFehlt) out.push("Bundesland des Bauorts (entscheidet über den Entwurfsverfasser)");
+  pruefe(d.entwurfsverfasser.name, `Architekt ${ENTWURFSVERFASSER_REGEL.standard} im Team (Entwurfsverfasser)`);
   if (d.entwurfsverfasser.name) {
     pruefe(d.entwurfsverfasser.anrede, "Anrede des Architekten");
     pruefe(d.entwurfsverfasser.titel, "Berufsbezeichnung des Architekten");

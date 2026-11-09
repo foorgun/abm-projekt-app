@@ -11,7 +11,9 @@ import {
   bauherrschaftZeile,
   einverstaendnisDateiname,
   einverstaendnisDaten,
+  ENTWURFSVERFASSER_REGEL,
   entwurfsverfasser,
+  entwurfsverfasserWaehlen,
   fehlendeAngaben,
   plzOrtMitOrtsteil,
   vollmachtText,
@@ -32,7 +34,9 @@ function project(over: Partial<Project> = {}): Project {
   };
 }
 
-const ARCHITEKT: TeamMember = { id: "t1", code: "AR", name: "Paul Anders", role: "architekt", anrede: "Herr", titel: "Dipl.-Ing. (FH), Freier Architekt", anschrift: null, tel: null, email: "anders@example.de" };
+// Kürzel wie im Büro: BE ist der Standard, MC nur in Baden-Württemberg (Namen erfunden)
+const ARCHITEKT: TeamMember = { id: "t1", code: "BE", name: "Paul Anders", role: "architekt", anrede: "Herr", titel: "Dipl.-Ing. (FH), Freier Architekt", anschrift: null, tel: null, email: "anders@example.de" };
+const MC: TeamMember = { id: "t2", code: "MC", name: "Mara Cello", role: "architekt", anrede: "Frau", titel: "Freie Architektin" };
 const BUERO: BueroDaten = { name: "Demo-Büro", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 000000", mobil: null, email: "info@example.de" };
 
 const KONTAKT: BauherrContact = {
@@ -46,7 +50,7 @@ function dataset(over: { project?: Partial<Project>; kontakt?: BauherrContact | 
   return {
     projects: [project({ flurstueck: "256/2", bauvorhaben: "Neubau Einfamilienhaus mit Doppelgarage", ...over.project })],
     bauherren: over.kontakt === null ? [] : [over.kontakt ?? KONTAKT],
-    team: over.team ?? [ARCHITEKT],
+    team: over.team ?? [ARCHITEKT, MC],
     buero: over.buero === undefined ? BUERO : over.buero,
   };
 }
@@ -69,6 +73,7 @@ describe("Werte der Einverständniserklärung", () => {
     expect(d.entwurfsverfasser).toEqual({ name: "Paul Anders", anrede: "Herr", titel: "Dipl.-Ing. (FH), Freier Architekt", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 000000", email: "anders@example.de" });
     expect(d.personen).toEqual(["Lena Sommer", "Tim Sommer"]);
     expect(d.datum).toBe("21.10.2026");
+    expect(d.wahl).toMatchObject({ teamMemberId: "t1", bundeslandFehlt: false });
     expect(fehlendeAngaben(d)).toEqual([]);
   });
 
@@ -112,7 +117,7 @@ describe("Werte der Einverständniserklärung", () => {
       "PLZ und Ort des Baugrundstücks",
       "Straße des Baugrundstücks",
       "Flurstück",
-      "Architekt (Entwurfsverfasser)",
+      "Architekt BE im Team (Entwurfsverfasser)",
       "Anschrift des Architekten",
       "Tel. des Architekten",
       "E-Mail des Architekten",
@@ -133,6 +138,59 @@ describe("Werte der Einverständniserklärung", () => {
   it("Dateiname ohne verbotene Zeichen, mit Zeitstempel", () => {
     expect(einverstaendnisDateiname("Müller / Weiß", new Date(2026, 9, 21, 8, 5))).toBe("Einverstaendniserklaerung_Müller-Weiß_2026-10-21_0805.pdf");
     expect(einverstaendnisDateiname("  ", new Date(2026, 9, 21, 8, 5))).toBe("Einverstaendniserklaerung_Projekt_2026-10-21_0805.pdf");
+  });
+});
+
+describe("Wer ist Entwurfsverfasser (ENTWURFSVERFASSER_REGEL)", () => {
+  const team = [ARCHITEKT, MC, { id: "t3", code: null, name: "Planer X", role: "planer" as const }];
+  const wahl = (architectId: string | null, bundesland: string | null, siteState: string | null = null) =>
+    entwurfsverfasserWaehlen({ architectId, bundesland }, team, siteState ? { ...KONTAKT, siteState } : KONTAKT);
+
+  it("Regel als Konstante: BE immer, MC nur in BW", () => {
+    expect(ENTWURFSVERFASSER_REGEL).toEqual({ standard: "BE", nurInBW: "MC", bundesland: "BW" });
+  });
+
+  it("MC eingetragen und Bauort in Baden-Württemberg: MC", () => {
+    expect(wahl("t2", "BW").mitglied?.id).toBe("t2");
+    // ausgeschriebenes Land beim Bauort reicht, wenn das Feld am Projekt fehlt
+    expect(wahl("t2", null, "Baden-Württemberg").mitglied?.id).toBe("t2");
+  });
+
+  it("MC eingetragen, Bauort in einem anderen Land: BE", () => {
+    const w = wahl("t2", "BY");
+    expect(w.mitglied?.id).toBe("t1");
+    expect(w.bundeslandFehlt).toBe(false);
+    // Feld am Projekt geht vor dem Text beim Bauort
+    expect(wahl("t2", "BY", "Baden-Württemberg").mitglied?.id).toBe("t1");
+  });
+
+  it("MC eingetragen, Bundesland unbekannt: vorerst BE, mit Hinweis", () => {
+    const w = wahl("t2", null);
+    expect(w.mitglied?.id).toBe("t1");
+    expect(w.bundeslandFehlt).toBe(true);
+    const d = einverstaendnisDaten(dataset({ project: { architectId: "t2", bundesland: null } }), "p1", TODAY);
+    expect(fehlendeAngaben(d)).toContain("Bundesland des Bauorts (entscheidet über den Entwurfsverfasser)");
+  });
+
+  it("BE, ein anderer oder kein Architekt eingetragen: immer BE, in jedem Land", () => {
+    for (const land of ["BW", "BY", null]) {
+      expect(wahl("t1", land).mitglied?.id).toBe("t1");
+      expect(wahl("t3", land).mitglied?.id).toBe("t1");
+      expect(wahl(null, land).mitglied?.id).toBe("t1");
+      expect(wahl(null, land).bundeslandFehlt).toBe(false);
+    }
+  });
+
+  it("Kürzel unabhängig von Groß-/Kleinschreibung; ohne BE im Team bleibt das Feld leer", () => {
+    expect(entwurfsverfasserWaehlen({ architectId: null, bundesland: "BW" }, [{ ...ARCHITEKT, code: " be " }], null).mitglied?.id).toBe("t1");
+    expect(entwurfsverfasserWaehlen({ architectId: "t2", bundesland: "BY" }, [MC], null).mitglied).toBeUndefined();
+  });
+
+  it("im PDF-Text steht der gewählte Architekt mit seiner Anrede", () => {
+    const bw = einverstaendnisDaten(dataset({ project: { architectId: "t2", bundesland: "BW" } }), "p1", TODAY);
+    expect(vollmachtText(bw)).toContain("– Frau Mara Cello als Vertreter");
+    const by = einverstaendnisDaten(dataset({ project: { architectId: "t2", bundesland: "BY" } }), "p1", TODAY);
+    expect(vollmachtText(by)).toContain("– Herrn Paul Anders als Vertreter");
   });
 });
 
