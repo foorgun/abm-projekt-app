@@ -9,6 +9,7 @@ import type {
   AgentRun,
   BauherrContact,
   Company,
+  Einverstaendnis,
   FolderTemplate,
   InboxAttachment,
   InboxItem,
@@ -35,11 +36,11 @@ export type Row = Record<string, any>;
 export const COLS = {
   companies: "id, name, number_prefix, kuerzel",
   salespeople: "id, company_id, name, email",
-  team_members: "id, code, name, role",
+  team_members: "id, code, name, role, anrede, titel, anschrift, tel, email",
   step_definitions: "key, label, sort_order, stage",
   folder_templates: "path, parent_path, sort, label, has_date, keywords, description",
   projects:
-    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, baubegleitung, intake_month, notes, anfrage_text, bauherr_offen, flurstueck, gemarkung, flur, created_at",
+    "id, abm_nr, hausbau_nr, kind, status, company_id, salesperson_id, bauherr_id, bauherr_label, location, bundesland, architect_id, planer_id, baubetreuung, baubegleitung, intake_month, notes, anfrage_text, bauherr_offen, flurstueck, gemarkung, flur, bauvorhaben, created_at",
   project_steps: "project_id, step_key, occurred_on",
   invoices: "id, project_id, label, amount_cents, trigger_step_key, status, due_on, sent_on, paid_on",
   bauherren:
@@ -47,6 +48,7 @@ export const COLS = {
   project_parties: "project_id, role, name, contact, address, phone, mobile, email, fax",
   buero_daten: "name, anschrift, tel, mobil, email",
   planungsprotokolle: "id, project_id, vorlage, variante, erstellt_von, erstellt_am, dokument_id",
+  einverstaendniserklaerungen: "id, project_id, erstellt_von, erstellt_am, dokument_id",
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
   abwesenheiten: "id, user_id, art, von, bis, werktage, status, notiz, entscheidung_von, entscheidung_am, ablehn_grund, created_at",
   urlaubs_anspruch: "user_id, jahr, tage, uebertrag",
@@ -81,7 +83,17 @@ const num = (v: unknown): number | null => (v == null ? null : Number(v));
 
 export const toCompany = (r: Row): Company => ({ id: r.id, name: r.name, numberPrefix: r.number_prefix ?? null, kuerzel: r.kuerzel ?? null });
 export const toSalesperson = (r: Row): Salesperson => ({ id: r.id, companyId: r.company_id, name: r.name, email: r.email ?? null });
-export const toTeamMember = (r: Row): TeamMember => ({ id: r.id, code: r.code ?? null, name: r.name, role: r.role });
+export const toTeamMember = (r: Row): TeamMember => ({
+  id: r.id,
+  code: r.code ?? null,
+  name: r.name,
+  role: r.role,
+  anrede: r.anrede ?? null,
+  titel: r.titel ?? null,
+  anschrift: r.anschrift ?? null,
+  tel: r.tel ?? null,
+  email: r.email ?? null,
+});
 export const toStepDefinition = (r: Row): StepDefinition => ({ key: r.key, label: r.label, sortOrder: r.sort_order, stage: r.stage });
 
 export const toFolderTemplate = (r: Row): FolderTemplate => ({
@@ -127,6 +139,7 @@ export const toProject = (r: Row, steps: StepDates = {}): Project => ({
   flurstueck: r.flurstueck ?? null,
   gemarkung: r.gemarkung ?? null,
   flur: r.flur ?? null,
+  bauvorhaben: r.bauvorhaben ?? null,
   steps,
 });
 
@@ -209,6 +222,14 @@ export const toPlanungsprotokoll = (r: Row, names: Map<string, string> = new Map
   projectId: r.project_id,
   vorlage: r.vorlage,
   variante: r.variante,
+  erstelltVon: r.erstellt_von ? (names.get(r.erstellt_von) ?? null) : null,
+  erstelltAm: stamp(r.erstellt_am),
+  dokumentId: r.dokument_id ?? null,
+});
+
+export const toEinverstaendnis = (r: Row, names: Map<string, string> = new Map()): Einverstaendnis => ({
+  id: r.id,
+  projectId: r.project_id,
   erstelltVon: r.erstellt_von ? (names.get(r.erstellt_von) ?? null) : null,
   erstelltAm: stamp(r.erstellt_am),
   dokumentId: r.dokument_id ?? null,

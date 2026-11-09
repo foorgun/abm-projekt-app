@@ -50,7 +50,7 @@ export const SALESPEOPLE: Salesperson[] = [
 ];
 
 export const TEAM: TeamMember[] = [
-  { id: "t-be", code: "BE", name: "Architekt BE", role: "architekt" },
+  { id: "t-be", code: "BE", name: "Architekt BE", role: "architekt", anrede: "Herr", titel: "Freier Architekt" },
   { id: "t-mc", code: "MC", name: "Architekt MC", role: "architekt" },
   { id: "t-tb", code: null, name: "T. Brandl", role: "planer" },
   { id: "t-sk", code: null, name: "S. Kohler", role: "planer" },
@@ -578,6 +578,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
   return {
     buero: DEMO_BUERO,
     planungsprotokolle: [],
+    einverstaendnisse: [],
     standortAngaben: [],
     companies: COMPANIES,
     salespeople: SALESPEOPLE,

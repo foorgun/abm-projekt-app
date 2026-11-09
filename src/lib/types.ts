@@ -31,6 +31,16 @@ export interface TeamMember {
   code: string | null;
   name: string;
   role: "architekt" | "planer";
+  /**
+   * Angaben für die Einverständniserklärung (Migration 0028), alle optional. Fehlt Anschrift, Tel. oder E-Mail,
+   * gelten die Bürodaten. Anrede bestimmt "Herrn"/"Frau" im Text.
+   */
+  anrede?: "Herr" | "Frau" | null;
+  /** Berufsbezeichnung, z. B. "Bachelor of Arts (BA), Freier Architekt" */
+  titel?: string | null;
+  anschrift?: string | null;
+  tel?: string | null;
+  email?: string | null;
 }
 
 export interface Project {
@@ -65,6 +75,8 @@ export interface Project {
   gemarkung?: string | null;
   /** Flur (getrennt vom Flurstück, Migration 0013) */
   flur?: string | null;
+  /** Bezeichnung des Bauvorhabens, z. B. "Neubau Einfamilienhaus mit Doppelgarage" (Migration 0028) */
+  bauvorhaben?: string | null;
   steps: StepDates;
 }
 
@@ -87,6 +99,21 @@ export interface Snapshot {
   team: TeamMember[];
   projects: Project[];
   invoices: Invoice[];
+  /**
+   * Erzeugte Einverständniserklärungen (Migration 0028). Nur für Admin und Mitarbeiter geladen; fehlt das Feld
+   * (Freiberufler, alte Tests), gibt es keine Warnung "Einverständniserklärung fehlt".
+   */
+  einverstaendnisse?: Einverstaendnis[];
+}
+
+/** Eine erzeugte Einverständniserklärung / Vollmacht (Migration 0028). Das PDF liegt als Dokument im Projektordner. */
+export interface Einverstaendnis {
+  id: string;
+  projectId: string;
+  /** Name der Person, die sie erzeugt hat */
+  erstelltVon: string | null;
+  erstelltAm: string;
+  dokumentId: string | null;
 }
 
 // ---------------------------------------------------------------------------

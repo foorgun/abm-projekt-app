@@ -45,10 +45,10 @@ export const PILOT_ROUTES: { path: string; roles?: AppRole[] }[] = [
 export const PILOT_NAV: { to: string; roles?: AppRole[] }[] = [{ to: "/projekte" }, { to: "/einstellungen" }, { to: "/hilfe" }];
 
 /** Reiter im Projekt-Detail, die im Pilot sichtbar bleiben (zusätzlich gelten die Rollenregeln der Seite). */
-export const PILOT_PROJECT_TABS = ["uebersicht", "dokumente", "planungsprotokoll", "aktivitaet"] as const;
+export const PILOT_PROJECT_TABS = ["uebersicht", "dokumente", "planungsprotokoll", "einverstaendnis", "aktivitaet"] as const;
 
 /** Warnungen, die im Pilot erscheinen: nur solche zum Prozess, keine zu Rechnungen. */
-export const PILOT_ALERT_KINDS: AlertKind[] = ["contract_open", "permit_waiting"];
+export const PILOT_ALERT_KINDS: AlertKind[] = ["contract_open", "permit_waiting", "einverstaendnis_fehlt"];
 
 function matches(pattern: string, path: string): boolean {
   const a = pattern.split("/");

@@ -16,12 +16,13 @@ import { useData } from "../../lib/store";
 import type { Project, Task } from "../../lib/types";
 import { ActivityTab } from "./ActivityTab";
 import { DocumentsTab } from "./DocumentsTab";
+import { EinverstaendnisTab } from "./EinverstaendnisTab";
 import { InvoicesTab } from "./InvoicesTab";
 import { OverviewTab } from "./OverviewTab";
 import { PlanungsprotokollTab } from "./PlanungsprotokollTab";
 
-type TabKey = "uebersicht" | "dokumente" | "aufgaben" | "rechnungen" | "planungsprotokoll" | "aktivitaet";
-const TABS: TabKey[] = ["uebersicht", "dokumente", "aufgaben", "rechnungen", "planungsprotokoll", "aktivitaet"];
+type TabKey = "uebersicht" | "dokumente" | "aufgaben" | "rechnungen" | "planungsprotokoll" | "einverstaendnis" | "aktivitaet";
+const TABS: TabKey[] = ["uebersicht", "dokumente", "aufgaben", "rechnungen", "planungsprotokoll", "einverstaendnis", "aktivitaet"];
 const SEV_ICON = { dringend: AlertTriangle, hinweis: CircleAlert, info: Info };
 
 export function ProjectDetail() {
@@ -99,10 +100,10 @@ export function ProjectDetail() {
   const pilot = isPilot();
   const visibleTabs = TABS.filter(
     (t) =>
-      (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll")) &&
+      (staff || (t !== "rechnungen" && t !== "aufgaben" && t !== "planungsprotokoll" && t !== "einverstaendnis")) &&
       (!pilot || (PILOT_PROJECT_TABS as readonly TabKey[]).includes(t)) &&
-      // Anfragen haben noch kein Planungsprotokoll
-      !(isAnfrage && t === "planungsprotokoll"),
+      // Anfragen haben noch kein Planungsprotokoll und keine Einverständniserklärung
+      !(isAnfrage && (t === "planungsprotokoll" || t === "einverstaendnis")),
   );
   const requested = params.get("tab") as TabKey | null;
   const tab: TabKey = requested && visibleTabs.includes(requested) ? requested : "uebersicht";
@@ -256,6 +257,11 @@ export function ProjectDetail() {
                       Als versendet markieren
                     </Button>
                   )}
+                  {staff && a.kind === "einverstaendnis_fehlt" && visibleTabs.includes("einverstaendnis") && tab !== "einverstaendnis" && (
+                    <Button size="sm" onClick={() => setTab("einverstaendnis")}>
+                      Jetzt erzeugen
+                    </Button>
+                  )}
                 </div>
               );
             })}
@@ -268,7 +274,7 @@ export function ProjectDetail() {
           onChange={setTab}
           items={visibleTabs.map((t) => ({
             key: t,
-            label: { uebersicht: "Übersicht", dokumente: "Dokumente", aufgaben: "Aufgaben", rechnungen: "Rechnungen", planungsprotokoll: "Planungsprotokoll", aktivitaet: "Aktivität" }[t],
+            label: { uebersicht: "Übersicht", dokumente: "Dokumente", aufgaben: "Aufgaben", rechnungen: "Rechnungen", planungsprotokoll: "Planungsprotokoll", einverstaendnis: "Einverständnis", aktivitaet: "Aktivität" }[t],
             count:
               t === "dokumente"
                 ? documents.length
@@ -278,7 +284,9 @@ export function ProjectDetail() {
                     ? invoices.length
                     : t === "planungsprotokoll"
                       ? data.planungsprotokolle.filter((x) => x.projectId === p.id).length || undefined
-                      : undefined,
+                      : t === "einverstaendnis"
+                        ? (data.einverstaendnisse ?? []).filter((x) => x.projectId === p.id).length || undefined
+                        : undefined,
           }))}
         />
 
@@ -328,6 +336,7 @@ export function ProjectDetail() {
           )}
           {tab === "rechnungen" && <InvoicesTab invoices={invoices} />}
           {tab === "planungsprotokoll" && staff && <PlanungsprotokollTab key={p.id} project={p} data={data} contact={contact} />}
+          {tab === "einverstaendnis" && staff && <EinverstaendnisTab key={p.id} project={p} data={data} />}
           {tab === "aktivitaet" && <ActivityTab activities={activities} />}
         </div>
       </div>

@@ -105,12 +105,12 @@ describe("Umleitungen im Pilot", () => {
 });
 
 describe("Projekt-Detail und Warnungen im Pilot", () => {
-  it("Reiter: Übersicht, Dokumente, Planungsprotokoll, Verlauf", () => {
-    expect([...PILOT_PROJECT_TABS]).toEqual(["uebersicht", "dokumente", "planungsprotokoll", "aktivitaet"]);
+  it("Reiter: Übersicht, Dokumente, Planungsprotokoll, Einverständnis, Verlauf", () => {
+    expect([...PILOT_PROJECT_TABS]).toEqual(["uebersicht", "dokumente", "planungsprotokoll", "einverstaendnis", "aktivitaet"]);
   });
 
   it("keine Warnungen zu Rechnungen", () => {
     expect(PILOT_ALERT_KINDS).not.toContain("invoice_unsent");
-    expect(PILOT_ALERT_KINDS).toEqual(["contract_open", "permit_waiting"]);
+    expect(PILOT_ALERT_KINDS).toEqual(["contract_open", "permit_waiting", "einverstaendnis_fehlt"]);
   });
 });

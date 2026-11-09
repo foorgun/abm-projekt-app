@@ -1,5 +1,6 @@
 import { daysBetween, formatMoney } from "./format";
 import { stepLabel } from "./steps";
+import { hatEinverstaendnis } from "./einverstaendnis/daten";
 import type { Snapshot } from "./types";
 
 /**
@@ -15,9 +16,14 @@ export const ALERT_RULES = {
   contractReturnUrgentDays: 42,
   /** Baugesuch übergeben, Genehmigung fehlt: Info ab ... */
   permitWaitDays: 120,
+  /**
+   * Einverständniserklärung fehlt: Hinweis ab diesem Schritt, bis die Erklärung erzeugt oder das Baugesuch übergeben ist.
+   * Annahme: nach dem Vertrag zurück, denn dann steht fest, dass ein Bauantrag kommt (docs/offene-fragen.md).
+   */
+  einverstaendnisAbSchritt: "vertrag_zurueck",
 } as const;
 
-export type AlertKind = "invoice_unsent" | "contract_open" | "permit_waiting";
+export type AlertKind = "invoice_unsent" | "contract_open" | "permit_waiting" | "einverstaendnis_fehlt";
 export type Severity = "dringend" | "hinweis" | "info";
 
 export interface Alert {
@@ -102,6 +108,21 @@ export function computeAlerts(snapshot: Snapshot, today: string): Alert[] {
           days,
         });
       }
+    }
+
+    // 4) Bauantrag steht an, aber es gibt noch keine Einverständniserklärung (nur Neubau; nur wenn die Liste geladen ist)
+    const ab = p.steps[ALERT_RULES.einverstaendnisAbSchritt];
+    if (snapshot.einverstaendnisse && p.kind === "neubau" && ab && !p.steps.baugesuch_uebergabe && !hatEinverstaendnis(p.id, snapshot.einverstaendnisse)) {
+      const days = Math.max(0, daysBetween(ab, today));
+      alerts.push({
+        id: `einverstaendnis_fehlt:${p.id}`,
+        kind: "einverstaendnis_fehlt",
+        severity: "hinweis",
+        projectId: p.id,
+        title: "Einverständniserklärung fehlt",
+        detail: `Für den Bauantrag: seit ${stepLabel(ALERT_RULES.einverstaendnisAbSchritt)} noch nicht erzeugt`,
+        days,
+      });
     }
   }
 

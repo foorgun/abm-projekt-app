@@ -13,6 +13,7 @@ import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
+import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
 import { cleanKuerzel, cleanPrefix } from "./abmNr";
 import { ANFRAGE_STAGE } from "./steps";
@@ -26,6 +27,7 @@ import {
   type MailboxInput,
   type ProjectFields,
   type ProjectPatch,
+  type EinverstaendnisAblage,
   type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
@@ -58,6 +60,7 @@ import {
   toMailbox,
   toParty,
   toPlanungsprotokoll,
+  toEinverstaendnis,
   toProject,
   toProjectDraft,
   toSalesperson,
@@ -277,7 +280,7 @@ export function createSupabaseRepo(): Repo {
           userNames(),
         ]);
       // Urlaub und Krankheit: nur für Admin und Mitarbeiter (Freiberufler bekämen ohnehin keine Zeile)
-      const [absences, entitlements, staffRows, protokolle, bueroRows, standortRows] = isStaff()
+      const [absences, entitlements, staffRows, protokolle, bueroRows, standortRows, erklaerungen] = isStaff()
         ? await Promise.all([
             all(sb, "abwesenheiten", COLS.abwesenheiten, ["von", "id"]),
             all(sb, "urlaubs_anspruch", COLS.urlaubs_anspruch, ["jahr", "user_id"]),
@@ -287,8 +290,10 @@ export function createSupabaseRepo(): Repo {
             all(sb, "planungsprotokolle", COLS.planungsprotokolle, ["erstellt_am", "id"]),
             all(sb, "buero_daten", COLS.buero_daten, ["name"]),
             all(sb, "standort_angaben", "project_id, angaben, geaendert_am", ["project_id"]),
+            // Einverständniserklärungen (Migration 0028): nur Admin und Mitarbeiter
+            all(sb, "einverstaendniserklaerungen", COLS.einverstaendniserklaerungen, ["erstellt_am", "id"]),
           ])
-        : [[], [], [], [], [], []];
+        : [[], [], [], [], [], [], null];
       const mitarbeiter: StaffMember[] = staffRows
         .filter((r) => r.role === "admin" || r.role === "mitarbeiter")
         .map((r) => ({ id: r.user_id, name: (r.full_name as string)?.trim() || "Unbekannt", role: r.role }))
@@ -326,6 +331,8 @@ export function createSupabaseRepo(): Repo {
         buero: bueroRows[0] ? { name: bueroRows[0].name ?? null, anschrift: bueroRows[0].anschrift ?? null, tel: bueroRows[0].tel ?? null, mobil: bueroRows[0].mobil ?? null, email: bueroRows[0].email ?? null } : null,
         // neueste zuerst
         planungsprotokolle: protokolle.map((r) => toPlanungsprotokoll(r, names)).reverse(),
+        // Freiberufler: undefined, damit keine Warnung "Einverständniserklärung fehlt" entsteht
+        einverstaendnisse: erklaerungen ? erklaerungen.map((r) => toEinverstaendnis(r, names)).reverse() : undefined,
         standortAngaben: standortRows.map((r) => ({ projectId: r.project_id, angaben: (r.angaben ?? {}) as Record<string, StandortWert>, geaendertAm: r.geaendert_am })),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
@@ -596,6 +603,58 @@ export function createSupabaseRepo(): Repo {
       const { data, error } = await sb.storage.from(BUCKET).download(path);
       if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
       await logDocument(protokoll.dokumentId, "heruntergeladen");
+      return data;
+    },
+
+    // ---------------------------------------------------------------- Einverständniserklärung (Migration 0028)
+
+    async setBauvorhaben(projectId, bauvorhaben) {
+      requireStaff();
+      const wert = bauvorhaben?.replace(/\s+/g, " ").trim() || null;
+      const { data, error } = await sb.from("projects").update({ bauvorhaben: wert }).eq("id", projectId).select("id");
+      if (error) fail(error, "Bauvorhaben konnte nicht gespeichert werden");
+      if (!data?.length) throw new PermissionError();
+    },
+
+    async saveArchitektAngaben(teamMemberId, a) {
+      requireStaff();
+      const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
+      const { data, error } = await sb
+        .from("team_members")
+        .update({ anrede: a.anrede ?? null, titel: c(a.titel), anschrift: c(a.anschrift), tel: c(a.tel), email: c(a.email) })
+        .eq("id", teamMemberId)
+        .select("id");
+      if (error) fail(error, "Angaben des Architekten konnten nicht gespeichert werden");
+      if (!data?.length) throw new PermissionError();
+    },
+
+    async saveEinverstaendnis({ projectId, fileName, blob }: EinverstaendnisAblage) {
+      requireStaff();
+      // Erst als normales Dokument in den Projektordner (eigener Speicherpfad, nie überschrieben), dann als Fassung eintragen
+      const doc = await repo.uploadDocument({ projectId, folderPath: EINVERSTAENDNIS_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, blob });
+      const me = await userId();
+      const { data, error } = await sb
+        .from("einverstaendniserklaerungen")
+        .insert({ project_id: projectId, erstellt_von: me, dokument_id: doc.id })
+        .select(COLS.einverstaendniserklaerungen)
+        .single();
+      if (error) fail(error, `Das PDF liegt im Ordner „${EINVERSTAENDNIS_ORDNER}“, ließ sich aber nicht in die Liste der Fassungen eintragen`);
+      return toEinverstaendnis(data as unknown as Row, new Map([[me, user.name]]));
+    },
+
+    async einverstaendnisDatei(e) {
+      requireStaff();
+      if (!e.dokumentId) throw new Error("Zu dieser Fassung gibt es kein Dokument.");
+      let path = last?.documents.find((d) => d.id === e.dokumentId)?.storagePath;
+      if (!path) {
+        const { data, error } = await sb.from("documents").select("storage_path").eq("id", e.dokumentId).maybeSingle();
+        if (error) fail(error, "Dokument konnte nicht geladen werden");
+        path = (data as Row | null)?.storage_path;
+      }
+      if (!path) throw new Error("Das Dokument zu dieser Fassung ist nicht mehr vorhanden.");
+      const { data, error } = await sb.storage.from(BUCKET).download(path);
+      if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
+      await logDocument(e.dokumentId, "heruntergeladen");
       return data;
     },
 

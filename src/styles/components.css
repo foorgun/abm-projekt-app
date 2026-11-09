@@ -6932,3 +6932,29 @@ li:first-child > .doc-card {
 .mail-error {
   color: var(--warn);
 }
+
+/* ---------------------------------------------------------------- Einverständniserklärung (Projektseite) */
+
+.ev-vorschau .ev-zeile {
+  display: block;
+}
+
+.ev-vorschau .ev-text {
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.ev-start-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.ev-start-zeile .field {
+  min-width: 180px;
+}
+
+.ev-form {
+  max-width: 760px;
+}

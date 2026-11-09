@@ -25,6 +25,8 @@ function titleFor(a: Alert): string {
       return "Vertrag bei der Bauherrschaft nachfassen";
     case "permit_waiting":
       return "Beim Amt den Stand der Genehmigung erfragen";
+    case "einverstaendnis_fehlt":
+      return "Einverständniserklärung erzeugen";
   }
 }
 

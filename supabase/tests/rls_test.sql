@@ -1505,6 +1505,55 @@ select test.throws('0027: Kürzel nur Großbuchstaben', $$update public.companie
 select test.throws('0027: Kürzel eindeutig', $$update public.companies set kuerzel = 'LH' where name = 'Schwabenhaus'$$);
 rollback;
 
+-- 0028: Einverständniserklärung (Bauvorhaben, Angaben des Architekten, erzeugte Fassungen) ---------------------------
+begin;
+set local role anon;
+select test.throws('0028: anon darf Einverständniserklärungen nicht ansprechen', $$select count(*) from public.einverstaendniserklaerungen$$);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('0028: Mitarbeiterin trägt das Bauvorhaben ein',
+  test.affected($$update public.projects set bauvorhaben = 'Neubau Einfamilienhaus mit Doppelgarage' where id = 'a0000000-0000-4000-8000-000000000001'$$), 1);
+select test.throws('0028: Bauvorhaben höchstens 200 Zeichen', $$update public.projects set bauvorhaben = repeat('x', 201) where id = 'a0000000-0000-4000-8000-000000000001'$$);
+select test.expect('0028: Mitarbeiterin ergänzt die Angaben des Architekten',
+  test.affected($$update public.team_members set anrede = 'Herr', titel = 'Freier Architekt', anschrift = 'Musterweg 1, 89073 Ulm', tel = '0731 1', email = 'be@example.de' where id = '70000000-0000-4000-8000-000000000001'$$), 1);
+select test.throws('0028: Mitarbeiterin ändert den Namen weiterhin nicht (kein Spaltenrecht)', $$update public.team_members set name = 'Anders' where id = '70000000-0000-4000-8000-000000000001'$$);
+select test.throws('0028: Anrede nur Herr oder Frau', $$update public.team_members set anrede = 'Dr.' where id = '70000000-0000-4000-8000-000000000001'$$);
+select test.throws('0028: ungültige E-Mail des Architekten wird abgelehnt', $$update public.team_members set email = 'kein-at' where id = '70000000-0000-4000-8000-000000000001'$$);
+insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+values ('a0000000-0000-4000-8000-000000000001', 'Einverstaendniserklaerung.pdf', 'a0000000-0000-4000-8000-000000000001/ev/ev.pdf', '08 Bauantrag', auth.uid());
+select test.expect('0028: Mitarbeiterin legt eine Einverständniserklärung an',
+  test.affected($$insert into public.einverstaendniserklaerungen (project_id, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000001', auth.uid(), id from public.documents where name = 'Einverstaendniserklaerung.pdf'$$), 1);
+select test.expect('0028: … mit Zeitstempel', (select count(*) from public.einverstaendniserklaerungen where erstellt_am is not null and erstellt_von = auth.uid()), 1);
+select test.throws('0028: nicht im Namen einer anderen Person',
+  $$insert into public.einverstaendniserklaerungen (project_id, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000a1')$$);
+select test.throws('0028: nicht mit dem Dokument eines anderen Projekts',
+  $$insert into public.einverstaendniserklaerungen (project_id, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000002', auth.uid(), id from public.documents where name = 'Einverstaendniserklaerung.pdf'$$);
+select test.throws('0028: Erklärung ändern geht nicht', $$update public.einverstaendniserklaerungen set erstellt_am = now()$$);
+select test.throws('0028: Erklärung löschen geht nicht', $$delete from public.einverstaendniserklaerungen$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0028: Admin sieht die Erklärung der Mitarbeiterin', (select count(*) from public.einverstaendniserklaerungen), 1);
+
+-- Freiberufler (Projekt a…01 zugewiesen): sieht keine Erklärungen, ändert weder Bauvorhaben noch Architekt
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0028: Freiberufler sieht keine Einverständniserklärungen, auch nicht seines Projekts', (select count(*) from public.einverstaendniserklaerungen), 0);
+select test.throws('0028: Freiberufler legt keine Erklärung an',
+  $$insert into public.einverstaendniserklaerungen (project_id, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', auth.uid())$$);
+select test.expect('0028: Freiberufler ändert das Bauvorhaben nicht',
+  test.affected($$update public.projects set bauvorhaben = 'X' where id = 'a0000000-0000-4000-8000-000000000001'$$), 0);
+select test.expect('0028: Freiberufler ändert die Angaben des Architekten nicht',
+  test.affected($$update public.team_members set tel = '0' where id = '70000000-0000-4000-8000-000000000001'$$), 0);
+
+-- Ohne Rolle: nichts
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('0028: ohne Rolle keine Einverständniserklärungen', (select count(*) from public.einverstaendniserklaerungen), 0);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 18 Projektschritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions where stage <> 'Anfrage'), 18);
 select test.expect('0027: drei Schritte der Anfrage, vor allen Projektschritten',
