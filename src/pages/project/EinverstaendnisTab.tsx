@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
-import { BAUVORHABEN_VORSCHLAEGE, EINVERSTAENDNIS_ORDNER, einverstaendnisDaten, fehlendeAngaben, vollmachtText } from "../../lib/einverstaendnis/daten";
+import { BAUVORHABEN_VORSCHLAEGE, EINVERSTAENDNIS_ORDNER, ENTWURFSVERFASSER_REGEL, einverstaendnisDaten, fehlendeAngaben, vollmachtText } from "../../lib/einverstaendnis/daten";
 import { einverstaendnisErzeugen } from "../../lib/einverstaendnis/erzeugen";
 import { dateiSpeichern } from "../../lib/planungsprotokoll/erzeugen";
 import { useData } from "../../lib/store";
@@ -25,7 +25,8 @@ export function EinverstaendnisTab({ project, data }: { project: Project; data: 
   const daten = useMemo(() => einverstaendnisDaten(data, project.id, datum || today), [data, project.id, datum, today]);
   const fehlt = fehlendeAngaben(daten);
   const versionen = (data.einverstaendnisse ?? []).filter((e) => e.projectId === project.id);
-  const architekt = data.team.find((t) => t.id === project.architectId);
+  // Entwurfsverfasser nach der Regel (MC nur in BW, sonst BE), nicht einfach der eingetragene Architekt
+  const architekt = data.team.find((t) => t.id === daten.wahl.teamMemberId);
 
   async function erzeugen() {
     if (busy) return;
@@ -54,7 +55,14 @@ export function EinverstaendnisTab({ project, data }: { project: Project; data: 
               <Zeile label="Bauherrschaft">{zeilen([daten.bauherrschaft.namen, daten.bauherrschaft.strasse, daten.bauherrschaft.plzOrt])}</Zeile>
               <Zeile label="Bauvorhaben">{daten.bauvorhaben}</Zeile>
               <Zeile label="Baugrundstück">{zeilen([daten.grundstueck.plzOrt, daten.grundstueck.strasse, daten.grundstueck.flurstueck && `Flst.-Nr.: ${daten.grundstueck.flurstueck}`])}</Zeile>
-              <Zeile label="Entwurfsverfasser">{e.name && zeilen([[e.name, e.titel].filter(Boolean).join(", "), e.anschrift, e.tel && `Tel.: ${e.tel}`, e.email && `E-Mail: ${e.email}`])}</Zeile>
+              <Zeile label="Entwurfsverfasser">
+                {e.name && (
+                  <>
+                    {zeilen([[e.name, e.titel].filter(Boolean).join(", "), e.anschrift, e.tel && `Tel.: ${e.tel}`, e.email && `E-Mail: ${e.email}`])}
+                    <span className="cell-sub">Regel: {daten.wahl.grund}</span>
+                  </>
+                )}
+              </Zeile>
               <Zeile label="Vollmacht">
                 <span className="ev-text">{vollmachtText(daten, "…")}</span>
               </Zeile>
@@ -64,7 +72,7 @@ export function EinverstaendnisTab({ project, data }: { project: Project; data: 
             <p className="pp-stand" role="status">
               {fehlt.length ? (
                 <>
-                  Noch leer: {fehlt.join(", ")}. <span className="muted">Bauherr, Bauort und Flurstück stehen unter </span>
+                  Noch leer: {fehlt.join(", ")}. <span className="muted">Bauherr, Bauort, Bundesland und Flurstück stehen unter </span>
                   <Link to={`/projekte/${project.id}`}>Übersicht</Link>
                   <span className="muted"> (getrennte Anschrift unter Planungsprotokoll, Angaben). Erzeugen geht trotzdem.</span>
                 </>
@@ -101,7 +109,7 @@ export function EinverstaendnisTab({ project, data }: { project: Project; data: 
           <CardHead title="Entwurfsverfasser" />
           <CardBody>
             <p className="pp-stand">
-              Im Projekt ist kein Architekt eingetragen. Er steht als Entwurfsverfasser und Vertreter in der Erklärung: unter <Link to={`/projekte/${project.id}`}>Übersicht</Link> eintragen.
+              Im Team gibt es keinen Architekten mit dem Kürzel {ENTWURFSVERFASSER_REGEL.standard}. Er steht außer bei {ENTWURFSVERFASSER_REGEL.nurInBW} in Baden-Württemberg als Entwurfsverfasser in der Erklärung.
             </p>
           </CardBody>
         </Card>

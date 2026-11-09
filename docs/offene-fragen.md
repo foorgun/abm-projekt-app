@@ -128,4 +128,7 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   Die Aufgabe dann einfach abhaken (das blendet die Warnung aus). Passt der Schritt, oder lieber später (z. B. „Entwurf freigegeben“)?
 - **Text:** fest wie in der bisherigen Vorlage, bei einer Person „bevollmächtige ich“ statt „wir“. „als Vertreter“ bleibt auch bei einer Architektin. So lassen?
 - **Ortsteil:** Das Baugrundstück steht als „PLZ Ort-Ortsteil“ (z. B. „72401 Haigerloch-Owingen“). Gilt das so für alle Gemeinden?
+- **Entwurfsverfasser (Vorgabe von ABM, umgesetzt):** MC nur, wenn MC der Architekt des Projekts ist und der Bauort in Baden-Württemberg
+  liegt, sonst immer BE (`ENTWURFSVERFASSER_REGEL`). Bundesland kommt aus dem Feld am Projekt, sonst aus dem Bundesland beim Bauort,
+  nie aus der PLZ. Fehlt es bei MC, steht vorerst BE drin und die App weist darauf hin. Passt das so?
 - **Unterschrift:** Die Erklärung ist ein PDF zum Ausdrucken und Unterschreiben. Versand per Mail und Rücklauf (unterschrieben zurück) kommen später.
