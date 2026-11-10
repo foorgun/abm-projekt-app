@@ -10,6 +10,8 @@ import {
   featureInfoLesen,
   featureInfoUrl,
   gemeindeFinden,
+  laermBwLesen,
+  laermBwUrl,
   nameGleich,
   parseProjektId,
   pegelLesen,
@@ -223,6 +225,19 @@ describe("Dienste lesen", () => {
     expect(pegelLesen({ "Classify.Pixelwert": "74.41" })).toBeCloseTo(74.41);
     expect(pegelLesen({ "Classify.PixelValue": "NoData" })).toBeNull();
     expect(pegelLesen(undefined)).toBeNull();
+  });
+
+  it("Lärm BW: höchste LDEN-Stufe am Punkt, keine Fläche, Fehlerseite", () => {
+    const f = (...a: [number, number][]) => JSON.stringify({ features: a.map(([lo, hi]) => ({ attributes: { ART: "Lden", DB_LOW: lo, DB_HIGH: hi } })) });
+    expect(laermBwLesen(f([55, 60]))).toEqual({ von: 55, bis: 60 });
+    expect(laermBwLesen(f([55, 60], [65, 70]))).toEqual({ von: 65, bis: 70 });
+    expect(laermBwLesen(f())).toBeNull();
+    expect(laermBwLesen('{"error":{"code":400}}')).toBeUndefined();
+    expect(laermBwLesen("<html>Fehler</html>")).toBeUndefined();
+    const u = new URL(laermBwUrl(48.4, 9.99));
+    expect(u.hostname).toBe("rips-gdi.lubw.baden-wuerttemberg.de");
+    expect(u.searchParams.get("geometry")).toBe("9.99,48.4");
+    expect(u.searchParams.get("inSR")).toBe("4326");
   });
 
   it("Photon: Felder lesen, Unlesbares ist kein leeres Ergebnis", () => {
@@ -485,13 +500,28 @@ describe("Analyse", () => {
     expect(von("schneelast").vorgewaehlt).toBe(true);
   });
 
-  it("BW: Lärm und Erdbeben nicht ermittelbar mit Grund und Viewer", async () => {
-    const { d, cache } = aufbau((u) => (u.includes("photon") ? photon({ housenumber: "1", street: "Rathausgasse", city: "Dornstadt", postcode: "89160", state: "Baden-Württemberg" }, 48.463, 9.961) : antworten(u)));
-    const { von } = await ergebnis({ land: "BW", strasse: "Rathausgasse 1", plz: "89160", ort: "Dornstadt", gemarkung: null }, d);
+  const DORNSTADT: Anfrage = { land: "BW", strasse: "Rathausgasse 1", plz: "89160", ort: "Dornstadt", gemarkung: null };
+  const bw = (laerm: string) => (u: string) =>
+    u.includes("photon") ? photon({ housenumber: "1", street: "Rathausgasse", city: "Dornstadt", postcode: "89160", state: "Baden-Württemberg" }, 48.463, 9.961) : u.includes("Umgebungslaermkartierung") ? laerm : antworten(u);
+
+  it("BW: Erdbeben nicht ermittelbar mit Grund und Viewer, Lärm aus der LUBW-Karte", async () => {
+    const { d, cache } = aufbau(bw(JSON.stringify({ features: [{ attributes: { ART: "Lden", DB_LOW: 60, DB_HIGH: 65 } }] })));
+    const { von } = await ergebnis(DORNSTADT, d);
     expect(von("schneelast").wert).toBe("1a");
     expect(von("erdbeben")).toMatchObject({ status: "nicht_ermittelbar", viewer: expect.stringContaining("mlw.baden-wuerttemberg") });
-    expect(von("laerm")).toMatchObject({ status: "nicht_ermittelbar", viewer: expect.stringContaining("udo.lubw") });
+    expect(von("laerm")).toMatchObject({ status: "ermittelt", anzeige: "Straße: LDEN 60 bis 65 dB(A)", vorgewaehlt: true });
+    expect(von("laerm").quelle).toMatch(/LUBW/);
+    expect(von("laerm").hinweis).toMatch(/DIN 4109/);
     expect([...cache.values()].some((x) => x.thema === "erdbeben")).toBe(false);
+    expect([...cache.values()].some((x) => x.thema === "laerm")).toBe(true);
+  });
+
+  it("BW: Lärm ohne Fläche, höchste Stufe und Fehler des Dienstes", async () => {
+    expect((await ergebnis(DORNSTADT, aufbau(bw('{"features":[]}')).d)).von("laerm").anzeige).toBe("Kein kartierter Straßenlärm am Standort");
+    expect((await ergebnis(DORNSTADT, aufbau(bw(JSON.stringify({ features: [{ attributes: { ART: "Lden", DB_LOW: 75, DB_HIGH: 99 } }] }))).d)).von("laerm").anzeige).toBe("Straße: LDEN über 75 dB(A)");
+    const { d, cache } = aufbau(bw("<html>Fehler</html>"));
+    expect((await ergebnis(DORNSTADT, d)).von("laerm")).toMatchObject({ status: "fehler", viewer: expect.stringContaining("udo.lubw") });
+    expect([...cache.values()].some((x) => x.thema === "laerm")).toBe(false);
   });
 
   it("an die Dienste gehen nur Adresse und Koordinaten", async () => {

@@ -263,6 +263,7 @@ const LUBW = "https://rips-gdi.lubw.baden-wuerttemberg.de/arcgis/services/wms";
 const LFU = "https://www.lfu.bayern.de/gdi/wms";
 const HLNUG = "https://geodienste-umwelt.hessen.de/arcgis/services/inspire";
 const HE_LAERM = "https://umweltatlas.hessen.de/arcgis/rest/services/laerm/laerm_oden/MapServer/identify";
+const BW_LAERM = "https://rips-gdi.lubw.baden-wuerttemberg.de/arcgis/rest/services/wfs/Umgebungslaermkartierung_Strassenenverkehrslaerm_24_Stunden/MapServer/0/query";
 const BFS_WMS = "https://www.imis.bfs.de/ogc/opendata/wms";
 const PHOTON = "https://photon.komoot.io/api/";
 const HOEHE = "https://api.opentopodata.org/v1/eudem25m";
@@ -312,6 +313,34 @@ export type Treffer = Record<string, string>;
 export function featureInfoLesen(xml: string): Treffer[] | null {
   if (typeof xml !== "string" || !/<FeatureInfoResponse\b/.test(xml)) return null;
   return [...xml.matchAll(/<FIELDS\b([^>]*?)\/?>/g)].map((m) => Object.fromEntries([...m[1].matchAll(/([^\s=]+)="([^"]*)"/g)].map((a) => [a[1], a[2].replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">")])));
+}
+
+/** Abfrage der LUBW-Straßenlärmkarte am Punkt (ArcGIS-REST, Flächen je 5-dB-Stufe des LDEN). */
+export function laermBwUrl(lat: number, lon: number): string {
+  const q = new URLSearchParams({
+    f: "json", geometry: `${lon},${lat}`, geometryType: "esriGeometryPoint", inSR: "4326", spatialRel: "esriSpatialRelIntersects",
+    outFields: "ART,DB_LOW,DB_HIGH", returnGeometry: "false",
+  });
+  return `${BW_LAERM}?${q}`;
+}
+
+/**
+ * Antwort der LUBW-Straßenlärmkarte: höchste Pegelstufe am Punkt als { von, bis } in dB(A); keine Fläche: null.
+ * Ohne features-Liste ist die Antwort kein Ergebnis, sondern ein Fehler (undefined).
+ */
+export function laermBwLesen(json: string): { von: number; bis: number } | null | undefined {
+  let j: { features?: { attributes?: { ART?: string; DB_LOW?: number; DB_HIGH?: number } }[] };
+  try {
+    j = JSON.parse(json);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(j?.features)) return undefined;
+  const stufen = j.features
+    .map((f) => f.attributes)
+    .filter((a): a is { ART?: string; DB_LOW: number; DB_HIGH: number } => !!a && typeof a.DB_LOW === "number" && typeof a.DB_HIGH === "number" && (!a.ART || /lden/i.test(a.ART)))
+    .sort((x, y) => y.DB_LOW - x.DB_LOW);
+  return stufen.length ? { von: stufen[0].DB_LOW, bis: stufen[0].DB_HIGH } : null;
 }
 
 /** Rasterwert eines Lärm-Layers (Attribut "Classify.Pixel…"). Kein Wert: null. */
@@ -470,6 +499,15 @@ async function karteAbfragen(thema: "wasserschutz" | "hochwasser", land: Land, s
 
 async function laermAbfragen(land: Land, s: Standort, d: Dienste): Promise<Wertteil> {
   const fmt = (n: number) => `${Math.round(n)} dB(A)`;
+  if (land === "BW") {
+    const quelle = "LUBW, Umgebungslärmkartierung Straßenverkehr (2022)";
+    const hinweis = "Kartiert sind nur Hauptverkehrsstraßen; für große Städte wie Ulm und Stuttgart enthält der Dienst keine Werte, dann den Viewer der Stadt nutzen. Kein Ersatz für den Lärmpegelbereich nach DIN 4109, deshalb kein Eintrag im PDF.";
+    const stufe = laermBwLesen(await d.holen(laermBwUrl(s.lat, s.lon)));
+    if (stufe === undefined) throw new Error("laerm: Antwort nicht lesbar");
+    if (!stufe) return { wert: "Kein kartierter Pegel", anzeige: "Kein kartierter Straßenlärm am Standort", quelle, hinweis };
+    const v = stufe.bis >= 99 ? `LDEN über ${stufe.von} dB(A)` : `LDEN ${stufe.von} bis ${stufe.bis} dB(A)`;
+    return { wert: `Straße ${v}`, anzeige: `Straße: ${v}`, quelle, hinweis };
+  }
   if (land === "BY") {
     const quelle = "Bayerisches Landesamt für Umwelt, www.lfu.bayern.de (Umgebungslärmkartierung 2022)";
     const url = `${LFU}/laerm/hauptverkehrsstrassen`;
@@ -608,8 +646,8 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
   const braucht = (thema: Exclude<Thema, "strom">) => !cache.has(keys[thema]);
   const genau = s.genauigkeit !== "ort";
   const punkt = (thema: "wasserschutz" | "hochwasser" | "laerm" | "hoehe") => (genau ? braucht(thema) : false);
-  // BW-Lärm wird nicht abgefragt (siehe unten), Radon braucht den Gemeindeschlüssel
-  const dienstNoetig = punkt("wasserschutz") || punkt("hochwasser") || punkt("hoehe") || (land !== "BW" && punkt("laerm")) || (!!s.ags && braucht("radon"));
+  // Radon braucht den Gemeindeschlüssel
+  const dienstNoetig = punkt("wasserschutz") || punkt("hochwasser") || punkt("hoehe") || punkt("laerm") || (!!s.ags && braucht("radon"));
   if (dienstNoetig && !(await limitPruefen())) return limitFehler;
 
   const nurOrt = (thema: Thema) => leer(thema, land, "nicht_ermittelbar", a.strasse ? "Die Adresse wurde nur auf Ortsebene gefunden. Für diese Abfrage braucht es den genauen Standort." : "Es ist keine Straße eingetragen. Für diese Abfrage braucht es den genauen Standort. Bitte die Bauadresse ergänzen.");
@@ -620,9 +658,7 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
     s.ags ? mitDienst("radon", () => radonAbfragen(land, s, d)) : leer("radon", land, "nicht_ermittelbar", `Die Gemeinde „${s.gemeinde ?? a.ort ?? ""}“ steht so nicht im amtlichen Gemeindeverzeichnis. Bitte den Bauort prüfen.`),
     genau ? mitDienst("wasserschutz", () => karteAbfragen("wasserschutz", land, s, d)) : nurOrt("wasserschutz"),
     genau ? mitDienst("hochwasser", () => karteAbfragen("hochwasser", land, s, d)) : nurOrt("hochwasser"),
-    land === "BW"
-      ? leer("laerm", land, "nicht_ermittelbar", "Für Baden-Württemberg gibt es nur den Lärm-WMS des Umweltbundesamts, dessen Straßenlärm-Ebenen im Test nicht geantwortet haben. Einen eigenen LUBW-Dienst gibt es nicht.")
-      : genau ? mitDienst("laerm", () => laermAbfragen(land, s, d)) : nurOrt("laerm"),
+    genau ? mitDienst("laerm", () => laermAbfragen(land, s, d)) : nurOrt("laerm"),
     leer("strom", land, "nicht_ermittelbar", "Es gibt keine amtliche, frei nutzbare Zuordnung von Standort zu Netzbetreiber. Das Marktstammdatenregister führt die Betreiber, aber keine Netzgebiete."),
   ]);
 
