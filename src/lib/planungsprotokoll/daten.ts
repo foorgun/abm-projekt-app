@@ -94,6 +94,14 @@ export function architektKontakt(buero: BueroDaten | null, sachbearbeiter: Proje
   };
 }
 
+/** Baugrundgutachter: der des Projekts, sonst der Standard aus den Bürodaten (Migration 0029). */
+export function gutachterKontakt(buero: BueroDaten | null, projekt: ProjectParty | undefined): Kontakt {
+  if (projekt) return kontaktAus(projekt);
+  const g = buero?.gutachter;
+  if (!clean(g?.name)) return { ...leer };
+  return { name: clean(g?.name), anschrift: clean(g?.anschrift), tel: clean(g?.tel), mobil: clean(g?.mobil), mail: clean(g?.email), fax: null };
+}
+
 /** Name und Anschrift in einem Feld ("Name/Anschrift", große Namensfelder). */
 export const nameAnschrift = (k: Kontakt): string | null => join([k.name, k.anschrift], ", ");
 
@@ -143,7 +151,9 @@ export function protokollDaten(data: Pick<Dataset, "projects" | "bauherren" | "p
   const contact = data.bauherren.find((b) => b.projectId === projectId) ?? null;
   const parties = data.parties.filter((p) => p.projectId === projectId);
   const party = (role: PartyRole) => parties.find((p) => p.role === role);
-  const beteiligte = Object.fromEntries(PROTOKOLL_ROLLEN.map((r) => [r, r === "architekt" ? architektKontakt(data.buero, party("sachbearbeiter")) : kontaktAus(party(r))])) as Record<ProtokollRolle, Kontakt>;
+  const kontakt = (r: ProtokollRolle): Kontakt =>
+    r === "architekt" ? architektKontakt(data.buero, party("sachbearbeiter")) : r === "baugrundgutachter" ? gutachterKontakt(data.buero, party(r)) : kontaktAus(party(r));
+  const beteiligte = Object.fromEntries(PROTOKOLL_ROLLEN.map((r) => [r, kontakt(r)])) as Record<ProtokollRolle, Kontakt>;
   return {
     // Annahme: "Projekt-Nr." (FB-22) bzw. "Schwabenhaus BV-Nr." ist die Hausbau-Nr. (docs/offene-fragen.md)
     projektNr: clean(project.hausbauNr),

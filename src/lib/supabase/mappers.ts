@@ -46,7 +46,7 @@ export const COLS = {
   bauherren:
     "id, name, vorname, nachname, vorname2, nachname2, vorname3, nachname3, vorname4, nachname4, address, phone, email, building_address, name2, phone2, email2, name3, phone3, email3, name4, phone4, email4, street, postal_code, city, mobile, site_street, site_postal_code, site_city, site_district, site_state",
   project_parties: "project_id, role, name, contact, address, phone, mobile, email, fax",
-  buero_daten: "name, anschrift, tel, mobil, email",
+  buero_daten: "name, anschrift, tel, mobil, email, gutachter_name, gutachter_anschrift, gutachter_tel, gutachter_mobil, gutachter_email",
   planungsprotokolle: "id, project_id, vorlage, variante, erstellt_von, erstellt_am, dokument_id",
   einverstaendniserklaerungen: "id, project_id, erstellt_von, erstellt_am, dokument_id",
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",

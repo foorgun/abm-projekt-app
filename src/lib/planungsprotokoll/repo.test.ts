@@ -93,7 +93,23 @@ describe("Demo-Modus: Planungsprotokoll", () => {
     expect((await r.load(admin)).buero?.name).toBe("Von Mitarbeiterin");
     await expect(r.saveBueroDaten({ name: "X", anschrift: null, tel: null, mobil: null, email: "kein-at" })).rejects.toThrow("E-Mail");
     await r.saveBueroDaten({ name: "  ABM   Büro ", anschrift: "Weg 1, 89073 Ulm", tel: " ", mobil: "0170 1", email: "a@example.de" });
-    expect((await r.load(mitarbeiter)).buero).toEqual({ name: "ABM Büro", anschrift: "Weg 1, 89073 Ulm", tel: null, mobil: "0170 1", email: "a@example.de" });
+    expect((await r.load(mitarbeiter)).buero).toMatchObject({ name: "ABM Büro", anschrift: "Weg 1, 89073 Ulm", tel: null, mobil: "0170 1", email: "a@example.de" });
+  });
+
+  it("Standard-Baugrundgutachter (0029): Büro speichern lässt ihn stehen, eigener Name nötig, E-Mail geprüft", async () => {
+    const r = repo();
+    const d = await r.load(mitarbeiter);
+    const vorher = d.buero!.gutachter;
+    expect(vorher?.name).toBeTruthy();
+    await r.saveBueroDaten({ ...d.buero!, name: "Neues Büro", gutachter: undefined });
+    expect((await r.load(mitarbeiter)).buero?.gutachter).toEqual(vorher);
+    const g = { name: "  Baugrund  Muster ", anschrift: null, tel: " ", mobil: null, email: "b@example.de" };
+    await r.saveBueroDaten({ ...d.buero!, gutachter: g });
+    expect((await r.load(mitarbeiter)).buero?.gutachter).toEqual({ name: "Baugrund Muster", anschrift: null, tel: null, mobil: null, email: "b@example.de" });
+    await expect(r.saveBueroDaten({ ...d.buero!, gutachter: { ...g, email: "kein-at" } })).rejects.toThrow("E-Mail");
+    await expect(r.saveBueroDaten({ ...d.buero!, gutachter: { ...g, name: "" } })).rejects.toThrow("Namen");
+    await r.saveBueroDaten({ ...d.buero!, gutachter: null });
+    expect((await r.load(mitarbeiter)).buero?.gutachter).toBeNull();
   });
 
   it("Vorlage laden im Demo-Modus: klare Meldung, wenn die Datei fehlt", async () => {

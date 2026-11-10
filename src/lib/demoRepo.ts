@@ -969,8 +969,13 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       // Admin und Mitarbeiter (Migration 0025)
       if (user.role === "freiberufler") throw new PermissionError();
       const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
-      const next: BueroDaten = { name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email) };
-      if (next.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next.email)) throw new Error("Bitte eine gültige E-Mail-Adresse eintragen.");
+      const mail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      const g = daten.gutachter === undefined ? db.buero?.gutachter : daten.gutachter;
+      const gutachter = g ? { name: c(g.name), anschrift: c(g.anschrift), tel: c(g.tel), mobil: c(g.mobil), email: c(g.email) } : null;
+      if (gutachter && !gutachter.name && (gutachter.anschrift || gutachter.tel || gutachter.mobil || gutachter.email)) throw new Error("Bitte beim Baugrundgutachter einen Namen eintragen.");
+      const next: BueroDaten = { name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email), gutachter: gutachter?.name ? gutachter : null };
+      if (next.email && !mail.test(next.email)) throw new Error("Bitte eine gültige E-Mail-Adresse eintragen.");
+      if (next.gutachter?.email && !mail.test(next.gutachter.email)) throw new Error("Bitte eine gültige E-Mail-Adresse beim Baugrundgutachter eintragen.");
       db.buero = next;
       return done(undefined);
     },

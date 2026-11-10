@@ -1,5 +1,5 @@
-import { useId, useState, type FormEvent } from "react";
-import { Building2, Hammer, Hash, Lock, Pencil, Plus, SunMoon } from "lucide-react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { Building2, Hammer, Hash, Layers, Lock, Pencil, Plus, SunMoon } from "lucide-react";
 import { ExtractionCostsCard } from "../components/ExtractionCostsCard";
 import { KontoKarte } from "../components/KontoKarte";
 import { PageHead } from "../components/layout/PageHead";
@@ -11,15 +11,16 @@ import { cleanMasterName } from "../lib/projectForm";
 import { useSession } from "../lib/session";
 import { useData } from "../lib/store";
 import { readThemePref, setThemePref, THEME_OPTIONS, type ThemePref } from "../lib/theme";
-import type { BueroDaten, Company } from "../lib/types";
+import type { BueroDaten, BueroKontakt, Company } from "../lib/types";
 
-const FELDER: { key: keyof BueroDaten; label: string; type?: string; placeholder?: string }[] = [
+const FELDER: { key: keyof BueroKontakt; label: string; type?: string; placeholder?: string }[] = [
   { key: "name", label: "Name des Büros", placeholder: "z. B. ABM Architektur und Baumanagement" },
   { key: "anschrift", label: "Anschrift", placeholder: "Straße, PLZ Ort" },
   { key: "tel", label: "Telefon", type: "tel" },
   { key: "mobil", label: "Mobil", type: "tel" },
   { key: "email", label: "E-Mail", type: "email" },
 ];
+const GUTACHTER_FELDER: typeof FELDER = [{ key: "name", label: "Name", placeholder: "Firma" }, ...FELDER.slice(1)];
 
 /**
  * Einstellungen: eigenes Konto mit Passwort ändern und Darstellung (jede Rolle, Darstellung gilt für diesen Browser) und Bürodaten für das Planungsprotokoll
@@ -58,6 +59,7 @@ export function Einstellungen() {
           <>
             {/* Bürodaten ändern Admin und Mitarbeiter (Migration 0025); Freiberufler sehen diesen Teil gar nicht */}
             <BueroKarte buero={data.buero} canEdit />
+            <GutachterKarte buero={data.buero} canEdit />
             <NummernkreisKarte companies={data.companies} admin={user.role === "admin"} />
             {user.role === "admin" && <ExtractionCostsCard />}
           </>
@@ -100,11 +102,67 @@ export function DarstellungKarte() {
 }
 
 function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boolean }) {
+  return (
+    <KontaktKarte
+      titel="Bürodaten"
+      icon={<Building2 size={16} />}
+      sub="Stehen im Planungsprotokoll beim Architekten. Ein Sachbearbeiter im Projekt ersetzt Tel., Mobil und E-Mail."
+      felder={FELDER}
+      prefix="buero"
+      wert={buero}
+      canEdit={canEdit}
+      // Der Standard-Baugrundgutachter bleibt dabei, wie er ist
+      speichern={(v) => ({ ...v, gutachter: undefined })}
+      gespeichert="Bürodaten gespeichert"
+    />
+  );
+}
+
+/** Standard-Baugrundgutachter (Migration 0029): steht im Planungsprotokoll, wenn ein Projekt keinen eigenen hat. */
+function GutachterKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boolean }) {
+  const leer: BueroDaten = { name: null, anschrift: null, tel: null, mobil: null, email: null };
+  return (
+    <KontaktKarte
+      titel="Standard-Baugrundgutachter"
+      icon={<Layers size={16} />}
+      sub="Steht im Planungsprotokoll, solange im Projekt kein eigener Baugrundgutachter eingetragen ist."
+      felder={GUTACHTER_FELDER}
+      prefix="gutachter"
+      wert={buero?.gutachter ?? null}
+      canEdit={canEdit}
+      speichern={(v) => ({ ...(buero ?? leer), gutachter: v })}
+      gespeichert="Standard-Baugrundgutachter gespeichert"
+    />
+  );
+}
+
+/** Karte mit Name, Anschrift, Tel., Mobil, E-Mail: Ansicht und Bearbeiten. Gespeichert wird über saveBueroDaten. */
+function KontaktKarte({
+  titel,
+  icon,
+  sub,
+  felder,
+  prefix,
+  wert,
+  canEdit,
+  speichern,
+  gespeichert,
+}: {
+  titel: string;
+  icon: ReactNode;
+  sub: string;
+  felder: typeof FELDER;
+  prefix: string;
+  wert: BueroKontakt | null;
+  canEdit: boolean;
+  speichern: (v: BueroKontakt) => BueroDaten;
+  gespeichert: string;
+}) {
   const { mutate } = useData();
   const toast = useToast();
   const [editing, setEditing] = useState(false);
-  const leer: BueroDaten = { name: null, anschrift: null, tel: null, mobil: null, email: null };
-  const [v, setV] = useState<BueroDaten>(buero ?? leer);
+  const leer: BueroKontakt = { name: null, anschrift: null, tel: null, mobil: null, email: null };
+  const [v, setV] = useState<BueroKontakt>(wert ?? leer);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,26 +170,27 @@ function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boo
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await mutate((r) => r.saveBueroDaten(v));
+    const res = await mutate((r) => r.saveBueroDaten(speichern(v)));
     setBusy(false);
     if (!res.ok) return setError(res.error);
-    toast("Bürodaten gespeichert", "ok");
+    toast(gespeichert, "ok");
     setEditing(false);
   }
 
   return (
     <Card>
       <CardHead
-        title="Bürodaten"
-        icon={<Building2 size={16} />}
-        sub="Stehen im Planungsprotokoll beim Architekten. Ein Sachbearbeiter im Projekt ersetzt Tel., Mobil und E-Mail."
+        title={titel}
+        icon={icon}
+        sub={sub}
         actions={
           canEdit && !editing ? (
             <IconButton
               size="sm"
-              label="Bürodaten bearbeiten"
+              label={`${titel} bearbeiten`}
               onClick={() => {
-                setV(buero ?? leer);
+                setV(wert ?? leer);
+                setError(null);
                 setEditing(true);
               }}
             >
@@ -143,9 +202,9 @@ function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boo
       <CardBody>
         {editing ? (
           <form className="edit-form" onSubmit={(e) => void submit(e)} noValidate onKeyDown={(e) => e.key === "Escape" && !busy && setEditing(false)}>
-            {FELDER.map((f, i) => (
-              <Field key={f.key} label={f.label} htmlFor={`buero-${f.key}`}>
-                <Input id={`buero-${f.key}`} type={f.type} value={v[f.key] ?? ""} placeholder={f.placeholder} autoFocus={i === 0} autoComplete="off" onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
+            {felder.map((f, i) => (
+              <Field key={f.key} label={f.label} htmlFor={`${prefix}-${f.key}`}>
+                <Input id={`${prefix}-${f.key}`} type={f.type} value={v[f.key] ?? ""} placeholder={f.placeholder} autoFocus={i === 0} autoComplete="off" onChange={(e) => setV({ ...v, [f.key]: e.target.value })} />
               </Field>
             ))}
             {error && (
@@ -165,10 +224,10 @@ function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boo
         ) : (
           <>
             <dl className="dl">
-              {FELDER.map((f) => (
+              {felder.map((f) => (
                 <div className="dl-row" key={f.key}>
                   <dt>{f.label}</dt>
-                  <dd>{buero?.[f.key] || <span className="muted">–</span>}</dd>
+                  <dd>{wert?.[f.key] || <span className="muted">–</span>}</dd>
                 </div>
               ))}
             </dl>

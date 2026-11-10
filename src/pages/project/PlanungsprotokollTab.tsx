@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Download, FileCheck2, FilePen, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
@@ -200,10 +200,20 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
       rollen: Object.fromEntries([...ROLLEN, "sachbearbeiter"].map((r) => [r, party(r as PartyRole)])) as Record<PartyRole, Kontaktfelder>,
     };
   };
-  const [v, setV] = useState(start);
+  // basis: Stand beim letzten Laden. Gespeichert werden nur Rollen, die davon abweichen; so löscht das Formular nichts, was
+  // inzwischen anderswo eingetragen wurde (z. B. die Gemeinde über die Standortangaben).
+  const [basis, setBasis] = useState(start);
+  const [v, setV] = useState(basis);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (dirty) return;
+    const s = start();
+    setBasis(s);
+    setV(s);
+    // Bewusst nur bei neuen Daten: start() liest data.parties und contact
+  }, [data.parties, contact]);
   const id = `pp-${project.id}`;
   // Vorschläge aus den einzeiligen Feldern (wie das Protokoll sie ohne getrennte Angaben aufteilt)
   const altWohn = splitAnschrift(contact?.address);
@@ -243,7 +253,7 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
         siteState: b.siteState,
       },
       parties: Object.fromEntries(
-        rollen.map((r) => {
+        rollen.filter((r) => JSON.stringify(v.rollen[r]) !== JSON.stringify(basis.rollen[r])).map((r) => {
           const x = v.rollen[r];
           const input: PartyInput = { name: x.name, address: x.address, phone: x.phone, mobile: x.mobile, email: x.email, ...(MIT_FAX.includes(r) ? { fax: x.fax } : {}) };
           return [r, x.name.trim() ? input : parties.some((p) => p.role === r) ? null : undefined];
@@ -259,17 +269,19 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
   }
 
   const filled = (r: PartyRole) => parties.find((p) => p.role === r);
+  const buero = data.buero;
+  // Ohne eigenen Baugrundgutachter nimmt das Protokoll den Standard aus den Bürodaten (Migration 0029)
+  const standardGutachter = buero?.gutachter?.name ? buero.gutachter : null;
   const zusammenfassung = (r: PartyRole) => {
     const p = filled(r);
-    return p ? [p.name, p.phone, p.email].filter(Boolean).join(" · ") : "noch leer";
+    if (p) return [p.name, p.phone, p.email].filter(Boolean).join(" · ");
+    return r === "baugrundgutachter" && standardGutachter ? `Standard: ${standardGutachter.name}` : "noch leer";
   };
   const input = (key: string, label: string, value: string, onChange: (x: string) => void, extra: { placeholder?: string; type?: string; list?: string } = {}) => (
     <Field label={label} htmlFor={`${id}-${key}`}>
       <Input id={`${id}-${key}`} value={value} onChange={(e) => onChange(e.target.value)} autoComplete="off" {...extra} />
     </Field>
   );
-  const buero = data.buero;
-
   return (
     <Card>
       <CardHead title="Angaben für Seite 1" sub="Alles optional. Was fehlt, bleibt im Protokoll leer." />
@@ -340,12 +352,16 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
                       onUebernehmen={(k) => setR("schornsteinfeger", k)}
                     />
                   )}
+                  {r === "baugrundgutachter" && standardGutachter && !filled(r) && (
+                    <p className="field-hint">Leer gelassen, steht im Protokoll der Standard aus den Einstellungen (Bürodaten). Ein Eintrag hier gilt nur für dieses Projekt.</p>
+                  )}
+                  {r === "gemeinde" && !filled(r) && <p className="field-hint">Wird mit den Standortangaben (oben) aus dem amtlichen Anschriftenverzeichnis vorgeschlagen.</p>}
                   <div className="pp-grid">
-                    {input(`${r}-name`, "Name", v.rollen[r].name, (x) => setR(r, { name: x }), { placeholder: "Firma bzw. Behörde" })}
-                    {input(`${r}-adr`, "Anschrift", v.rollen[r].address, (x) => setR(r, { address: x }), { placeholder: "Straße, PLZ Ort" })}
-                    {input(`${r}-tel`, "Tel.", v.rollen[r].phone, (x) => setR(r, { phone: x }), { type: "tel" })}
-                    {input(`${r}-mobil`, "Mobil", v.rollen[r].mobile, (x) => setR(r, { mobile: x }), { type: "tel" })}
-                    {input(`${r}-mail`, "E-Mail", v.rollen[r].email, (x) => setR(r, { email: x }), { type: "email" })}
+                    {input(`${r}-name`, "Name", v.rollen[r].name, (x) => setR(r, { name: x }), { placeholder: r === "baugrundgutachter" && standardGutachter ? (standardGutachter.name ?? "") : "Firma bzw. Behörde" })}
+                    {input(`${r}-adr`, "Anschrift", v.rollen[r].address, (x) => setR(r, { address: x }), { placeholder: (r === "baugrundgutachter" && standardGutachter?.anschrift) || "Straße, PLZ Ort" })}
+                    {input(`${r}-tel`, "Tel.", v.rollen[r].phone, (x) => setR(r, { phone: x }), { type: "tel", placeholder: (r === "baugrundgutachter" && standardGutachter?.tel) || "" })}
+                    {input(`${r}-mobil`, "Mobil", v.rollen[r].mobile, (x) => setR(r, { mobile: x }), { type: "tel", placeholder: (r === "baugrundgutachter" && standardGutachter?.mobil) || "" })}
+                    {input(`${r}-mail`, "E-Mail", v.rollen[r].email, (x) => setR(r, { email: x }), { type: "email", placeholder: (r === "baugrundgutachter" && standardGutachter?.email) || "" })}
                     {MIT_FAX.includes(r) && input(`${r}-fax`, "Fax", v.rollen[r].fax, (x) => setR(r, { fax: x }), { type: "tel" })}
                   </div>
                   {filled(r)?.contact && <p className="field-hint">Alte Kontaktzeile (bleibt erhalten): {filled(r)!.contact}</p>}
@@ -364,7 +380,9 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
               size="sm"
               disabled={busy || !dirty}
               onClick={() => {
-                setV(start());
+                const s = start();
+                setBasis(s);
+                setV(s);
                 setDirty(false);
                 setError(null);
               }}

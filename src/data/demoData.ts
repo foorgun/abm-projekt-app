@@ -82,6 +82,7 @@ export const DEMO_BUERO: BueroDaten = {
   tel: "0731 0000000",
   mobil: null,
   email: "buero@abm-demo.example",
+  gutachter: { name: "Baugrundbüro Muster (Demo)", anschrift: "Laborweg 3, 89000 Musterstadt", tel: "0731 1111111", mobil: null, email: "baugrund@demo.example" },
 };
 
 const KELLER = ["Kellerbau Löffler", "Bodenplatten Süß", "Betonbau Gräter"];

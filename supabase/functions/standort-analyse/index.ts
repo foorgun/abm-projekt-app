@@ -10,6 +10,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { analysieren, anfrageAusProjekt, MAX_ANALYSEN_PRO_TAG, parseProjektId, tagesbeginn, TIMEOUT_MS, USER_AGENT, type Dienste, type StandortFehler } from "./logic.ts";
 import { GEMEINDEN } from "./gemeinden.ts";
+import { VERWALTUNGEN, VERWALTUNGEN_STAND } from "./verwaltungen.ts";
 import { ERDBEBEN, ERDBEBEN_BY_KREISE, SCHNEELAST } from "./zonen.ts";
 import { serviceKey } from "../_shared/serviceKey.ts";
 
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
         if (log.error) throw new Error("standort_abrufe nicht schreibbar");
         return true;
       },
-      tabellen: { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN },
+      tabellen: { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN, VERWALTUNGEN, VERWALTUNGEN_STAND },
     };
 
     const antwort = await analysieren(anfrage, dienste);
