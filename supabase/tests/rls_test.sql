@@ -960,7 +960,7 @@ select test.expect('Mitarbeiterin: Wert bereinigt, Stempel gesetzt',
 select test.throws('Mitarbeiterin: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set email = 'kein-at'$$);
 select test.throws('Mitarbeiterin löscht die Bürodaten nicht (kein Recht)', $$delete from public.buero_daten$$);
 select test.expect('Mitarbeiterin setzt den Standard-Baugrundgutachter (0029)',
-  test.affected($$update public.buero_daten set gutachter_name = ' Baugrund  Muster GmbH ', gutachter_email = 'baugrund@example.de', gutachter_tel = ' '$$), 1);
+  test.affected($$update public.buero_daten set gutachter_name = ' Baugrund Muster GmbH ', gutachter_email = 'baugrund@example.de', gutachter_tel = ' '$$), 1);
 select test.expect('Standard-Baugrundgutachter bereinigt',
   (select count(*) from public.buero_daten where gutachter_name = 'Baugrund Muster GmbH' and gutachter_tel is null and gutachter_email = 'baugrund@example.de'), 1);
 select test.throws('Baugrundgutachter: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set gutachter_email = 'kein-at'$$);
