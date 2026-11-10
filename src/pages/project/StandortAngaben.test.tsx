@@ -74,10 +74,25 @@ describe("StandortAngaben", () => {
     vi.restoreAllMocks();
   });
 
+  it("ermittelt beim Öffnen von selbst, solange nichts übernommen ist", async () => {
+    const analyse = vi.spyOn(repo, "standortAnalyse");
+    await anzeigen();
+    expect(analyse).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain("Schneelastzone");
+    expect(knopf(host, /Erneut ermitteln/)).toBeDefined();
+    await klick(knopf(host, /Alle übernehmen/));
+    expect(analyse).toHaveBeenCalledTimes(1);
+
+    // Nach dem Übernehmen: neu geöffnet startet nichts mehr von selbst
+    act(() => root.unmount());
+    root = createRoot(host);
+    await anzeigen();
+    expect(analyse).toHaveBeenCalledTimes(1);
+    expect(knopf(host, /Standortangaben ermitteln/)).toBeDefined();
+  });
+
   it("schreibt beim Ermitteln nichts; erst „Alle übernehmen“ speichert, abgewählte Werte bleiben draußen", async () => {
     await anzeigen();
-    expect(host.textContent).not.toContain("Schneelastzone");
-    await klick(knopf(host, /Standortangaben ermitteln/));
     expect(host.textContent).toContain("Schneelastzone");
     expect(await gespeichert()).toBeUndefined();
 
@@ -102,7 +117,6 @@ describe("StandortAngaben", () => {
 
   it("nicht ermittelbare Felder zeigen Grund und Viewer und bieten keine Auswahl", async () => {
     await anzeigen();
-    await klick(knopf(host, /Standortangaben ermitteln/));
     expect(host.querySelector("#pp-standort-strom")).toBeNull();
     expect(host.textContent).toMatch(/keine amtliche, frei nutzbare Zuordnung/);
     const links = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href"));
@@ -114,14 +128,12 @@ describe("StandortAngaben", () => {
   it("anderes Bundesland: klare Meldung, keine Liste", async () => {
     await repo.updateProject(projectId, { project: { bundesland: "NW" } });
     await anzeigen();
-    await klick(knopf(host, /Standortangaben ermitteln/));
     expect(host.textContent).toMatch(/noch nicht verfügbar/);
     expect(knopf(host, /Alle übernehmen/)).toBeUndefined();
   });
 
   it("übernommene Werte lassen sich wieder entfernen", async () => {
     await anzeigen();
-    await klick(knopf(host, /Standortangaben ermitteln/));
     await klick(knopf(host, /Alle übernehmen/));
     expect(Object.keys((await gespeichert()) ?? {}).length).toBeGreaterThan(0);
     await klick(knopf(host, /Übernommene Werte entfernen/));

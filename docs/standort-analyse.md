@@ -2,6 +2,8 @@
 
 Die Edge Function `standort-analyse` ermittelt aus Bauort und Bauadresse eines Projekts Vorschläge. Sie liest nie die Anschrift des
 Bauherrn. Ins PDF kommt nur, was im Reiter Planungsprotokoll mit „Alle übernehmen“ gespeichert wurde (Tabelle `standort_angaben`).
+Solange für ein Projekt nichts übernommen ist, startet die Ermittlung beim Öffnen des Reiters von selbst (einmal je Aufruf);
+Übernehmen bleibt ein bewusster Klick. Antworten aus dem Cache zählen nicht zum Tageslimit.
 Länder: BW, BY, HE. Andere Länder bekommen die Meldung „noch nicht verfügbar“.
 
 ## Felder in den Vorlagen
@@ -38,11 +40,10 @@ Schwabenhaus legt jede Radio-Auswahl dreifach übereinander. Gesetzt wird die ob
 | Radon | BW: Liste des Umweltministeriums (15.06.2021). BY: BayMBl. 2021 Nr. 63. HE: laut BfS keine Gebiete. Dazu BfS-WMS Radon-222 in der Bodenluft. | Festlegungen sind Amtsblatt bzw. Ministeriumsliste. BfS-Dienst: Gebühren und Zugriff „NONE“, keine Lizenz genannt. | Gemeinde bzw. Kreis; Bodenluft als Rasterwert (Übersicht). |
 | Wasserschutz | BW: LUBW WMS Wasserschutzgebietszone. BY: LfU `wasser/wsg`. HE: HLNUG `bewirtschaftungsgebiete`. | BW: UIS-Nutzungsvereinbarung, „Grundlage: Daten aus dem Umweltinformationssystem (UIS) der LUBW“; WMS-Abfragen dort nicht ausdrücklich geregelt. BY und HE: CC BY 4.0. | Punkt. Nicht rechtsverbindlich. BY ohne Zonen, BW fasst Zone I und II zusammen. |
 | Hochwasser | BW: LUBW WMS Überschwemmungsgebiet. BY: LfU `wasser/ueberschwemmungsgebiete`. HE: HLNUG `gebiete_naturbedingter_risiken`. | wie Wasserschutz | HQ100 an kartierten Gewässern, kein Starkregen. |
-| Lärm | BY: LfU `laerm/hauptverkehrsstrassen` (2022). HE: HLNUG Umweltatlas, ArcGIS-REST `laerm_oden` (2022). | BY: CC BY 4.0. HE: im Dienst nur © HLNUG, für andere HLNUG-Dienste CC BY 4.0; bitte klären. | BY nur außerhalb der Ballungsräume, HE weitgehend alle Straßen. |
+| Lärm | BW: LUBW ArcGIS-REST `wfs/Umgebungslaermkartierung_Strassenenverkehrslaerm_24_Stunden` (laut UDO-Karte Kartierung 2022), nur Straße, LDEN in 5-dB-Stufen. BY: LfU `laerm/hauptverkehrsstrassen` (2022). HE: HLNUG Umweltatlas, ArcGIS-REST `laerm_oden` (2022). | BW: im Dienst keine Lizenz genannt, wie Wasserschutz (UIS-Nutzungsvereinbarung); bitte klären. BY: CC BY 4.0. HE: im Dienst nur © HLNUG, für andere HLNUG-Dienste CC BY 4.0; bitte klären. | BW: Hauptverkehrsstraßen, für Ulm und Stuttgart keine Werte (Test 10.11.2026), dort kartieren vermutlich die Städte selbst. BY nur außerhalb der Ballungsräume, HE weitgehend alle Straßen. |
 
 Nicht automatisch:
 
-- **Lärm BW:** Einen LUBW-Dienst gibt es nicht. Die Straßenlärm-Ebenen des UBA-WMS (`VeLa/LK`) haben im Test (01.11.2026) innerhalb von 40 bis 60 s nicht geantwortet.
 - **Stromversorger:** Es gibt keine amtliche, frei nutzbare Zuordnung von Standort zu Netzbetreiber. Das Marktstammdatenregister führt Betreiber, aber keine Netzgebiete.
 - **BKG (VG250, DGM200):** wäre die amtliche Wahl für Gemeindeschlüssel und Höhe, antwortet aber weder von hier noch von Supabase aus (Test 01.11.2026).
 - **Nominatim:** sperrt die Server von Supabase („Access denied“, HTTP 403). Deshalb Photon. **Overpass:** Die Regeln nennen eine App als Backend auf den öffentlichen Servern problematisch.

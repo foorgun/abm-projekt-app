@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ExternalLink, MapPin } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
@@ -13,6 +13,7 @@ const datum = (iso: string | null) => (iso ? formatDate(iso.slice(0, 10)) : "");
 
 /**
  * Standortangaben im Reiter Planungsprotokoll: Vorschläge zur Bauadresse holen, prüfen, mit einer Bestätigung übernehmen.
+ * Ist noch nichts übernommen, startet die Ermittlung beim Öffnen von selbst (Antworten aus dem Cache zählen nicht zum Tageslimit).
  * Vorschläge liegen nur hier im Zustand; ins PDF kommt nur, was übernommen und damit gespeichert ist.
  */
 export function StandortAngaben({ project, data, vorlage }: { project: Project; data: Dataset; vorlage: ProtokollVorlage | null }) {
@@ -52,6 +53,16 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
     toast(meldung, "ok");
   }
 
+  // Einmal je Projekt und Aufruf des Reiters, nur solange nichts übernommen ist
+  const automatisch = useRef<string | null>(null);
+  const nichtsUebernommen = !gespeichert || Object.keys(gespeichert.angaben).length === 0;
+  useEffect(() => {
+    if (automatisch.current === project.id || !nichtsUebernommen) return;
+    automatisch.current = project.id;
+    void ermitteln();
+    // Bewusst nur project.id: nur beim Öffnen, nicht nach jedem Speichern oder Entfernen
+  }, [project.id]);
+
   const setZeile = (thema: Thema, patch: Partial<Zeile>) => setZeilen((z) => z.map((x) => (x.thema === thema ? { ...x, ...patch } : x)));
   const anzahl = antwort ? zeilen.filter((z) => z.gewaehlt && z.wert.trim() && antwort.ergebnisse.find((e) => e.thema === z.thema)?.status === "ermittelt").length : 0;
   const angaben = gespeichert?.angaben ?? {};
@@ -60,12 +71,12 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
 
   return (
     <Card>
-      <CardHead title="Standortangaben" sub="Aus der Bauadresse ermittelt. Ins PDF kommt nur, was du übernimmst." icon={<MapPin size={16} />} />
+      <CardHead title="Standortangaben" sub="Aus der Bauadresse ermittelt, beim Öffnen automatisch, solange nichts übernommen ist. Ins PDF kommt nur, was du übernimmst." icon={<MapPin size={16} />} />
       <CardBody>
         <div className="pp-standort">
           <div className="pp-actions">
             <Button variant="primary" icon={<MapPin size={15} />} disabled={!!busy} onClick={() => void ermitteln()}>
-              {busy === "analyse" ? "Wird ermittelt …" : "Standortangaben ermitteln"}
+              {busy === "analyse" ? "Wird ermittelt …" : antwort ? "Erneut ermitteln" : "Standortangaben ermitteln"}
             </Button>
           </div>
 
