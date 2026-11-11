@@ -6958,3 +6958,76 @@ li:first-child > .doc-card {
 .ev-form {
   max-width: 760px;
 }
+
+/* Vertrag nachträglich auslesen (Reiter Planungsprotokoll und Dokumente): Vergleich Projekt gegen Vertrag */
+.vn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.vn-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.vn-kopf .field {
+  min-width: 220px;
+}
+
+.vn-tabelle {
+  display: flex;
+  flex-direction: column;
+}
+
+.vn-zeile {
+  display: grid;
+  grid-template-columns: minmax(200px, 0.9fr) minmax(160px, 1fr) minmax(220px, 1.4fr);
+  gap: var(--sp-1) var(--sp-3);
+  align-items: start;
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--border);
+}
+
+.vn-zeile-kopf {
+  border-top: 0;
+  padding-top: 0;
+  font-size: var(--fs-12);
+  color: var(--muted);
+}
+
+/* Konflikt: vorhandener Wert weicht ab, nicht vorgewählt */
+.vn-zeile[data-status="abweichend"] .vn-alt {
+  color: var(--warn);
+}
+
+.vn-feld {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.vn-neu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vn-alt,
+.vn-neu {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .vn-zeile {
+    grid-template-columns: 1fr;
+  }
+
+  .vn-zeile-kopf {
+    display: none;
+  }
+}

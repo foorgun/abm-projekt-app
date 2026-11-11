@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { StandortAngaben } from "./StandortAngaben";
 import { VersorgerVorschlag } from "./VersorgerVorschlag";
+import { VertragNachtraeglich } from "./VertragNachtraeglich";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
 import { BAUSEITS, ERDBAU_UNBEKANNT, protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
@@ -122,6 +123,7 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
         </CardBody>
       </Card>
 
+      <VertragNachtraeglich project={project} data={data} contact={contact} />
       <StandortAngaben project={project} data={data} vorlage={vorlage} />
 
       <Versionen versionen={versionen} data={data} />

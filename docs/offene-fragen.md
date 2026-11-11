@@ -63,6 +63,12 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) in production muss der AVV zwischen Furkan Cetin und ABM unterschrieben sein
   (Anthropic als Unterauftragnehmer). Siehe `docs/vertrag-extraktion.md`.
 - **Limits der Auslesung:** 20 je Person und Tag, 100 je Tag, 20 € im Monat sind Annahmen. Passen sie zum Büro?
+- **Keller/Bodenplatte bauseits:** Wie steht das in den Werkverträgen der Hausbaufirmen genau da (z. B. „Ausführung ab
+  Oberkante Bodenplatte“, „Keller bauseits“, Kreuz bei „ohne Keller“)? Die Auslesung setzt „ja“ nur bei ausdrücklicher
+  Nennung; ein bloßes „ohne Keller“ zählt nicht (dann kann die Bodenplatte trotzdem von der Hausbaufirma kommen).
+  Mit echten Verträgen prüfen.
+- **Vertrag nachträglich auslesen:** Die ausgelesenen Werte werden nicht zwischengespeichert; wer die Vorschau schließt,
+  liest neu (zählt beim echten Extractor wieder gegen das Tageslimit). Reicht das?
 
 ## Zu Urlaub und Krankheit
 

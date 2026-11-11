@@ -10,7 +10,7 @@ import { emptyFields, ExtractUnavailable, normalizeFields, type DraftFieldKey, t
 import { fold, type ParsedMail } from "./eml";
 
 /** Felder aus einer Mail; muss zu MAIL_FIELDS der Edge Function passen (Test). */
-export const MAIL_DRAFT_FIELDS: readonly DraftFieldKey[] = ["bauherrLabel", "bauherrName", "phone", "email", "address", "bauherr2Name", "buildingAddress", "location", "flurstueck", "gemarkung"];
+export const MAIL_DRAFT_FIELDS: readonly DraftFieldKey[] = ["bauherrLabel", "bauherrName", "phone", "email", "address", "bauherr2Name", "buildingAddress", "location", "flur", "flurstueck", "gemarkung"];
 
 /** Höchstens so viele Zeichen gehen an die Auslesung (Grenze der Edge Function: MAX_MAIL_CHARS). */
 export const MAIL_EXCERPT_CHARS = 6000;

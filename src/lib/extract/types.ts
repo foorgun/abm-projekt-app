@@ -64,9 +64,13 @@ export const DRAFT_FIELDS = [
   // Baugrundstück: steht im Werkvertrag nicht und wird daraus nie abgeleitet (nur aus anderen Dokumenten)
   "buildingAddress",
   "location",
+  "flur",
   "flurstueck",
   "gemarkung",
   "vermesser",
+  "vermesserAnschrift", // Anschrift des Vermessungsbüros (Briefkopf), für den Beteiligten "Vermesser"
+  "vermesserTelefon",
+  "vermesserEmail",
   // Metadaten am Dokument
   "vertragsart",
   "vertragsdatum", // YYYY-MM-DD
@@ -76,15 +80,18 @@ export const DRAFT_FIELDS = [
   // nur Anzeige
   "rechtsform", // "Eheleute" oder "Bauherrengemeinschaft"
   "foerderung", // "ja", wenn KfW/WEF-Förderung angekreuzt ist
+  // Werkvertrag: "ja", wenn Keller bzw. Bodenplatte ausdrücklich bauseits/Eigenleistung/nicht im Leistungsumfang sind
+  "kellerBauseits",
 ] as const;
 
 export type DraftFieldKey = (typeof DRAFT_FIELDS)[number];
 
 /** Felder, die im Werkvertrag nicht stehen und daraus nie übernommen werden. */
-export const NOT_IN_WERKVERTRAG: DraftFieldKey[] = ["buildingAddress", "location", "flurstueck", "gemarkung"];
+export const NOT_IN_WERKVERTRAG: DraftFieldKey[] = ["buildingAddress", "location", "flur", "flurstueck", "gemarkung"];
 
 const BAUHERR: DraftFieldKey[] = ["bauherrLabel", "bauherrName", "phone", "email", "address", "bauherr2Name", "bauherr2Phone", "bauherr2Email"];
-const GRUNDSTUECK: DraftFieldKey[] = ["buildingAddress", "location", "flurstueck", "gemarkung"];
+const GRUNDSTUECK: DraftFieldKey[] = ["buildingAddress", "location", "flur", "flurstueck", "gemarkung"];
+const VERMESSER: DraftFieldKey[] = ["vermesser", "vermesserAnschrift", "vermesserTelefon", "vermesserEmail"];
 const VERTRAG: DraftFieldKey[] = ["vertragsart", "vertragsdatum", "vertragspreis", "angebotsnummer"];
 
 /**
@@ -94,12 +101,12 @@ const VERTRAG: DraftFieldKey[] = ["vertragsart", "vertragsdatum", "vertragspreis
  */
 export const FIELDS_BY_TYPE: Record<Vertragsart, readonly DraftFieldKey[]> = {
   // Vertragsdaten und Bauherr; das Baugrundstück steht dort nicht
-  werkvertrag: [...BAUHERR, "company", ...VERTRAG, "haustyp", "rechtsform", "foerderung"],
+  werkvertrag: [...BAUHERR, "company", ...VERTRAG, "haustyp", "rechtsform", "foerderung", "kellerBauseits"],
   // Bauort und Grundstück, Vermessungsbüro, Auftraggeber
-  vermessungsvertrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, "vermesser", ...VERTRAG],
+  vermessungsvertrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, ...VERMESSER, ...VERTRAG],
   baugrundauftrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, ...VERTRAG],
   honorarvereinbarung: [...BAUHERR, ...GRUNDSTUECK, ...VERTRAG],
-  sonstiges: DRAFT_FIELDS.filter((k) => k !== "haustyp" && k !== "rechtsform" && k !== "foerderung"),
+  sonstiges: DRAFT_FIELDS.filter((k) => k !== "haustyp" && k !== "rechtsform" && k !== "foerderung" && k !== "kellerBauseits"),
 };
 
 /**
@@ -237,6 +244,9 @@ export function restrictToType(felder: Record<DraftFieldKey, DraftField>, art: V
   for (const k of DRAFT_FIELDS) if (k !== "vertragsart" && !allowed.has(k)) out[k] = { ...EMPTY_FIELD };
   if (out.vertragsdatum.wert && !/^\d{4}-\d{2}-\d{2}$/.test(out.vertragsdatum.wert)) out.vertragsdatum = { ...EMPTY_FIELD };
   if (out.foerderung.wert && out.foerderung.wert.toLowerCase() !== "ja") out.foerderung = { ...EMPTY_FIELD };
+  // nur ein ausdrückliches "ja" zählt; "nein" oder Unklares heißt: nichts setzen
+  if (out.kellerBauseits.wert && out.kellerBauseits.wert.toLowerCase() !== "ja") out.kellerBauseits = { ...EMPTY_FIELD };
+  else if (out.kellerBauseits.wert) out.kellerBauseits = { ...out.kellerBauseits, wert: "ja" };
   return out;
 }
 
