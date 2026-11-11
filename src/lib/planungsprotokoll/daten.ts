@@ -81,26 +81,44 @@ function kontaktAus(p: ProjectParty | undefined): Kontakt {
   };
 }
 
-/** Architekt: Bürodaten; ein Sachbearbeiter im Projekt ergänzt den Namen und ersetzt Tel., Mobil und E-Mail, soweit er sie hat. */
-export function architektKontakt(buero: BueroDaten | null, sachbearbeiter: ProjectParty | undefined): Kontakt {
-  const sb = kontaktAus(sachbearbeiter);
-  return {
-    name: join([buero?.name, sb.name], ", "),
-    anschrift: clean(buero?.anschrift),
-    tel: sb.tel ?? clean(buero?.tel),
-    mobil: sb.mobil ?? clean(buero?.mobil),
-    mail: sb.mail ?? clean(buero?.email),
-    fax: null,
-  };
+/**
+ * Feste Regeln für Seite 1 (Absprache mit ABM, 11.11.2026, docs/entscheidungen.md):
+ * - Architekt: nur das Büro (Bürodaten), keine Personennamen.
+ * - Vermesser und Baugrundgutachter: immer der Standard aus den Bürodaten (Clayton). Nur ohne Standard der Eintrag im Projekt.
+ * - Kellerbauer/Bodenplatte: die Hausbaufirma. Ein Eintrag im Projekt geht vor, z. B. „Bauseits“ bei Kauf ohne Keller/Bodenplatte.
+ * - Erdbau: „nicht bekannt“, solange im Projekt keiner steht.
+ * - Gas und Fernwärme: bleiben leer.
+ */
+export const BAUSEITS = "Bauseits";
+export const ERDBAU_UNBEKANNT = "nicht bekannt";
+/** Rollen, die das Protokoll immer leer lässt, auch wenn im Projekt etwas steht. */
+export const IMMER_LEER: readonly ProtokollRolle[] = ["gas", "fernwaerme"];
+
+/** Architekt: nur die Bürodaten (Name, Anschrift, Tel., Mobil, E-Mail des Büros). */
+export function architektKontakt(buero: BueroDaten | null): Kontakt {
+  return { name: clean(buero?.name), anschrift: clean(buero?.anschrift), tel: clean(buero?.tel), mobil: clean(buero?.mobil), mail: clean(buero?.email), fax: null };
 }
 
-/** Baugrundgutachter: der des Projekts, sonst der Standard aus den Bürodaten (Migration 0029). */
-export function gutachterKontakt(buero: BueroDaten | null, projekt: ProjectParty | undefined): Kontakt {
-  if (projekt) return kontaktAus(projekt);
+/** Standard-Gutachter aus den Bürodaten (Migration 0029), sonst null. */
+export function standardGutachter(buero: BueroDaten | null): Kontakt | null {
   const g = buero?.gutachter;
-  if (!clean(g?.name)) return { ...leer };
+  if (!clean(g?.name)) return null;
   return { name: clean(g?.name), anschrift: clean(g?.anschrift), tel: clean(g?.tel), mobil: clean(g?.mobil), mail: clean(g?.email), fax: null };
 }
+
+/** Vermesser und Baugrundgutachter: immer der Standard aus den Bürodaten; nur ohne Standard der Eintrag im Projekt. */
+export function gutachterKontakt(buero: BueroDaten | null, projekt: ProjectParty | undefined): Kontakt {
+  return standardGutachter(buero) ?? kontaktAus(projekt);
+}
+
+/** Kellerbauer: Eintrag im Projekt (z. B. „Bauseits“), sonst die Hausbaufirma (nur der Name). */
+export function kellerKontakt(projekt: ProjectParty | undefined, hausbaufirma: string | null | undefined): Kontakt {
+  if (projekt && clean(projekt.name)) return kontaktAus(projekt);
+  return { ...leer, name: clean(hausbaufirma) };
+}
+
+/** „Bauseits“ (Bauherr lässt Keller/Bodenplatte selbst ausführen)? */
+export const istBauseits = (name: string | null | undefined): boolean => clean(name)?.toLocaleLowerCase("de") === BAUSEITS.toLocaleLowerCase("de");
 
 /** Name und Anschrift in einem Feld ("Name/Anschrift", große Namensfelder). */
 export const nameAnschrift = (k: Kontakt): string | null => join([k.name, k.anschrift], ", ");
@@ -145,14 +163,21 @@ function bauortTeil(contact: BauherrContact | null, project: { location: string 
 }
 
 /** Alle Werte für Seite 1 eines Projekts. `data` ist der geladene Datenbestand (Admin oder Mitarbeiter). */
-export function protokollDaten(data: Pick<Dataset, "projects" | "bauherren" | "parties" | "buero">, projectId: string): ProtokollDaten {
+export function protokollDaten(data: Pick<Dataset, "projects" | "bauherren" | "parties" | "buero" | "companies">, projectId: string): ProtokollDaten {
   const project = data.projects.find((p) => p.id === projectId);
   if (!project) throw new Error("Projekt nicht gefunden");
   const contact = data.bauherren.find((b) => b.projectId === projectId) ?? null;
   const parties = data.parties.filter((p) => p.projectId === projectId);
   const party = (role: PartyRole) => parties.find((p) => p.role === role);
-  const kontakt = (r: ProtokollRolle): Kontakt =>
-    r === "architekt" ? architektKontakt(data.buero, party("sachbearbeiter")) : r === "baugrundgutachter" ? gutachterKontakt(data.buero, party(r)) : kontaktAus(party(r));
+  const firma = data.companies.find((c) => c.id === project.companyId)?.name;
+  const kontakt = (r: ProtokollRolle): Kontakt => {
+    if (IMMER_LEER.includes(r)) return { ...leer };
+    if (r === "architekt") return architektKontakt(data.buero);
+    if (r === "vermesser" || r === "baugrundgutachter") return gutachterKontakt(data.buero, party(r));
+    if (r === "kellerbauer") return kellerKontakt(party(r), firma);
+    const k = kontaktAus(party(r));
+    return r === "erdbauer" && !k.name ? { ...leer, name: ERDBAU_UNBEKANNT } : k;
+  };
   const beteiligte = Object.fromEntries(PROTOKOLL_ROLLEN.map((r) => [r, kontakt(r)])) as Record<ProtokollRolle, Kontakt>;
   return {
     // Annahme: "Projekt-Nr." (FB-22) bzw. "Schwabenhaus BV-Nr." ist die Hausbau-Nr. (docs/offene-fragen.md)

@@ -5,7 +5,7 @@ import { useToast } from "../../components/Toast";
 import { StandortAngaben } from "./StandortAngaben";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
-import { protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
+import { BAUSEITS, ERDBAU_UNBEKANNT, protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
 import { dateiSpeichern, protokollErzeugen } from "../../lib/planungsprotokoll/erzeugen";
 import { bauadresseFuerSuche, kontaktAusDetails, QUELLE_HINWEIS, type Kandidat, type Passt, type SuchAntwort } from "../../lib/planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VARIANTE_LABEL, VORLAGEN, VORLAGEN_LISTE, vorlageFuerFirma } from "../../lib/planungsprotokoll/vorlagen";
@@ -16,8 +16,8 @@ import { useSession } from "../../lib/session";
 import { useData } from "../../lib/store";
 import type { BauherrContact, Dataset, PartyRole, Planungsprotokoll, Project, ProtokollVariante, ProtokollVorlage } from "../../lib/types";
 
-/** Beteiligte, die das Protokoll auf Seite 1 abfragt, in der Reihenfolge der Vorlagen. */
-const ROLLEN: PartyRole[] = ["vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt", "schornsteinfeger", "strom", "gas", "fernwaerme", "wasser", "abwasser", "sonstige"];
+/** Beteiligte, die das Protokoll auf Seite 1 abfragt, in der Reihenfolge der Vorlagen. Gas und Fernwärme bleiben im Protokoll leer. */
+const ROLLEN: PartyRole[] = ["vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt", "schornsteinfeger", "strom", "wasser", "abwasser", "sonstige"];
 /** Fax fragt nur Schwabenhaus ab, und nur bei Gemeinde und Bauamt. */
 const MIT_FAX: PartyRole[] = ["gemeinde", "bauamt"];
 
@@ -27,7 +27,7 @@ const LEER: Kontaktfelder = { name: "", address: "", phone: "", mobile: "", emai
 /**
  * Reiter "Planungsprotokoll" (nur Admin und Mitarbeiter): Seite 1 der Vorlage der Hausbaufirma automatisch befüllen,
  * als bearbeitbare oder flache Fassung im Projektordner ablegen, Fassungen auflisten. Darunter die Angaben, die nur das
- * Protokoll braucht (weitere Beteiligte, Sachbearbeiter, getrennte Anschrift und Bauort), alles optional.
+ * Protokoll braucht (weitere Beteiligte, getrennte Anschrift und Bauort), alles optional.
  */
 export function PlanungsprotokollTab({ project, data, contact }: { project: Project; data: Dataset; contact: BauherrContact | null }) {
   const { repo, mutate } = useData();
@@ -197,7 +197,7 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
         siteState: contact?.siteState ?? "",
         flur: project.flur ?? "",
       },
-      rollen: Object.fromEntries([...ROLLEN, "sachbearbeiter"].map((r) => [r, party(r as PartyRole)])) as Record<PartyRole, Kontaktfelder>,
+      rollen: Object.fromEntries(ROLLEN.map((r) => [r, party(r)])) as Record<PartyRole, Kontaktfelder>,
     };
   };
   // basis: Stand beim letzten Laden. Gespeichert werden nur Rollen, die davon abweichen; so löscht das Formular nichts, was
@@ -230,7 +230,7 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
   async function submit(e: FormEvent) {
     e.preventDefault();
     setError(null);
-    const rollen = [...ROLLEN, "sachbearbeiter" as PartyRole];
+    const rollen = ROLLEN;
     const ohneName = rollen.filter((r) => !v.rollen[r].name.trim() && Object.entries(v.rollen[r]).some(([k, x]) => k !== "name" && x.trim()));
     if (ohneName.length) return setError(`Bitte einen Namen eintragen bei: ${ohneName.map((r) => PARTY_LABEL[r]).join(", ")}.`);
     const b = v.bauherr;
@@ -269,13 +269,24 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
   }
 
   const filled = (r: PartyRole) => parties.find((p) => p.role === r);
-  const buero = data.buero;
-  // Ohne eigenen Baugrundgutachter nimmt das Protokoll den Standard aus den Bürodaten (Migration 0029)
-  const standardGutachter = buero?.gutachter?.name ? buero.gutachter : null;
+  // Vermesser und Baugrundgutachter: im Protokoll immer der Standard aus den Bürodaten (Migration 0029, Absprache 11.11.2026)
+  const standardGutachter = data.buero?.gutachter?.name ? data.buero.gutachter : null;
+  const mitStandard = (r: PartyRole) => (r === "vermesser" || r === "baugrundgutachter") && !!standardGutachter;
+  const firma = data.companies.find((c) => c.id === project.companyId)?.name ?? null;
   const zusammenfassung = (r: PartyRole) => {
+    if (mitStandard(r)) return `Standard: ${standardGutachter!.name}`;
     const p = filled(r);
     if (p) return [p.name, p.phone, p.email].filter(Boolean).join(" · ");
-    return r === "baugrundgutachter" && standardGutachter ? `Standard: ${standardGutachter.name}` : "noch leer";
+    if (r === "kellerbauer" && firma) return `Hausbaufirma: ${firma}`;
+    if (r === "erdbauer") return ERDBAU_UNBEKANNT;
+    return "noch leer";
+  };
+  const platzhalter = (r: PartyRole, feld: "name" | "anschrift" | "tel" | "mobil" | "email") => {
+    if (mitStandard(r)) return standardGutachter?.[feld] ?? "";
+    if (feld !== "name") return feld === "anschrift" ? "Straße, PLZ Ort" : "";
+    if (r === "kellerbauer" && firma) return firma;
+    if (r === "erdbauer") return ERDBAU_UNBEKANNT;
+    return "Firma bzw. Behörde";
   };
   const input = (key: string, label: string, value: string, onChange: (x: string) => void, extra: { placeholder?: string; type?: string; list?: string } = {}) => (
     <Field label={label} htmlFor={`${id}-${key}`}>
@@ -315,27 +326,6 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
             </div>
           </details>
 
-          <details className="pp-group">
-            <summary>
-              <span>Sachbearbeiter (ABM)</span>
-              <span className="muted">{filled("sachbearbeiter")?.name ?? "Bürodaten"}</span>
-            </summary>
-            <div className="pp-group-body">
-              <p className="field-hint">Steht beim Architekten neben dem Büronamen. Tel., Mobil und E-Mail ersetzen die Bürodaten, soweit eingetragen.</p>
-              <datalist id={`${id}-team`}>
-                {data.team.map((t) => (
-                  <option key={t.id} value={t.name} />
-                ))}
-              </datalist>
-              <div className="pp-grid">
-                {input("sb-name", "Name", v.rollen.sachbearbeiter.name, (x) => setR("sachbearbeiter", { name: x }), { list: `${id}-team` })}
-                {input("sb-tel", "Tel.", v.rollen.sachbearbeiter.phone, (x) => setR("sachbearbeiter", { phone: x }), { type: "tel", placeholder: buero?.tel ?? "" })}
-                {input("sb-mobil", "Mobil", v.rollen.sachbearbeiter.mobile, (x) => setR("sachbearbeiter", { mobile: x }), { type: "tel", placeholder: buero?.mobil ?? "" })}
-                {input("sb-mail", "E-Mail", v.rollen.sachbearbeiter.email, (x) => setR("sachbearbeiter", { email: x }), { type: "email", placeholder: buero?.email ?? "" })}
-              </div>
-            </div>
-          </details>
-
           <div className="pp-rollen" role="group" aria-label="Beteiligte">
             {ROLLEN.map((r) => (
               <details className="pp-group" key={r}>
@@ -352,16 +342,34 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
                       onUebernehmen={(k) => setR("schornsteinfeger", k)}
                     />
                   )}
-                  {r === "baugrundgutachter" && standardGutachter && !filled(r) && (
-                    <p className="field-hint">Leer gelassen, steht im Protokoll der Standard aus den Einstellungen (Bürodaten). Ein Eintrag hier gilt nur für dieses Projekt.</p>
+                  {mitStandard(r) && (
+                    <p className="field-hint">
+                      Im Protokoll steht immer der Standard aus den Einstellungen ({standardGutachter!.name}). Ein Eintrag hier wird nur gespeichert, z. B. aus dem Vermesservertrag.
+                    </p>
                   )}
+                  {r === "kellerbauer" && (
+                    <div className="pp-vorschlag-kopf">
+                      <Button size="sm" disabled={v.rollen.kellerbauer.name.trim() === BAUSEITS} onClick={() => setR("kellerbauer", { ...LEER, name: BAUSEITS })}>
+                        Bauseits
+                      </Button>
+                      <span className="field-hint">
+                        {v.rollen.kellerbauer.name.trim()
+                          ? `Der Eintrag hier steht im Protokoll statt der Hausbaufirma${firma ? ` (${firma})` : ""}.`
+                          : firma
+                            ? `Leer gelassen, steht im Protokoll die Hausbaufirma (${firma}).`
+                            : "Leer gelassen, steht im Protokoll die Hausbaufirma (im Projekt noch keine eingetragen)."}{" "}
+                        „Bauseits“, wenn laut Bauvertrag ohne Keller/Bodenplatte gekauft.
+                      </span>
+                    </div>
+                  )}
+                  {r === "erdbauer" && !filled(r) && <p className="field-hint">Leer gelassen, steht im Protokoll „{ERDBAU_UNBEKANNT}“.</p>}
                   {r === "gemeinde" && !filled(r) && <p className="field-hint">Wird mit den Standortangaben (oben) aus dem amtlichen Anschriftenverzeichnis vorgeschlagen.</p>}
                   <div className="pp-grid">
-                    {input(`${r}-name`, "Name", v.rollen[r].name, (x) => setR(r, { name: x }), { placeholder: r === "baugrundgutachter" && standardGutachter ? (standardGutachter.name ?? "") : "Firma bzw. Behörde" })}
-                    {input(`${r}-adr`, "Anschrift", v.rollen[r].address, (x) => setR(r, { address: x }), { placeholder: (r === "baugrundgutachter" && standardGutachter?.anschrift) || "Straße, PLZ Ort" })}
-                    {input(`${r}-tel`, "Tel.", v.rollen[r].phone, (x) => setR(r, { phone: x }), { type: "tel", placeholder: (r === "baugrundgutachter" && standardGutachter?.tel) || "" })}
-                    {input(`${r}-mobil`, "Mobil", v.rollen[r].mobile, (x) => setR(r, { mobile: x }), { type: "tel", placeholder: (r === "baugrundgutachter" && standardGutachter?.mobil) || "" })}
-                    {input(`${r}-mail`, "E-Mail", v.rollen[r].email, (x) => setR(r, { email: x }), { type: "email", placeholder: (r === "baugrundgutachter" && standardGutachter?.email) || "" })}
+                    {input(`${r}-name`, "Name", v.rollen[r].name, (x) => setR(r, { name: x }), { placeholder: platzhalter(r, "name") })}
+                    {input(`${r}-adr`, "Anschrift", v.rollen[r].address, (x) => setR(r, { address: x }), { placeholder: platzhalter(r, "anschrift") })}
+                    {input(`${r}-tel`, "Tel.", v.rollen[r].phone, (x) => setR(r, { phone: x }), { type: "tel", placeholder: platzhalter(r, "tel") })}
+                    {input(`${r}-mobil`, "Mobil", v.rollen[r].mobile, (x) => setR(r, { mobile: x }), { type: "tel", placeholder: platzhalter(r, "mobil") })}
+                    {input(`${r}-mail`, "E-Mail", v.rollen[r].email, (x) => setR(r, { email: x }), { type: "email", placeholder: platzhalter(r, "email") })}
                     {MIT_FAX.includes(r) && input(`${r}-fax`, "Fax", v.rollen[r].fax, (x) => setR(r, { fax: x }), { type: "tel" })}
                   </div>
                   {filled(r)?.contact && <p className="field-hint">Alte Kontaktzeile (bleibt erhalten): {filled(r)!.contact}</p>}

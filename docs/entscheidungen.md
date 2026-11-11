@@ -781,3 +781,25 @@ den Kellerbauer legt die Hausbaufirma später fest, die Gemeinde ergibt sich aus
 - **Formular „Angaben für Seite 1“ speichert nur geänderte Rollen** und lädt neue Daten nach, solange nichts bearbeitet ist.
   Vorher hätte ein beim Öffnen geladenes Formular eine danach übernommene Gemeinde beim Speichern wieder gelöscht.
 - **Kellerbauer und Erdbauer** bleiben Handeingabe. **Vermesser aus Mails** ist noch offen (docs/offene-fragen.md).
+
+## Seite 1 des Planungsprotokolls: feste Feldregeln (Absprache ABM, 11.11.2026)
+
+Ziel: Seite 1 per Knopfdruck vollständig. Regeln in `src/lib/planungsprotokoll/daten.ts`, Tests in `planungsprotokoll.test.ts`.
+
+- **Architekt:** nur die Bürodaten (Büroname, Anschrift, Tel., Mobil, E-Mail), keine Personennamen. Der Sachbearbeiter im
+  Projekt wirkt nicht mehr aufs Protokoll; der Abschnitt ist aus dem Formular entfernt (gespeicherte Einträge bleiben).
+- **Vermesser und Baugrundgutachter:** immer der Standard aus den Bürodaten (derzeit Clayton), auch wenn im Projekt ein
+  anderer steht (z. B. aus dem Vermesservertrag). Nur ohne Standard gilt der Eintrag im Projekt. Die Zusammenfassung nennt
+  „Vermessungsbüro variiert (Vermesservertrag)“ und „Vermesser immer Clayton“; entschieden: immer Clayton.
+- **Kellerbauer/Bodenplatte:** die Hausbaufirma des Projekts (nur der Name, die Stammdaten haben keine Anschrift). Ein Eintrag
+  im Projekt geht vor, insbesondere „Bauseits“ (Knopf im Formular) bei Kauf ohne Keller/Bodenplatte laut Bauvertrag.
+  „Bauseits“ ist ein normaler Eintrag der Rolle Kellerbauer, keine eigene Spalte: so braucht es keine Migration, und die
+  Vertragsauslesung kann ihn später genauso setzen.
+- **Erdbau:** „nicht bekannt“, solange im Projekt keiner steht.
+- **Gas und Fernwärme:** bleiben immer leer. Sie sind gar nicht mehr zugeordnet (FB-22: 45 statt 51 Felder), damit der
+  Stand „x von y Feldern“ sie nicht als fehlend zählt.
+- **Schwabenhaus Seite 2:** Strom, Wasser und Abwasser werden wie der Schornsteinfeger mitbefüllt (Name und Anschrift getrennt,
+  ein Telefonfeld: Festnetz, sonst Mobil). Bei FB-22 stehen sie ohnehin auf Seite 1.
+- **Noch offen** (nächste Schritte): Bauamt, Wasser und Abwasser per KI-Suche vorschlagen, Strom über VNBdigital (Westnetz.de
+  ist durch einen Bot-Schutz gesperrt und wird nicht automatisch abgefragt), Vermesservertrag nachträglich auslesen,
+  Clayton-Auftrag für Schwabenhaus-Kunden erzeugen.

@@ -106,7 +106,7 @@ function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boo
     <KontaktKarte
       titel="Bürodaten"
       icon={<Building2 size={16} />}
-      sub="Stehen im Planungsprotokoll beim Architekten. Ein Sachbearbeiter im Projekt ersetzt Tel., Mobil und E-Mail."
+      sub="Stehen im Planungsprotokoll beim Architekten (nur das Büro, keine Personennamen)."
       felder={FELDER}
       prefix="buero"
       wert={buero}
@@ -118,20 +118,20 @@ function BueroKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boo
   );
 }
 
-/** Standard-Baugrundgutachter (Migration 0029): steht im Planungsprotokoll, wenn ein Projekt keinen eigenen hat. */
+/** Standard-Baugrundgutachter (Migration 0029): steht im Planungsprotokoll immer bei Baugrundgutachter und Vermesser. */
 function GutachterKarte({ buero, canEdit }: { buero: BueroDaten | null; canEdit: boolean }) {
   const leer: BueroDaten = { name: null, anschrift: null, tel: null, mobil: null, email: null };
   return (
     <KontaktKarte
-      titel="Standard-Baugrundgutachter"
+      titel="Baugrundgutachter und Vermesser"
       icon={<Layers size={16} />}
-      sub="Steht im Planungsprotokoll, solange im Projekt kein eigener Baugrundgutachter eingetragen ist."
+      sub="Steht im Planungsprotokoll immer bei Baugrundgutachter und Vermesser (derzeit Clayton), unabhängig von Einträgen im Projekt."
       felder={GUTACHTER_FELDER}
       prefix="gutachter"
       wert={buero?.gutachter ?? null}
       canEdit={canEdit}
       speichern={(v) => ({ ...(buero ?? leer), gutachter: v })}
-      gespeichert="Standard-Baugrundgutachter gespeichert"
+      gespeichert="Baugrundgutachter und Vermesser gespeichert"
     />
   );
 }
