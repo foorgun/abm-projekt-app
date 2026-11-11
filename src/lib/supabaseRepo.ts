@@ -949,7 +949,11 @@ export function createSupabaseRepo(): Repo {
 
     async setUrlaubsAnspruch(userIdOf, jahr, { tage, uebertrag }) {
       if (user.role !== "admin") throw new PermissionError();
-      const { error } = await sb.from("urlaubs_anspruch").upsert({ user_id: userIdOf, jahr, tage, uebertrag }, { onConflict: "user_id,jahr" });
+      // Kein upsert: der schriebe auch user_id und jahr neu, dafür gibt es kein Recht (0012, Spaltenrechte)
+      const upd = await sb.from("urlaubs_anspruch").update({ tage, uebertrag }).eq("user_id", userIdOf).eq("jahr", jahr).select("user_id");
+      if (upd.error) fail(upd.error, "Der Anspruch konnte nicht gespeichert werden");
+      if (upd.data?.length) return;
+      const { error } = await sb.from("urlaubs_anspruch").insert({ user_id: userIdOf, jahr, tage, uebertrag });
       if (error) fail(error, "Der Anspruch konnte nicht gespeichert werden");
     },
 
@@ -1193,8 +1197,7 @@ export function createSupabaseRepo(): Repo {
     async saveStandortAngaben(projectId, angaben) {
       requireStaff();
       const me = await userId();
-      const { error } = await sb.from("standort_angaben").upsert({ project_id: projectId, angaben, geaendert_von: me, geaendert_am: new Date().toISOString() });
-      if (error) throw new Error(error.message);
+      await standortAngabenSpeichern(sb, projectId, angaben, me, new Date().toISOString());
     },
   };
 
@@ -1211,4 +1214,23 @@ export function createSupabaseRepo(): Repo {
     return data as T;
   }
   return repo;
+}
+
+/**
+ * Standortangaben speichern, ohne project_id zu überschreiben. Ein upsert schreibt bei vorhandener Zeile alle Spalten neu,
+ * auch project_id; das Recht dazu hat kein Konto (Migration 0020, Spaltenrechte) → „permission denied“. Deshalb erst
+ * ändern und nur, wenn es noch keine Zeile gibt, anlegen.
+ */
+export async function standortAngabenSpeichern(
+  sb: Pick<SupabaseClient, "from">,
+  projectId: string,
+  angaben: Record<string, StandortWert>,
+  me: string,
+  am: string,
+): Promise<void> {
+  const upd = await sb.from("standort_angaben").update({ angaben, geaendert_von: me, geaendert_am: am }).eq("project_id", projectId).select("project_id");
+  if (upd.error) throw new Error(upd.error.message);
+  if (upd.data?.length) return;
+  const ins = await sb.from("standort_angaben").insert({ project_id: projectId, angaben, geaendert_von: me, geaendert_am: am });
+  if (ins.error) throw new Error(ins.error.message);
 }
