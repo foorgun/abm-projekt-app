@@ -3,6 +3,7 @@ import { Download, FileCheck2, FilePen, FileText, Search } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { StandortAngaben } from "./StandortAngaben";
+import { VersorgerVorschlag } from "./VersorgerVorschlag";
 import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, Pill, Select, type Column } from "../../components/ui";
 import { formatDate } from "../../lib/format";
 import { BAUSEITS, ERDBAU_UNBEKANNT, protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
@@ -325,6 +326,14 @@ function AngabenForm({ project, data, contact }: { project: Project; data: Datas
               </datalist>
             </div>
           </details>
+
+          <VersorgerVorschlag
+            // Bauort aus dem gespeicherten Stand (wie im Protokoll); an die Suche gehen nur PLZ, Ort, Ortsteil und Bundesland
+            bauort={protokollDaten(data, project.id).bauort}
+            belegt={{ bauamt: v.rollen.bauamt.name, wasser: v.rollen.wasser.name, abwasser: v.rollen.abwasser.name, strom: v.rollen.strom.name }}
+            uebersicht={`/projekte/${project.id}`}
+            onUebernehmen={(r, k) => setR(r, k)}
+          />
 
           <div className="pp-rollen" role="group" aria-label="Beteiligte">
             {ROLLEN.map((r) => (

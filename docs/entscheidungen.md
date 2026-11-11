@@ -800,6 +800,22 @@ Ziel: Seite 1 per Knopfdruck vollständig. Regeln in `src/lib/planungsprotokoll/
   Stand „x von y Feldern“ sie nicht als fehlend zählt.
 - **Schwabenhaus Seite 2:** Strom, Wasser und Abwasser werden wie der Schornsteinfeger mitbefüllt (Name und Anschrift getrennt,
   ein Telefonfeld: Festnetz, sonst Mobil). Bei FB-22 stehen sie ohnehin auf Seite 1.
-- **Noch offen** (nächste Schritte): Bauamt, Wasser und Abwasser per KI-Suche vorschlagen, Strom über VNBdigital (Westnetz.de
-  ist durch einen Bot-Schutz gesperrt und wird nicht automatisch abgefragt), Vermesservertrag nachträglich auslesen,
-  Clayton-Auftrag für Schwabenhaus-Kunden erzeugen.
+
+## Bauamt, Wasser, Abwasser und Strom vorschlagen (Migration 0030, Edge Function versorger-suche)
+
+Absprache ABM 11.11.2026: Genehmigungsbehörde, Wasser und Abwasser „per Google bzw. KI ermitteln“, Strom über die
+Westnetz-Abfrage „Bin ich im Netzgebiet?“.
+
+- **KI mit Websuche** (Anthropic, Modell wie bei der Auslesung `claude-sonnet-5-5`, änderbar mit `VERSORGER_MODEL`), nur
+  offizielle Seiten, nichts erfinden: fehlende Telefonnummern bleiben leer. Antwort je Rolle mit Quelle und Sicherheit
+  (offizielle Angabe, abgeleitet, unsicher). Knopf „Behörden und Versorger ermitteln“ in „Angaben für Seite 1“.
+- **Immer Vorschlag:** vorgewählt nur Rollen, die im Formular leer sind, und nie unsichere Treffer. „Übernehmen“ füllt das
+  Formular, gespeichert wird mit „Angaben speichern“.
+- **Datensparsam:** an den KI-Dienst gehen nur PLZ, Ort, Ortsteil und Bundesland des Bauorts, keine Namen, keine Straße.
+  Schlüssel nur in der Funktion. Abschalten mit `VERSORGER_SUCHE_ENABLED=false`.
+- **Kosten:** Zwischenspeicher je Ort 180 Tage, höchstens 20 Suchen je Person und Tag, jede Suche mit Tokens, Anzahl der
+  Websuchen und geschätzten Kosten in `versorger_abrufe` (nur Admins lesen; schreiben nur die Funktion).
+- **Strom ohne automatische Westnetz-Abfrage:** westnetz.de steht hinter einem Cloudflare-Bot-Schutz; den umgeht die App
+  nicht. VNBdigital (Portal aller Verteilnetzbetreiber) hat keine öffentlich dokumentierte Schnittstelle. Deshalb sucht die
+  KI auch den Stromnetzbetreiber; zum Gegenprüfen öffnen zwei Knöpfe Westnetz bzw. VNBdigital und kopieren die Bauadresse.
+- **Schwabenhaus:** Strom, Wasser und Abwasser stehen dort auf Seite 2 und werden mitbefüllt (siehe oben).

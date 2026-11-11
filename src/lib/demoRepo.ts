@@ -16,6 +16,7 @@ import { emptyDraft } from "./extract/types";
 import { contractFolder } from "./extract/filing";
 import { checkFile } from "./files";
 import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
+import { demoVersorger } from "./planungsprotokoll/versorger";
 import { demoStandort } from "./planungsprotokoll/standort";
 import { isAllowedFolder, templateOf } from "./folders";
 import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
@@ -1054,6 +1055,11 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     async schornsteinfegerDetails(bsmId) {
       requireStaff();
       return done(demoDetails(bsmId));
+    },
+
+    async versorgerSuchen(anfrage) {
+      requireStaff();
+      return done(demoVersorger(anfrage));
     },
 
     async standortAnalyse(projectId) {

@@ -114,4 +114,31 @@ describe("PlanungsprotokollTab: Angaben für Seite 1", () => {
     expect((await partei("kellerbauer"))?.name).toBe("Bauseits");
     expect(zeile("Keller")).toContain("Bauseits");
   });
+
+  it("Behörden und Versorger ermitteln: vorgewählt nur leere Rollen und keine unsicheren, gespeichert erst mit „Angaben speichern“", async () => {
+    await repo.updateProject(projectId, {
+      bauherr: { phone: null, email: null, address: null, buildingAddress: null, siteStreet: "Am Hölzle 12", sitePostalCode: "89134", siteCity: "Blaustein" },
+      parties: { bauamt: null, wasser: { name: "Wasser schon da" }, abwasser: null, strom: null },
+    });
+    const suche = vi.spyOn(repo, "versorgerSuchen");
+    await anzeigen();
+    await act(async () => knopf(/Behörden und Versorger ermitteln/).click());
+    await warten();
+    // nur Ortsangaben, nie die Straße
+    expect(suche).toHaveBeenCalledWith(expect.objectContaining({ plz: "89134", ort: "Blaustein" }));
+    expect(JSON.stringify(suche.mock.calls[0][0])).not.toContain("Hölzle");
+    const box = (name: string) => host.querySelector(`input[aria-label="${name} übernehmen"]`) as HTMLInputElement;
+    expect(box("Genehmigungsbehörde (Bauamt)").checked).toBe(true);
+    expect(box("Abwasser").checked).toBe(true);
+    expect(box("Wasserversorger").checked).toBe(false); // im Formular steht schon einer
+    expect(box("Stromnetzbetreiber").checked).toBe(false); // Demo: unsicher
+    await act(async () => knopf(/^Übernehmen$/).click());
+    expect(await partei("bauamt")).toBeUndefined();
+    await act(async () => knopf(/Angaben speichern/).click());
+    await warten();
+    expect((await partei("bauamt"))?.name).toBe("Stadt Blaustein, Bauordnungsamt (Demo)");
+    expect((await partei("abwasser"))?.name).toBe("Stadt Blaustein, Tiefbauamt (Demo)");
+    expect((await partei("wasser"))?.name).toBe("Wasser schon da");
+    expect(await partei("strom")).toBeUndefined();
+  });
 });

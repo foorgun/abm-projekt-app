@@ -1088,6 +1088,41 @@ select test.expect('Ohne Rolle: kein Zwischenspeicher', (select count(*) from pu
 select test.expect('Ohne Rolle: kein Abruf-Protokoll', (select count(*) from public.schornsteinfeger_abrufe), 0);
 rollback;
 
+-- 0030: Vorschlag Bauamt, Wasser, Abwasser, Strom (Edge Function versorger-suche) -----------------------------------
+begin;
+set local role anon;
+select test.throws('0030: anon darf den Versorger-Zwischenspeicher nicht ansprechen', $$select count(*) from public.versorger_suche$$);
+select test.throws('0030: anon darf das Abruf-Protokoll der Versorger-Suche nicht ansprechen', $$select count(*) from public.versorger_abrufe$$);
+rollback;
+
+begin;
+set local role service_role;
+insert into public.versorger_suche (schluessel, vorschlaege) values ('89000|musterstadt|', '{"bauamt": {"name": "Stadt Musterstadt, Bauamt"}}');
+insert into public.versorger_abrufe (user_id, model, input_tokens, output_tokens, suchen, cost_eur, ok)
+  values ('00000000-0000-4000-8000-0000000000a2', 'claude-sonnet-5-5', 1000, 200, 3, 0.04, true);
+select test.throws('0030: Schlüssel beginnt mit der PLZ', $$insert into public.versorger_suche (schluessel, vorschlaege) values ('musterstadt', '{}')$$);
+select test.throws('0030: Vorschläge sind ein Objekt', $$insert into public.versorger_suche (schluessel, vorschlaege) values ('89001|x|', '[]')$$);
+reset role;
+set local role authenticated;
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+select test.expect('0030: Mitarbeiterin sieht den Zwischenspeicher nicht (nur über die Funktion)', (select count(*) from public.versorger_suche), 0);
+select test.expect('0030: Mitarbeiterin sieht das Abruf-Protokoll nicht, auch die eigenen Suchen nicht', (select count(*) from public.versorger_abrufe), 0);
+select test.throws('0030: Mitarbeiterin schreibt nicht in den Zwischenspeicher', $$insert into public.versorger_suche (schluessel, vorschlaege) values ('89000|andere|', '{}')$$);
+select test.throws('0030: Mitarbeiterin umgeht das Tageslimit nicht (Protokoll löschen)', $$delete from public.versorger_abrufe$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0030: Admin liest den Zwischenspeicher', (select count(*) from public.versorger_suche), 1);
+select test.expect('0030: Admin liest das Abruf-Protokoll (Kosten)', (select count(*) from public.versorger_abrufe), 1);
+select test.throws('0030: Admin ändert den Zwischenspeicher nicht', $$update public.versorger_suche set vorschlaege = '{}'$$);
+select test.throws('0030: Admin schreibt nicht ins Abruf-Protokoll', $$insert into public.versorger_abrufe (user_id, model) values (auth.uid(), 'x')$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0030: Freiberufler sieht den Zwischenspeicher nicht', (select count(*) from public.versorger_suche), 0);
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('0030: Ohne Rolle: kein Abruf-Protokoll', (select count(*) from public.versorger_abrufe), 0);
+rollback;
+
 -- Standortanalyse (0020): Cache und Abruf-Protokoll schreibt nur die Edge Function, Angaben nur Admin und Mitarbeiter ---
 begin;
 set local role anon;

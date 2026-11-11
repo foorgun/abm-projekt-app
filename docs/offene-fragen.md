@@ -84,7 +84,8 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 
 ## Zum Planungsprotokoll (Stufe a: Seite 1)
 
-- **Bauamt:** In BW ist die Baurechtsbehörde je nach Ort die Gemeinde oder das Landratsamt. Bleibt das Handeingabe?
+- **Versorger-Suche (KI):** Passen 20 Suchen je Person und Tag und 180 Tage Zwischenspeicher? Die Suche sendet nur Ortsangaben
+  (keine Personendaten); trotzdem den AVV mit Anthropic vor dem Echtbetrieb klären (wie bei der Auslesung).
 - **Telefon der Gemeinde:** steht nicht im amtlichen Anschriftenverzeichnis und bleibt Handeingabe.
 - **Clayton-Formular:** Im Baugrundauftrag steht „Ausführung Keller/Bodenplatte durch Firma“. Ist das Feld ausgefüllt, ließe sich
   der Kellerbauer daraus lesen. Gewünscht?

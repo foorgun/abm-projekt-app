@@ -12,6 +12,7 @@ import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
+import type { VersorgerAntwort, VersorgerFehler } from "./planungsprotokoll/versorger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
@@ -1125,6 +1126,18 @@ export function createSupabaseRepo(): Repo {
     async schornsteinfegerDetails(bsmId) {
       requireStaff();
       return schornsteinfeger<DetailAntwort>({ art: "details", bsmId }, (d) => typeof (d as DetailAntwort).details?.name === "string");
+    },
+
+    async versorgerSuchen(anfrage) {
+      requireStaff();
+      const nichtErreichbar: VersorgerFehler = { ok: false, code: "error", message: "Die Suche ist gerade nicht erreichbar. Ist die Funktion versorger-suche eingerichtet? Sonst bitte von Hand eintragen." };
+      const { data, error } = await sb.functions.invoke("versorger-suche", { body: anfrage }).catch(() => ({ data: null, error: {} }));
+      if (error) {
+        const res = await (error as { context?: Response }).context?.json?.().catch(() => null);
+        return res && typeof res === "object" && res.ok === false && typeof res.message === "string" ? (res as VersorgerFehler) : nichtErreichbar;
+      }
+      const d = data as VersorgerAntwort | null;
+      return d && typeof d === "object" && d.ok === true && d.vorschlaege && typeof d.vorschlaege === "object" ? d : nichtErreichbar;
     },
 
     async standortAnalyse(projectId) {

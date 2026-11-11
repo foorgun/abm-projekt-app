@@ -6,6 +6,7 @@ import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAnfrage, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
+import type { VersorgerAnfrage, VersorgerAntwort, VersorgerFehler } from "./planungsprotokoll/versorger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import type { StandortWert,
   Abwesenheit,
@@ -378,6 +379,11 @@ export interface Repo {
   schornsteinfegerSuchen(anfrage: SuchAnfrage): Promise<SuchAntwort | SchornsteinfegerFehler>;
   /** Kontaktdaten des gewählten Kandidaten (nur nach einer Suche). */
   schornsteinfegerDetails(bsmId: string): Promise<DetailAntwort | SchornsteinfegerFehler>;
+  /**
+   * Bauamt, Wasser, Abwasser und Strom zum Bauort vorschlagen (Echtbetrieb: Edge Function versorger-suche mit KI-Websuche,
+   * Demo: feste Beispielantwort). Wirft nie wegen der Suche: Fehler kommen als { ok: false } zurück.
+   */
+  versorgerSuchen(anfrage: VersorgerAnfrage): Promise<VersorgerAntwort | VersorgerFehler>;
   /**
    * Standortangaben zur Bauadresse vorschlagen (Echtbetrieb: Edge Function standort-analyse, Demo: feste Beispielantwort).
    * Schreibt nichts ins Projekt. Wirft nie wegen der Dienste: Fehler kommen als { ok: false } bzw. als Status je Thema zurück.
