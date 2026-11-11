@@ -6,7 +6,7 @@ import bienZenker from "../../../docs/planungsprotokoll/bien-zenker.json";
 import livingHaus from "../../../docs/planungsprotokoll/living-haus.json";
 import schwabenhaus from "../../../docs/planungsprotokoll/schwabenhaus.json";
 import type { BauherrContact, BueroDaten, Dataset, ProjectParty, Project, ProtokollVorlage } from "../types";
-import { architektKontakt, istMobil, protokollDaten, splitAnschrift, splitKontaktzeile, type ProtokollDaten } from "./daten";
+import { architektKontakt, istBauseits, istMobil, protokollDaten, splitAnschrift, splitKontaktzeile, type ProtokollDaten } from "./daten";
 import { abweichungen, einbrennen, erzeugeProtokoll, feldZustand, passendeGroesse, ProtokollFehler, SCHRIFT_MIN_PT, SCHRIFT_PT } from "./pdf";
 import { protokollDateiname, VORLAGEN, VORLAGEN_ORDNER, vorlageFuerFirma } from "./vorlagen";
 import { ankreuzWerte, feldStand, feldwerte, ZUORDNUNG } from "./zuordnung";
@@ -127,23 +127,25 @@ async function seitenText(bytes: Uint8Array, seite = 1): Promise<string> {
 
 describe("Zuordnung je Vorlage", () => {
   for (const v of ALLE) {
-    it(`${v}: jedes zugeordnete Feld ist ein Textfeld auf Seite 1 der Vorlage (Schwabenhaus: Schornsteinfeger auf Seite 2)`, () => {
+    it(`${v}: jedes zugeordnete Feld ist ein Textfeld auf Seite 1 der Vorlage (Schwabenhaus: Schornsteinfeger und Versorger auf Seite 2)`, () => {
       const felder = INVENTAR[v].felder;
       for (const name of Object.keys(ZUORDNUNG[v])) {
         const f = felder.filter((x) => x.name === name);
         expect(f.length, name).toBeGreaterThan(0);
         expect(f.every((x) => x.typ === "Text"), name).toBe(true);
-        expect(f.some((x) => x.seite === (v === "schwabenhaus" && name.startsWith("Schornstein") ? 2 : 1)), name).toBe(true);
+        expect(f.some((x) => x.seite === (v === "schwabenhaus" && /^(Schornstein|Strom|Wasser|Abwasser)/.test(name) ? 2 : 1)), name).toBe(true);
       }
     });
   }
-  it("Schwabenhaus füllt 44 Felder (40 auf Seite 1, Schornsteinfeger auf Seite 2), Living Haus und Bien-Zenker je 51 mit denselben Feldnamen", () => {
-    expect(Object.keys(ZUORDNUNG.schwabenhaus)).toHaveLength(44);
-    expect(Object.keys(ZUORDNUNG["living-haus"])).toHaveLength(51);
+  it("Schwabenhaus füllt 56 Felder (40 auf Seite 1, Schornsteinfeger und Versorger auf Seite 2), Living Haus und Bien-Zenker je 45 mit denselben Feldnamen", () => {
+    expect(Object.keys(ZUORDNUNG.schwabenhaus)).toHaveLength(56);
+    expect(Object.keys(ZUORDNUNG["living-haus"])).toHaveLength(45);
     expect(Object.keys(ZUORDNUNG["bien-zenker"]).sort()).toEqual(Object.keys(ZUORDNUNG["living-haus"]).sort());
   });
-  it("lässt das Rich-Text-Feld (Schwabenhaus) und die Summenfelder (FB-22) unberührt", () => {
+  it("lässt das Rich-Text-Feld (Schwabenhaus), die Summenfelder (FB-22) sowie Gas und Fernwärme unberührt", () => {
     expect(ZUORDNUNG.schwabenhaus).not.toHaveProperty("WasserschutzgebietAuflagen");
+    for (const n of ["GasName", "GasAnschrift", "GasTel", "GasMail", "FernwärmeName", "FernwärmeAnschrift", "FernwärmeTel", "FernwärmeMail"]) expect(ZUORDNUNG.schwabenhaus).not.toHaveProperty(n);
+    for (const n of ["23", "42", "47", "24", "46", "45"]) expect(ZUORDNUNG["living-haus"]).not.toHaveProperty(`Textfeld 1.${n}`);
     for (const n of ["4.09", "4.14", "4.19", "4.24"]) expect(ZUORDNUNG["living-haus"]).not.toHaveProperty(`Textfeld ${n}`);
   });
   it("ordnet die Werte richtig zu (Stichproben)", () => {
@@ -153,6 +155,9 @@ describe("Zuordnung je Vorlage", () => {
     expect(sh.VermesserName).toBe("Vermessungsbüro Kößler, Hauptstraße 1, 89000 Überall");
     expect(sh.BGGutachterTel).toBe("0731 0000001");
     expect(sh.GemeindeFax).toBe("0731 0000009");
+    // Seite 2: Versorger mit Name und Anschrift getrennt
+    expect([sh.StromName, sh.StromAnschrift, sh.WasserTel, sh.AbwasserMail]).toEqual(["Stadtwerke Überall", "Hauptstraße 1, 89000 Überall", "0731 0000001", "info@example.de"]);
+    expect(feldwerte("schwabenhaus", { ...VOLL, beteiligte: { ...VOLL.beteiligte, strom: { ...VOLL.beteiligte.strom, tel: null } } }).StromTel).toBe("0170 0000001");
     const lh = feldwerte("living-haus", VOLL);
     expect(lh["Textfeld 1.02"]).toBe("Jörg und Bärbel Müller-Weißgerber");
     expect(lh["Textfeld 1.21"]).toContain("Rußwurm");
@@ -161,9 +166,9 @@ describe("Zuordnung je Vorlage", () => {
     expect(feldwerte("living-haus", { ...VOLL, beteiligte: { ...VOLL.beteiligte, bauamt: leerKontakt } })["Textfeld 1.20"]).toContain("Gemeinde Blaustein");
   });
   it("zählt gefüllte Felder", () => {
-    expect(feldStand("bien-zenker", VOLL)).toEqual({ gefuellt: 51, gesamt: 51 });
-    const ohne = { ...VOLL, beteiligte: { ...VOLL.beteiligte, gas: leerKontakt } };
-    expect(feldStand("bien-zenker", ohne)).toEqual({ gefuellt: 48, gesamt: 51 });
+    expect(feldStand("bien-zenker", VOLL)).toEqual({ gefuellt: 45, gesamt: 45 });
+    const ohne = { ...VOLL, beteiligte: { ...VOLL.beteiligte, wasser: leerKontakt } };
+    expect(feldStand("bien-zenker", ohne)).toEqual({ gefuellt: 42, gesamt: 45 });
   });
 });
 
@@ -205,8 +210,9 @@ const PROJEKT: Project = {
   steps: {},
 };
 const BUERO: BueroDaten = { name: "ABM Demo-Büro", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 0000000", mobil: null, email: "buero@example.de" };
-function dataset(over: { bauherr?: Partial<BauherrContact> | null; parties?: ProjectParty[]; buero?: BueroDaten | null; project?: Partial<Project> } = {}): Pick<Dataset, "projects" | "bauherren" | "parties" | "buero"> {
+function dataset(over: { bauherr?: Partial<BauherrContact> | null; parties?: ProjectParty[]; buero?: BueroDaten | null; project?: Partial<Project> } = {}): Pick<Dataset, "projects" | "bauherren" | "parties" | "buero" | "companies"> {
   return {
+    companies: [{ id: "c-sh", name: "Schwabenhaus", numberPrefix: null }],
     projects: [{ ...PROJEKT, ...over.project }],
     bauherren: over.bauherr === null ? [] : [{ projectId: "p1", name: "Familie Müller", address: null, phone: null, email: null, buildingAddress: null, ...over.bauherr }],
     parties: over.parties ?? [],
@@ -215,14 +221,48 @@ function dataset(over: { bauherr?: Partial<BauherrContact> | null; parties?: Pro
 }
 
 describe("Protokolldaten aus dem Projekt", () => {
-  it("Baugrundgutachter: der des Projekts, sonst der Standard aus den Bürodaten, sonst leer", () => {
+  it("Baugrundgutachter und Vermesser: immer der Standard aus den Bürodaten (Clayton), nur ohne Standard der des Projekts", () => {
     const gutachter = { name: "Baugrund Muster GmbH", anschrift: "Laborweg 3, 67000 Musterstadt", tel: null, mobil: null, email: "baugrund@example.de" };
-    const standard = protokollDaten(dataset({ buero: { ...BUERO, gutachter } }), "p1").beteiligte.baugrundgutachter;
-    expect(standard).toEqual({ name: "Baugrund Muster GmbH", anschrift: "Laborweg 3, 67000 Musterstadt", tel: null, mobil: null, mail: "baugrund@example.de", fax: null });
-    const eigen = protokollDaten(dataset({ buero: { ...BUERO, gutachter }, parties: [{ projectId: "p1", role: "baugrundgutachter", name: "Geotechnik Älbler", contact: null }] }), "p1");
-    expect(eigen.beteiligte.baugrundgutachter).toMatchObject({ name: "Geotechnik Älbler", mail: null });
+    const erwartet = { name: "Baugrund Muster GmbH", anschrift: "Laborweg 3, 67000 Musterstadt", tel: null, mobil: null, mail: "baugrund@example.de", fax: null };
+    const standard = protokollDaten(dataset({ buero: { ...BUERO, gutachter } }), "p1").beteiligte;
+    expect(standard.baugrundgutachter).toEqual(erwartet);
+    expect(standard.vermesser).toEqual(erwartet);
+    // Einträge im Projekt (z. B. aus dem Vermesservertrag) ändern daran nichts
+    const eigene: ProjectParty[] = [
+      { projectId: "p1", role: "baugrundgutachter", name: "Geotechnik Älbler", contact: null },
+      { projectId: "p1", role: "vermesser", name: "Vermessung Kößler", contact: null },
+    ];
+    const mitEigenen = protokollDaten(dataset({ buero: { ...BUERO, gutachter }, parties: eigene }), "p1").beteiligte;
+    expect([mitEigenen.baugrundgutachter.name, mitEigenen.vermesser.name]).toEqual(["Baugrund Muster GmbH", "Baugrund Muster GmbH"]);
+    // ohne Standard: der des Projekts, sonst leer
+    const ohneStandard = protokollDaten(dataset({ parties: eigene }), "p1").beteiligte;
+    expect([ohneStandard.baugrundgutachter.name, ohneStandard.vermesser.name]).toEqual(["Geotechnik Älbler", "Vermessung Kößler"]);
     expect(protokollDaten(dataset(), "p1").beteiligte.baugrundgutachter.name).toBeNull();
-    expect(protokollDaten(dataset({ buero: { ...BUERO, gutachter: { ...gutachter, name: " " } } }), "p1").beteiligte.baugrundgutachter.name).toBeNull();
+    expect(protokollDaten(dataset({ buero: { ...BUERO, gutachter: { ...gutachter, name: " " } } }), "p1").beteiligte.vermesser.name).toBeNull();
+  });
+  it("Kellerbauer: die Hausbaufirma; ein Eintrag im Projekt (z. B. „Bauseits“) geht vor", () => {
+    expect(protokollDaten(dataset(), "p1").beteiligte.kellerbauer).toEqual({ ...leerKontakt, name: "Schwabenhaus" });
+    const bauseits = protokollDaten(dataset({ parties: [{ projectId: "p1", role: "kellerbauer", name: "Bauseits", contact: null }] }), "p1");
+    expect(bauseits.beteiligte.kellerbauer.name).toBe("Bauseits");
+    expect(protokollDaten(dataset({ project: { companyId: null } }), "p1").beteiligte.kellerbauer.name).toBeNull();
+    expect(istBauseits(" bauseits ")).toBe(true);
+    expect(istBauseits("Kellerbau Löffler")).toBe(false);
+  });
+  it("Erdbau: „nicht bekannt“, solange im Projekt keiner steht; Gas und Fernwärme bleiben immer leer", () => {
+    expect(protokollDaten(dataset(), "p1").beteiligte.erdbauer).toEqual({ ...leerKontakt, name: "nicht bekannt" });
+    const d = protokollDaten(
+      dataset({
+        parties: [
+          { projectId: "p1", role: "erdbauer", name: "Erdbau Grübel", contact: null },
+          { projectId: "p1", role: "gas", name: "Gasversorgung Ulm", contact: null, phone: "0731 1" },
+          { projectId: "p1", role: "fernwaerme", name: "Fernwärme Ulm", contact: null },
+        ],
+      }),
+      "p1",
+    );
+    expect(d.beteiligte.erdbauer.name).toBe("Erdbau Grübel");
+    expect(d.beteiligte.gas).toEqual(leerKontakt);
+    expect(d.beteiligte.fernwaerme).toEqual(leerKontakt);
   });
   it("Projekt-Nr. ist die Hausbau-Nr.", () => {
     expect(protokollDaten(dataset(), "p1").projektNr).toBe("SH-4711");
@@ -270,11 +310,12 @@ describe("Protokolldaten aus dem Projekt", () => {
     expect(d.beteiligte.gas).toEqual(leerKontakt);
     expect(d.beteiligte.schornsteinfeger).toEqual(leerKontakt);
   });
-  it("Architekt: Bürodaten; ein Sachbearbeiter ergänzt den Namen und ersetzt Tel./Mobil/E-Mail, soweit vorhanden", () => {
-    expect(architektKontakt(BUERO, undefined)).toEqual({ name: "ABM Demo-Büro", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 0000000", mobil: null, mail: "buero@example.de", fax: null });
+  it("Architekt: nur die Bürodaten, kein Sachbearbeiter (keine Personennamen)", () => {
+    const allgemein = { name: "ABM Demo-Büro", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 0000000", mobil: null, mail: "buero@example.de", fax: null };
+    expect(architektKontakt(BUERO)).toEqual(allgemein);
     const sb: ProjectParty = { projectId: "p1", role: "sachbearbeiter", name: "Dörte Fuß", contact: null, mobile: "0170 3", email: "fuss@example.de" };
-    expect(architektKontakt(BUERO, sb)).toEqual({ name: "ABM Demo-Büro, Dörte Fuß", anschrift: "Musterweg 1, 89073 Ulm", tel: "0731 0000000", mobil: "0170 3", mail: "fuss@example.de", fax: null });
-    expect(architektKontakt(null, undefined)).toEqual(leerKontakt);
+    expect(protokollDaten(dataset({ parties: [sb] }), "p1").beteiligte.architekt).toEqual(allgemein);
+    expect(architektKontakt(null)).toEqual(leerKontakt);
   });
   it("Hilfen: Anschrift und Kontaktzeile aufteilen, Handynummer erkennen", () => {
     expect(splitAnschrift("89077 Ulm")).toEqual({ strasse: null, plz: "89077", ort: "Ulm" });
@@ -367,7 +408,8 @@ describe("PDF erzeugen", () => {
   it("fehlende Rollen ergeben leere Felder, keinen Fehler", async () => {
     const ohne: ProtokollDaten = { ...VOLL, beteiligte: { ...VOLL.beteiligte, gas: leerKontakt, fernwaerme: leerKontakt, schornsteinfeger: leerKontakt, kellerbauer: leerKontakt } };
     const r = await erzeugeProtokoll({ vorlage: vorlagen["living-haus"].bytes, schrift: SCHRIFT, werte: feldwerte("living-haus", ohne), variante: "bearbeitbar" });
-    expect(r.leer.sort()).toEqual(["1.18", "1.21", "1.23", "1.24", "1.30", "1.31", "1.32", "1.39", "1.40", "1.41", "1.42", "1.45", "1.46", "1.47"].map((n) => `Textfeld ${n}`).sort());
+    // Gas und Fernwärme sind nicht zugeordnet: sie zählen nicht als leer gesetzt und bleiben, wie sie sind
+    expect(r.leer.sort()).toEqual(["1.18", "1.21", "1.30", "1.31", "1.32", "1.39", "1.40", "1.41"].map((n) => `Textfeld ${n}`).sort());
     const form = (await PDFDocument.load(r.bytes)).getForm();
     expect(form.getTextField("Textfeld 1.23").getText() ?? "").toBe("");
     expect(form.getTextField("Textfeld 1.22").getText()).toContain("Stadtwerke Überall");

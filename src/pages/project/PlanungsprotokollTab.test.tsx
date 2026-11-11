@@ -89,9 +89,56 @@ describe("PlanungsprotokollTab: Angaben für Seite 1", () => {
     expect((host.ownerDocument.getElementById(`pp-${projectId}-gemeinde-name`) as HTMLInputElement).value).toBe("Gemeindeverwaltung Musterstadt");
   });
 
-  it("Baugrundgutachter: ohne Eintrag im Projekt steht der Standard aus den Bürodaten in der Übersicht", async () => {
+  it("Baugrundgutachter und Vermesser: in der Übersicht steht der Standard aus den Bürodaten, auch mit Eintrag im Projekt", async () => {
+    await repo.updateProject(projectId, { parties: { vermesser: { name: "Vermessung Muster" } } });
     await anzeigen();
-    expect(host.textContent).toContain("Standard: Baugrundbüro Muster (Demo)");
-    expect((await partei("baugrundgutachter"))).toBeUndefined();
+    const zeilen = [...host.querySelectorAll(".pp-rollen summary")].map((x) => x.textContent ?? "");
+    expect(zeilen.find((z) => z.startsWith("Baugrundgutachter"))).toContain("Standard: Baugrundbüro Muster (Demo)");
+    expect(zeilen.find((z) => z.startsWith("Vermesser"))).toContain("Standard: Baugrundbüro Muster (Demo)");
+    expect(await partei("baugrundgutachter")).toBeUndefined();
+  });
+
+  it("Erdbau „nicht bekannt“, Kellerbauer die Hausbaufirma; „Bauseits“ trägt den Kellerbauer ein; kein Sachbearbeiter, kein Gas", async () => {
+    await repo.updateProject(projectId, { parties: { kellerbauer: null } });
+    await anzeigen();
+    const data = await repo.load(ADMIN);
+    const firma = data.companies.find((c) => c.id === data.projects.find((p) => p.id === projectId)?.companyId)?.name;
+    const zeile = (start: string) => [...host.querySelectorAll(".pp-rollen summary")].map((x) => x.textContent ?? "").find((z) => z.startsWith(start));
+    expect(zeile("Erdbau")).toContain("nicht bekannt");
+    expect(zeile("Keller")).toContain(`Hausbaufirma: ${firma}`);
+    expect(zeile("Gas")).toBeUndefined();
+    expect(host.textContent).not.toContain("Sachbearbeiter (ABM)");
+    await act(async () => knopf(/^Bauseits$/).click());
+    await act(async () => knopf(/Angaben speichern/).click());
+    await warten();
+    expect((await partei("kellerbauer"))?.name).toBe("Bauseits");
+    expect(zeile("Keller")).toContain("Bauseits");
+  });
+
+  it("Behörden und Versorger ermitteln: vorgewählt nur leere Rollen und keine unsicheren, gespeichert erst mit „Angaben speichern“", async () => {
+    await repo.updateProject(projectId, {
+      bauherr: { phone: null, email: null, address: null, buildingAddress: null, siteStreet: "Am Hölzle 12", sitePostalCode: "89134", siteCity: "Blaustein" },
+      parties: { bauamt: null, wasser: { name: "Wasser schon da" }, abwasser: null, strom: null },
+    });
+    const suche = vi.spyOn(repo, "versorgerSuchen");
+    await anzeigen();
+    await act(async () => knopf(/Behörden und Versorger ermitteln/).click());
+    await warten();
+    // nur Ortsangaben, nie die Straße
+    expect(suche).toHaveBeenCalledWith(expect.objectContaining({ plz: "89134", ort: "Blaustein" }));
+    expect(JSON.stringify(suche.mock.calls[0][0])).not.toContain("Hölzle");
+    const box = (name: string) => host.querySelector(`input[aria-label="${name} übernehmen"]`) as HTMLInputElement;
+    expect(box("Genehmigungsbehörde (Bauamt)").checked).toBe(true);
+    expect(box("Abwasser").checked).toBe(true);
+    expect(box("Wasserversorger").checked).toBe(false); // im Formular steht schon einer
+    expect(box("Stromnetzbetreiber").checked).toBe(false); // Demo: unsicher
+    await act(async () => knopf(/^Übernehmen$/).click());
+    expect(await partei("bauamt")).toBeUndefined();
+    await act(async () => knopf(/Angaben speichern/).click());
+    await warten();
+    expect((await partei("bauamt"))?.name).toBe("Stadt Blaustein, Bauordnungsamt (Demo)");
+    expect((await partei("abwasser"))?.name).toBe("Stadt Blaustein, Tiefbauamt (Demo)");
+    expect((await partei("wasser"))?.name).toBe("Wasser schon da");
+    expect(await partei("strom")).toBeUndefined();
   });
 });

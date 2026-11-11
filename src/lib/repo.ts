@@ -6,6 +6,7 @@ import type { DocumentFilter, DocumentListResult } from "./documentFilters";
 import type { SessionUser } from "./session";
 import type { DraftFormState, ExtractRequest, ExtractResponse, ProjectDraft } from "./extract/types";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAnfrage, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
+import type { VersorgerAnfrage, VersorgerAntwort, VersorgerFehler } from "./planungsprotokoll/versorger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import type { StandortWert,
   Abwesenheit,
@@ -17,6 +18,8 @@ import type { StandortWert,
   ContractMeta,
   Dataset,
   Einverstaendnis,
+  Baugrundauftrag,
+  BaugrundVorlage,
   DocumentType,
   KalenderEintrag,
   Mailbox,
@@ -131,6 +134,13 @@ export interface ProtokollAblage {
 
 /** Erzeugte Einverständniserklärung ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
 export interface EinverstaendnisAblage {
+  projectId: string;
+  fileName: string;
+  blob: Blob;
+}
+
+/** Erzeugten Baugrundauftrag (Clayton) ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
+export interface BaugrundauftragAblage {
   projectId: string;
   fileName: string;
   blob: Blob;
@@ -371,6 +381,14 @@ export interface Repo {
   saveEinverstaendnis(input: EinverstaendnisAblage): Promise<Einverstaendnis>;
   /** Datei einer Fassung zum Herunterladen. */
   einverstaendnisDatei(e: Einverstaendnis): Promise<Blob>;
+
+  // --- Baugrundauftrag an Clayton (nur Admin und Mitarbeiter, nur Schwabenhaus; Migration 0031) ---
+  /** Clayton-Vorlage laden: Echtbetrieb aus dem privaten Bucket "vorlagen", Demo-Modus aus vorlagen/clayton/. */
+  baugrundVorlageLaden(teil: BaugrundVorlage): Promise<ArrayBuffer>;
+  /** Erzeugten Auftrag im Projektordner ablegen und als neue Fassung eintragen (nie überschreiben, nie versenden). */
+  saveBaugrundauftrag(input: BaugrundauftragAblage): Promise<Baugrundauftrag>;
+  /** Datei einer Fassung zum Herunterladen. */
+  baugrundauftragDatei(b: Baugrundauftrag): Promise<Blob>;
   /**
    * Schornsteinfeger zur Bauadresse vorschlagen (Echtbetrieb: Edge Function schornsteinfeger-suche, Demo: feste Beispielantwort).
    * Wirft nie wegen der Quelle: Fehler kommen als { ok: false } bzw. Status quelle_nicht_erreichbar zurück.
@@ -378,6 +396,11 @@ export interface Repo {
   schornsteinfegerSuchen(anfrage: SuchAnfrage): Promise<SuchAntwort | SchornsteinfegerFehler>;
   /** Kontaktdaten des gewählten Kandidaten (nur nach einer Suche). */
   schornsteinfegerDetails(bsmId: string): Promise<DetailAntwort | SchornsteinfegerFehler>;
+  /**
+   * Bauamt, Wasser, Abwasser und Strom zum Bauort vorschlagen (Echtbetrieb: Edge Function versorger-suche mit KI-Websuche,
+   * Demo: feste Beispielantwort). Wirft nie wegen der Suche: Fehler kommen als { ok: false } zurück.
+   */
+  versorgerSuchen(anfrage: VersorgerAnfrage): Promise<VersorgerAntwort | VersorgerFehler>;
   /**
    * Standortangaben zur Bauadresse vorschlagen (Echtbetrieb: Edge Function standort-analyse, Demo: feste Beispielantwort).
    * Schreibt nichts ins Projekt. Wirft nie wegen der Dienste: Fehler kommen als { ok: false } bzw. als Status je Thema zurück.

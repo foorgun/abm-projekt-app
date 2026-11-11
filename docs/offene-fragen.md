@@ -63,6 +63,12 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   den KI-Dienst. Vor dem Freischalten (`EXTRACTOR_ENABLED=true`) in production muss der AVV zwischen Furkan Cetin und ABM unterschrieben sein
   (Anthropic als Unterauftragnehmer). Siehe `docs/vertrag-extraktion.md`.
 - **Limits der Auslesung:** 20 je Person und Tag, 100 je Tag, 20 € im Monat sind Annahmen. Passen sie zum Büro?
+- **Keller/Bodenplatte bauseits:** Wie steht das in den Werkverträgen der Hausbaufirmen genau da (z. B. „Ausführung ab
+  Oberkante Bodenplatte“, „Keller bauseits“, Kreuz bei „ohne Keller“)? Die Auslesung setzt „ja“ nur bei ausdrücklicher
+  Nennung; ein bloßes „ohne Keller“ zählt nicht (dann kann die Bodenplatte trotzdem von der Hausbaufirma kommen).
+  Mit echten Verträgen prüfen.
+- **Vertrag nachträglich auslesen:** Die ausgelesenen Werte werden nicht zwischengespeichert; wer die Vorschau schließt,
+  liest neu (zählt beim echten Extractor wieder gegen das Tageslimit). Reicht das?
 
 ## Zu Urlaub und Krankheit
 
@@ -84,9 +90,8 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 
 ## Zum Planungsprotokoll (Stufe a: Seite 1)
 
-- **Vermesser aus Mails:** a) Mail oder PDF im Projekt hochladen, die App liest Vermesser samt Kontakt aus der Signatur, oder
-  b) der Posteingangs-Agent erkennt Vermesser-Mails selbst (setzt den Agenten im Echtbetrieb voraus). Welche Variante?
-- **Bauamt:** In BW ist die Baurechtsbehörde je nach Ort die Gemeinde oder das Landratsamt. Bleibt das Handeingabe?
+- **Versorger-Suche (KI):** Passen 20 Suchen je Person und Tag und 180 Tage Zwischenspeicher? Die Suche sendet nur Ortsangaben
+  (keine Personendaten); trotzdem den AVV mit Anthropic vor dem Echtbetrieb klären (wie bei der Auslesung).
 - **Telefon der Gemeinde:** steht nicht im amtlichen Anschriftenverzeichnis und bleibt Handeingabe.
 - **Clayton-Formular:** Im Baugrundauftrag steht „Ausführung Keller/Bodenplatte durch Firma“. Ist das Feld ausgefüllt, ließe sich
   der Kellerbauer daraus lesen. Gewünscht?
@@ -94,15 +99,14 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 - **Annahme:** „Projekt-Nr.“ (Living Haus, Bien-Zenker) und „Schwabenhaus BV-Nr.“ sind die Hausbau-Nr. (`projects.hausbau_nr`).
   Stimmt das, oder vergeben die Firmen dafür eine eigene Nummer?
 - **Annahme:** Erzeugte Protokolle liegen im Ordner „08 Bauantrag“. Gehören sie woandershin (z. B. „03 Hausbaufirma“)?
-- Architekt auf dem Protokoll: Standard sind die Bürodaten (Einstellungen). Ein Sachbearbeiter im Projekt ergänzt den Namen
-  („Büro, Sachbearbeiter“) und ersetzt Tel., Mobil und E-Mail. Ist diese Schreibweise so recht?
 - Mobil des Bauherrn: Ohne eigene Mobilnummer setzt das Protokoll die Telefonnummer ein, wenn sie eine Handynummer ist (015…, 016…, 017…).
   Gewollt, oder lieber leer lassen?
 - Living Haus/Bien-Zenker haben nur eine „Genehmigungsbehörde (Gemeinde bzw. Bauamt)“: die App setzt das Bauamt ein, ohne Bauamt die
   Gemeinde. Passt das?
-- Schwabenhaus Seite 2 (Versorger Strom, Wasser, Abwasser, Gas, Fernwärme, Sonstige mit Anschrift) wird noch nicht befüllt
-  (Stufe a = Seite 1). Ausnahme: der Schornsteinfeger (Name, Anschrift, Telefon, E-Mail). Die Daten sind da; soll der Rest von Seite 2
-  als Nächstes dazukommen?
+- Vermesser und Baugrundgutachter: Werden sie auf Seite 1 oder 2 abgefragt (Mehmet prüft)? Die App füllt beide mit dem Standard
+  (Clayton), bei Schwabenhaus auf Seite 1.
+- Architekt: In der Zusammenfassung des Calls steht „HBM Bäcker & Co. GbR“. Die App nimmt den Büronamen aus den Einstellungen
+  (Bürodaten); vermutlich ist „ABM … Becker und Cetin GbR“ gemeint. Bitte dort die gewünschte Schreibweise eintragen.
 - Schwabenhaus hat beim Schornsteinfeger nur ein Telefonfeld („SchornsteinTel“, im Formular beschriftet mit „Mobil:“). Die App setzt
   die Mobilnummer ein, ohne Mobilnummer die Festnetznummer. Passt das?
 - Nehmen die Hausbaufirmen die bearbeitbare Fassung an, oder nur die flache?
@@ -141,3 +145,16 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   liegt, sonst immer BE (`ENTWURFSVERFASSER_REGEL`). Bundesland kommt aus dem Feld am Projekt, sonst aus dem Bundesland beim Bauort,
   nie aus der PLZ. Fehlt es bei MC, steht vorerst BE drin und die App weist darauf hin. Passt das so?
 - **Unterschrift:** Die Erklärung ist ein PDF zum Ausdrucken und Unterschreiben. Versand per Mail und Rücklauf (unterschrieben zurück) kommen später.
+
+## Zum Baugrundauftrag an Clayton (Migration 0031)
+
+- **Ablageordner:** Annahme „10 Bodengutachten“ (dort legt auch die Vertragsauslesung den Typ „baugrundauftrag“ ab). Die
+  Ordnervorlage hat außerdem „07 Vorabzug / 04 Formular Bodengutachten“. Wäre der passender?
+- **Namen im Feld „Vor- und Zuname(n)“:** wie im Planungsprotokoll alle Bauherren ausgeschrieben („A und B“); ohne Namen im
+  Kontakt steht die Projektbezeichnung (meist der Nachname). Bei langen Namen wird die Schrift klein (bis 6 pt). So lassen?
+- **Auftragshaken auf Seite 2** („Ich / Wir beauftragen clayton …“) setzt die App nicht, das soll der Kunde tun. Oder soll er
+  vorab angekreuzt sein?
+- **Tel. des Herstellers:** Für Verkäufer gibt es kein Telefonfeld, das Feld bleibt leer. Braucht es eins?
+- **Bauherrschaft (falls abweichend):** bleibt immer leer, weil Auftraggeber = Bauherr. Gibt es Fälle mit abweichendem Auftraggeber?
+- **Neue Revision von Clayton** (anderes Formular, andere Preise): `npm run vorlagen:hochladen -- --ersetzen` lehnt Vorlagen
+  mit fehlenden Feldern ab; bei geänderten Feldnamen `docs/baugrundauftrag/clayton.json` neu erzeugen und Zuordnung anpassen.

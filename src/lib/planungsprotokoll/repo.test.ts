@@ -32,8 +32,8 @@ describe("Demo-Modus: Planungsprotokoll", () => {
     const p = d.projects[0];
     expect(d.parties.filter((x) => x.projectId === p.id && x.role === "gas").length).toBeLessThanOrEqual(1);
     const stand = d.projects.map((x) => feldStand("living-haus", protokollDaten(d, x.id)).gefuellt);
-    expect(Math.min(...stand)).toBeLessThan(51);
-    expect(Math.max(...stand)).toBeGreaterThan(35);
+    expect(Math.min(...stand)).toBeLessThan(45);
+    expect(Math.max(...stand)).toBeGreaterThan(30);
   });
 
   it("Freiberufler sieht weder Bürodaten noch Protokolle noch die neuen Rollen", async () => {

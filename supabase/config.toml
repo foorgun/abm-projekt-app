@@ -11,3 +11,7 @@ verify_jwt = false
 # Prüft Anmeldung und Rolle selbst (wie schornsteinfeger-suche).
 [functions.standort-analyse]
 verify_jwt = false
+
+# Prüft Anmeldung und Rolle selbst (wie schornsteinfeger-suche).
+[functions.versorger-suche]
+verify_jwt = false

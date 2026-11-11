@@ -1,8 +1,8 @@
 // Feldzuordnung Seite 1: Formularfeld der Vorlage → Wert aus den Protokolldaten.
 // Grundlage: Feld-Inventar docs/planungsprotokoll/<vorlage>.json (scripts/planungsprotokoll/felder.mjs) und der
 // Machbarkeitstest (docs/planungsprotokoll-analyse.md). Living Haus und Bien-Zenker haben dieselben Feldnamen.
-// Nicht zugeordnet und damit unberührt: alles ab Seite 2 (Ausnahme: der Schornsteinfeger bei Schwabenhaus, der dort erst
-// auf Seite 2 steht), das Rich-Text-Feld von Schwabenhaus und die vier Summenfelder der Flächenberechnung von
+// Nicht zugeordnet und damit unberührt: alles ab Seite 2 (Ausnahme: Schornsteinfeger, Strom, Wasser und Abwasser bei
+// Schwabenhaus, die dort erst auf Seite 2 stehen), das Rich-Text-Feld von Schwabenhaus und die vier Summenfelder der Flächenberechnung von
 // Living Haus/Bien-Zenker.
 
 import type { ProtokollVorlage, StandortWert } from "../types";
@@ -59,14 +59,28 @@ for (const [prefix, r] of [
   });
 }
 
-// Schornsteinfeger (Seite 2): Name und Anschrift getrennt, nur ein Telefonfeld. Es heißt "SchornsteinTel", ist im
-// Formular aber mit "Mobil:" beschriftet: deshalb die Mobilnummer, ohne sie die Festnetznummer.
+// Seite 2: Schornsteinfeger und Versorger mit Name und Anschrift getrennt, je ein Telefonfeld. Beim Schornsteinfeger heißt
+// es "SchornsteinTel", ist im Formular aber mit "Mobil:" beschriftet: deshalb die Mobilnummer, ohne sie die Festnetznummer.
+// Gas und Fernwärme bleiben nach Absprache leer (daten.ts) und sind deshalb nicht zugeordnet.
 Object.assign(SCHWABENHAUS, {
   SchornsteinName: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.name,
   SchornsteinAnschrift: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.anschrift,
   SchornsteinTel: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.mobil ?? d.beteiligte.schornsteinfeger.tel,
   SchornsteinMail: (d: ProtokollDaten) => d.beteiligte.schornsteinfeger.mail,
 });
+for (const [prefix, r] of [
+  ["Strom", "strom"],
+  ["Wasser", "wasser"],
+  ["Abwasser", "abwasser"],
+] as const) {
+  const k = rolle(r);
+  Object.assign(SCHWABENHAUS, {
+    [`${prefix}Name`]: (d: ProtokollDaten) => k(d).name,
+    [`${prefix}Anschrift`]: (d: ProtokollDaten) => k(d).anschrift,
+    [`${prefix}Tel`]: (d: ProtokollDaten) => k(d).tel ?? k(d).mobil,
+    [`${prefix}Mail`]: (d: ProtokollDaten) => k(d).mail,
+  });
+}
 
 const t = (n: string) => `Textfeld 1.${n}`;
 const FB22: Zuordnung = {
@@ -92,8 +106,7 @@ const FB22_ROLLEN: [(d: ProtokollDaten) => Kontakt, string, string, string | nul
   [genehmigung, "20", "38", "37", "36"],
   [rolle("schornsteinfeger"), "21", "41", "40", "39"],
   [rolle("strom"), "22", "44", null, "43"],
-  [rolle("gas"), "23", "42", null, "47"],
-  [rolle("fernwaerme"), "24", "46", null, "45"],
+  // Gas (23, 42, 47) und Fernwärme (24, 46, 45) bleiben nach Absprache leer und sind deshalb nicht zugeordnet
   [rolle("wasser"), "25", "50", null, "49"],
   [rolle("abwasser"), "26", "48", null, "51"],
 ];
@@ -173,11 +186,12 @@ export function feldStand(vorlage: ProtokollVorlage, daten: ProtokollDaten): { g
   return { gefuellt: werte.filter(Boolean).length, gesamt: werte.length };
 }
 
-/** Beteiligte, die die Vorlage vorbefüllt (für den Hinweis „noch leer“; bei Schwabenhaus der Schornsteinfeger auf Seite 2). */
+/** Beteiligte, die die Vorlage vorbefüllt (für den Hinweis „noch leer“; bei Schwabenhaus Schornsteinfeger und Versorger auf Seite 2). */
 export const ROLLEN_SEITE1: Record<ProtokollVorlage, ProtokollRolle[]> = {
-  schwabenhaus: ["architekt", "vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt", "schornsteinfeger"],
-  "living-haus": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "gas", "fernwaerme", "wasser", "abwasser"],
-  "bien-zenker": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "gas", "fernwaerme", "wasser", "abwasser"],
+  schwabenhaus: ["architekt", "vermesser", "baugrundgutachter", "erdbauer", "kellerbauer", "gemeinde", "bauamt", "schornsteinfeger", "strom", "wasser", "abwasser"],
+  // Gas und Fernwärme bleiben nach Absprache leer und fehlen deshalb hier (daten.ts, IMMER_LEER)
+  "living-haus": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "wasser", "abwasser"],
+  "bien-zenker": ["architekt", "vermesser", "kellerbauer", "erdbauer", "bauamt", "schornsteinfeger", "strom", "wasser", "abwasser"],
 };
 
 export const ROLLE_LABEL: Record<ProtokollRolle, string> = {

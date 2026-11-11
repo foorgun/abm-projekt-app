@@ -20,6 +20,7 @@ import { EinverstaendnisTab } from "./EinverstaendnisTab";
 import { InvoicesTab } from "./InvoicesTab";
 import { OverviewTab } from "./OverviewTab";
 import { PlanungsprotokollTab } from "./PlanungsprotokollTab";
+import { VertragNachtraeglich } from "./VertragNachtraeglich";
 
 type TabKey = "uebersicht" | "dokumente" | "aufgaben" | "rechnungen" | "planungsprotokoll" | "einverstaendnis" | "aktivitaet";
 const TABS: TabKey[] = ["uebersicht", "dokumente", "aufgaben", "rechnungen", "planungsprotokoll", "einverstaendnis", "aktivitaet"];
@@ -292,7 +293,12 @@ export function ProjectDetail() {
 
         <div role="tabpanel" aria-label={tab}>
           {tab === "uebersicht" && <OverviewTab project={p} data={data} contact={contact} staff={staff} pilot={pilot} />}
-          {tab === "dokumente" && <DocumentsTab projectId={p.id} templates={foldersFor(p, data.folderTemplates, documents)} documents={documents} />}
+          {tab === "dokumente" && (
+            <div className="stack">
+              {staff && <VertragNachtraeglich key={p.id} project={p} data={data} contact={contact} />}
+              <DocumentsTab projectId={p.id} templates={foldersFor(p, data.folderTemplates, documents)} documents={documents} />
+            </div>
+          )}
           {tab === "aufgaben" && (
             <Card>
               <CardHead
