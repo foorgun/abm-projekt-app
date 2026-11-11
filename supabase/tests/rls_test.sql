@@ -959,6 +959,12 @@ select test.expect('Mitarbeiterin: Wert bereinigt, Stempel gesetzt',
   (select count(*) from public.buero_daten where mobil = '0170 1' and geaendert_von = auth.uid() and geaendert_am is not null), 1);
 select test.throws('Mitarbeiterin: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set email = 'kein-at'$$);
 select test.throws('Mitarbeiterin löscht die Bürodaten nicht (kein Recht)', $$delete from public.buero_daten$$);
+select test.expect('Mitarbeiterin setzt den Standard-Baugrundgutachter (0029)',
+  test.affected($$update public.buero_daten set gutachter_name = ' Baugrund Muster GmbH ', gutachter_email = 'baugrund@example.de', gutachter_tel = ' '$$), 1);
+select test.expect('Standard-Baugrundgutachter bereinigt',
+  (select count(*) from public.buero_daten where gutachter_name = 'Baugrund Muster GmbH' and gutachter_tel is null and gutachter_email = 'baugrund@example.de'), 1);
+select test.throws('Baugrundgutachter: ungültige E-Mail wird abgelehnt', $$update public.buero_daten set gutachter_email = 'kein-at'$$);
+select test.throws('Baugrundgutachter: Kontaktdaten ohne Namen werden abgelehnt', $$update public.buero_daten set gutachter_name = null$$);
 select test.throws('Bürodaten: keine zweite Zeile', $$insert into public.buero_daten (id, name) values (true, 'X')$$);
 select test.throws('Mitarbeiterin darf die Datenübernahme nicht aufrufen', $$select public.stammdaten_0013_uebernehmen()$$);
 select public.update_project('a0000000-0000-4000-8000-000000000001', p_parties => '{"kellerbauer": {"name": "Keller Löffler", "phone": "0731 1", "mobile": "0170 2", "email": "k@example.de", "address": "Weg 1, 89000 Ort"}, "sachbearbeiter": {"name": "Dörte Fuß", "mobile": "0170 3"}, "gemeinde": {"name": "Gemeinde Blaustein", "fax": "0731 8"}}');
@@ -1017,6 +1023,7 @@ select test.expect('Admin sieht das Protokoll der Mitarbeiterin', (select count(
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
 select test.expect('Freiberufler sieht keine Bürodaten', (select count(*) from public.buero_daten), 0);
 select test.expect('Freiberufler ändert die Bürodaten nicht', test.affected($$update public.buero_daten set name = 'X'$$), 0);
+select test.expect('Freiberufler ändert den Standard-Baugrundgutachter nicht', test.affected($$update public.buero_daten set gutachter_name = 'X'$$), 0);
 select test.expect('Freiberufler sieht keine Planungsprotokolle, auch nicht seines Projekts', (select count(*) from public.planungsprotokolle), 0);
 select test.throws('Freiberufler legt kein Planungsprotokoll an',
   $$insert into public.planungsprotokolle (project_id, vorlage, variante, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', 'schwabenhaus', 'flach', auth.uid())$$);

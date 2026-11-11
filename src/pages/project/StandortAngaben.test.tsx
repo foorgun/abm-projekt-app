@@ -132,6 +132,27 @@ describe("StandortAngaben", () => {
     expect(knopf(host, /Alle übernehmen/)).toBeUndefined();
   });
 
+  it("Gemeindeverwaltung: ohne Gemeinde im Projekt vorgewählt, „Alle übernehmen“ trägt sie auf Seite 1 ein", async () => {
+    await repo.updateProject(projectId, { parties: { gemeinde: null } });
+    await anzeigen();
+    const box = host.querySelector("#pp-standort-gemeinde") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(host.textContent).toContain("Gemeindeverwaltung Musterstadt");
+    await klick(knopf(host, /Alle übernehmen/));
+    const g = (await repo.load(ADMIN)).parties.find((p) => p.projectId === projectId && p.role === "gemeinde");
+    expect(g).toMatchObject({ name: "Gemeindeverwaltung Musterstadt", address: "Rathausplatz 1, 89000 Musterstadt", email: "rathaus@musterstadt.example" });
+  });
+
+  it("Gemeindeverwaltung: steht schon eine Gemeinde im Projekt, nicht vorgewählt und nicht ersetzt", async () => {
+    await repo.updateProject(projectId, { parties: { gemeinde: { name: "Bürgermeisteramt Eigen", phone: "0731 5" } } });
+    await anzeigen();
+    expect((host.querySelector("#pp-standort-gemeinde") as HTMLInputElement).checked).toBe(false);
+    expect(host.textContent).toContain("Im Projekt steht schon „Bürgermeisteramt Eigen“");
+    await klick(knopf(host, /Alle übernehmen/));
+    const g = (await repo.load(ADMIN)).parties.find((p) => p.projectId === projectId && p.role === "gemeinde");
+    expect(g).toMatchObject({ name: "Bürgermeisteramt Eigen", phone: "0731 5" });
+  });
+
   it("übernommene Werte lassen sich wieder entfernen", async () => {
     await anzeigen();
     await klick(knopf(host, /Alle übernehmen/));

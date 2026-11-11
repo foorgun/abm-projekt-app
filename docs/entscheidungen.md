@@ -763,3 +763,21 @@ Ablauf haben.
   im Ablauf einträgt, nimmt die Anfrage damit an (mit der Prüfung auf den Bauherrn). Danach zeigt die Seite den Ablauf
   des Projekts.
 - **Kein Planungsprotokoll** bei Anfragen: der Reiter erscheint erst nach dem Annehmen.
+
+## Seite 1 des Planungsprotokolls: Gemeinde und Baugrundgutachter (Migration 0029)
+
+Auskunft ABM (10.11.2026): Vermesser kommt aus den Mails, Baugrundgutachter ist meist dasselbe Büro (bei allen Hausbaufirmen),
+den Kellerbauer legt die Hausbaufirma später fest, die Gemeinde ergibt sich aus dem Bauort.
+
+- **Standard-Baugrundgutachter in den Bürodaten** (Einstellungen, eigene Karte): Name, Anschrift, Tel., Mobil, E-Mail. Hat ein
+  Projekt keinen eigenen Baugrundgutachter, steht der Standard im Protokoll. Ein Eintrag im Projekt geht immer vor. Die Daten
+  stehen nur in der Datenbank, nicht im Repo. Ändern Admin und Mitarbeiter wie die übrigen Bürodaten (0025).
+- **Bürodaten speichern auch Mitarbeiter im Echtbetrieb:** `supabaseRepo.saveBueroDaten` prüfte noch auf Admin, obwohl die
+  Datenbank seit 0025 Mitarbeiter zulässt. Jetzt wie im Demo-Modus.
+- **Gemeinde aus dem amtlichen Anschriftenverzeichnis** (statt Website-Suche): Zuordnung über den Gemeindeschlüssel aus der
+  Standortanalyse, Tabelle in der Edge Function (`verwaltungen.ts`, ca. 380 KB), nicht im Frontend-Bundle. Wikidata kennt die
+  Websites, aber kaum Telefon und E-Mail; das Protokoll hat für eine Website kein Feld.
+- **Übernahme in derselben Bestätigung wie die Standortangaben** („Alle übernehmen“), nicht still beim Öffnen.
+- **Formular „Angaben für Seite 1“ speichert nur geänderte Rollen** und lädt neue Daten nach, solange nichts bearbeitet ist.
+  Vorher hätte ein beim Öffnen geladenes Formular eine danach übernommene Gemeinde beim Speichern wieder gelöscht.
+- **Kellerbauer und Erdbauer** bleiben Handeingabe. **Vermesser aus Mails** ist noch offen (docs/offene-fragen.md).

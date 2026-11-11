@@ -70,7 +70,7 @@ import {
   toUrlaubsAnspruch,
   type Row,
 } from "./supabase/mappers";
-import type { ActivityKind, AgentSettings, Dataset, KalenderEintrag, MailboxStatus, StaffMember, StandortWert } from "./types";
+import type { ActivityKind, AgentSettings, BueroDaten, Dataset, KalenderEintrag, MailboxStatus, StaffMember, StandortWert } from "./types";
 import { namenErgaenzen } from "./weitereBauherren";
 
 export const BUCKET = "project-documents";
@@ -169,6 +169,15 @@ export function bauherrJson(input: BauherrInput): Record<string, string | null> 
   ];
   for (const [key, col] of extra) if (b[key] !== undefined) out[col] = v(b[key]);
   return out;
+}
+
+/** Bürodaten aus der Zeile von buero_daten; der Standard-Baugrundgutachter nur, wenn ein Name eingetragen ist (Migration 0029). */
+export function bueroAus(r: Row): BueroDaten {
+  const t = (v: unknown) => (typeof v === "string" && v.trim() ? v : null);
+  const gutachter = t(r.gutachter_name)
+    ? { name: t(r.gutachter_name), anschrift: t(r.gutachter_anschrift), tel: t(r.gutachter_tel), mobil: t(r.gutachter_mobil), email: t(r.gutachter_email) }
+    : null;
+  return { name: t(r.name), anschrift: t(r.anschrift), tel: t(r.tel), mobil: t(r.mobil), email: t(r.email), gutachter };
 }
 
 export function createSupabaseRepo(): Repo {
@@ -328,7 +337,7 @@ export function createSupabaseRepo(): Repo {
         mitarbeiter,
         abwesenheiten: absences.map((a) => toAbwesenheit(a, names)),
         urlaubsAnspruch: entitlements.map(toUrlaubsAnspruch),
-        buero: bueroRows[0] ? { name: bueroRows[0].name ?? null, anschrift: bueroRows[0].anschrift ?? null, tel: bueroRows[0].tel ?? null, mobil: bueroRows[0].mobil ?? null, email: bueroRows[0].email ?? null } : null,
+        buero: bueroRows[0] ? bueroAus(bueroRows[0]) : null,
         // neueste zuerst
         planungsprotokolle: protokolle.map((r) => toPlanungsprotokoll(r, names)).reverse(),
         // Freiberufler: undefined, damit keine Warnung "Einverständniserklärung fehlt" entsteht
@@ -556,12 +565,17 @@ export function createSupabaseRepo(): Repo {
     // ---------------------------------------------------------------- Planungsprotokoll (Migration 0013/0014)
 
     async saveBueroDaten(daten) {
-      if (user.role !== "admin") throw new PermissionError();
+      // Admin und Mitarbeiter (Migration 0025)
+      requireStaff();
       const c = (v: string | null | undefined) => v?.replace(/\s+/g, " ").trim() || null;
-      // Bereinigen und E-Mail prüfen macht zusätzlich ein Trigger in der Datenbank; die Zeilenregel lässt nur Admins ändern
+      const g = daten.gutachter;
+      // Bereinigen und E-Mail prüfen macht zusätzlich ein Trigger in der Datenbank
       const { data, error } = await sb
         .from("buero_daten")
-        .update({ name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email) })
+        .update({
+          name: c(daten.name), anschrift: c(daten.anschrift), tel: c(daten.tel), mobil: c(daten.mobil), email: c(daten.email),
+          ...(g !== undefined ? { gutachter_name: c(g?.name), gutachter_anschrift: c(g?.anschrift), gutachter_tel: c(g?.tel), gutachter_mobil: c(g?.mobil), gutachter_email: c(g?.email) } : {}),
+        })
         .eq("id", true)
         .select("name");
       if (error) fail(error, "Bürodaten konnten nicht gespeichert werden");

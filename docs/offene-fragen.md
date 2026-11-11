@@ -84,6 +84,13 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
 
 ## Zum Planungsprotokoll (Stufe a: Seite 1)
 
+- **Vermesser aus Mails:** a) Mail oder PDF im Projekt hochladen, die App liest Vermesser samt Kontakt aus der Signatur, oder
+  b) der Posteingangs-Agent erkennt Vermesser-Mails selbst (setzt den Agenten im Echtbetrieb voraus). Welche Variante?
+- **Bauamt:** In BW ist die Baurechtsbehörde je nach Ort die Gemeinde oder das Landratsamt. Bleibt das Handeingabe?
+- **Telefon der Gemeinde:** steht nicht im amtlichen Anschriftenverzeichnis und bleibt Handeingabe.
+- **Clayton-Formular:** Im Baugrundauftrag steht „Ausführung Keller/Bodenplatte durch Firma“. Ist das Feld ausgefüllt, ließe sich
+  der Kellerbauer daraus lesen. Gewünscht?
+
 - **Annahme:** „Projekt-Nr.“ (Living Haus, Bien-Zenker) und „Schwabenhaus BV-Nr.“ sind die Hausbau-Nr. (`projects.hausbau_nr`).
   Stimmt das, oder vergeben die Firmen dafür eine eigene Nummer?
 - **Annahme:** Erzeugte Protokolle liegen im Ordner „08 Bauantrag“. Gehören sie woandershin (z. B. „03 Hausbaufirma“)?

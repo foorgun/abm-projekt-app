@@ -205,13 +205,21 @@ export interface BauherrContact {
 // Bürodaten und Planungsprotokoll (Migration 0013/0014)
 // ---------------------------------------------------------------------------
 
-/** Daten des Büros (Einstellungen, nur Admin ändert). Stehen im Planungsprotokoll beim Architekten. */
-export interface BueroDaten {
+/** Kontakt in den Bürodaten (Büro selbst bzw. Standard-Baugrundgutachter). */
+export interface BueroKontakt {
   name: string | null;
   anschrift: string | null;
   tel: string | null;
   mobil: string | null;
   email: string | null;
+}
+
+/**
+ * Daten des Büros (Einstellungen, ändern Admin und Mitarbeiter, Migration 0025). Stehen im Planungsprotokoll beim Architekten.
+ * `gutachter`: Standard-Baugrundgutachter (Migration 0029), gilt im Protokoll, wenn ein Projekt keinen eigenen hat.
+ */
+export interface BueroDaten extends BueroKontakt {
+  gutachter?: BueroKontakt | null;
 }
 
 export type ProtokollVorlage = "schwabenhaus" | "living-haus" | "bien-zenker";

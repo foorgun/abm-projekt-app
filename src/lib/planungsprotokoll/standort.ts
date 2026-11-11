@@ -1,11 +1,21 @@
 // Standortangaben fürs Planungsprotokoll: Zuordnung und Abfragen liegen in supabase/functions/standort-analyse/logic.ts
 // (ohne Importe, damit die Edge Function dieselbe Datei nutzt). Hier: Übernahme, Auswahl fürs Formular, Demo-Antwort.
 
-import { adresseText, anfrageAusProjekt, THEMEN, viewerFuer, type Ergebnis, type Projektangaben, type StandortAntwort, type StandortFehler, type Thema } from "../../../supabase/functions/standort-analyse/logic";
-import type { StandortWert } from "../types";
+import { adresseText, anfrageAusProjekt, THEMEN, viewerFuer, type Ergebnis, type Projektangaben, type StandortAntwort, type StandortFehler, type Thema, type Verwaltung } from "../../../supabase/functions/standort-analyse/logic";
+import type { PartyInput } from "../repo";
+import type { ProjectParty, StandortWert } from "../types";
 
 export { THEMA_LABEL, THEMEN, MAX_ANALYSEN_PRO_TAG } from "../../../supabase/functions/standort-analyse/logic";
-export type { Ergebnis, Genauigkeit, Projektangaben, StandortAntwort, StandortFehler, Status, Thema } from "../../../supabase/functions/standort-analyse/logic";
+export type { Ergebnis, Genauigkeit, Projektangaben, StandortAntwort, StandortFehler, Status, Thema, Verwaltung } from "../../../supabase/functions/standort-analyse/logic";
+
+/**
+ * Gemeindeverwaltung als Beteiligte „Gemeinde“ (Seite 1). Name, Anschrift und E-Mail kommen aus dem Verzeichnis. Bei derselben
+ * Gemeinde bleiben Tel., Mobil und Fax stehen (das Verzeichnis hat keine); bei einer anderen werden sie geleert.
+ */
+export function gemeindeAusVerwaltung(v: Verwaltung, bisher: ProjectParty | undefined): PartyInput {
+  const gleich = bisher?.name.trim().toLowerCase() === v.name.trim().toLowerCase();
+  return { name: v.name, address: v.anschrift, email: v.email ?? (gleich ? (bisher?.email ?? null) : null), ...(gleich ? {} : { phone: null, mobile: null, fax: null }) };
+}
 
 /** Auswahlwerte der Felder, die im PDF angekreuzt werden. Die übrigen Themen sind Freitext. */
 export const AUSWAHL: Partial<Record<Thema, { wert: string; text: string }[]>> = {
@@ -77,6 +87,7 @@ export function demoStandort(p: Projektangaben, jetzt = new Date()): StandortAnt
     bundesland: anfrage.land,
     gemeinde: "Musterstadt",
     genauigkeit: "haus",
+    verwaltung: { name: "Gemeindeverwaltung Musterstadt", anschrift: "Rathausplatz 1, 89000 Musterstadt", email: "rathaus@musterstadt.example", quelle: DEMO_QUELLE },
     ergebnisse: THEMEN.map((thema): Ergebnis => {
       const w = DEMO_WERTE[thema];
       return w

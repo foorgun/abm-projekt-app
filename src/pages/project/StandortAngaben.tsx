@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { Button, Card, CardBody, CardHead, Input, Pill, Select } from "../../components/ui";
 import { formatDate } from "../../lib/format";
-import { AUSWAHL, THEMA_LABEL, THEMEN, uebernahme, zeilenAus, type Ergebnis, type StandortAntwort, type StandortFehler, type Thema, type Zeile } from "../../lib/planungsprotokoll/standort";
+import { AUSWAHL, gemeindeAusVerwaltung, THEMA_LABEL, THEMEN, uebernahme, zeilenAus, type Ergebnis, type StandortAntwort, type StandortFehler, type Thema, type Zeile } from "../../lib/planungsprotokoll/standort";
 import { ankreuzWerte } from "../../lib/planungsprotokoll/zuordnung";
 import { useData } from "../../lib/store";
 import type { Dataset, Project, ProtokollVorlage } from "../../lib/types";
@@ -24,6 +24,9 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
   const [antwort, setAntwort] = useState<StandortAntwort | null>(null);
   const [zeilen, setZeilen] = useState<Zeile[]>([]);
   const [fehler, setFehler] = useState<StandortFehler | null>(null);
+  /** Gemeindeverwaltung mit übernehmen (Seite 1). Vorgewählt nur, wenn im Projekt noch keine Gemeinde steht. */
+  const [mitGemeinde, setMitGemeinde] = useState(false);
+  const gemeindeBisher = data.parties.find((p) => p.projectId === project.id && p.role === "gemeinde");
   const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
 
   async function ermitteln() {
@@ -36,6 +39,7 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
       if (!res.ok) return setFehler(res);
       setAntwort(res);
       setZeilen(zeilenAus(res.ergebnisse));
+      setMitGemeinde(!!res.verwaltung && !gemeindeBisher);
     } catch (e) {
       setFehler({ ok: false, code: "error", message: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -43,10 +47,13 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
     }
   }
 
-  async function speichern(angaben: Record<string, NonNullable<typeof gespeichert>["angaben"][string]>, meldung: string) {
+  async function speichern(angaben: Record<string, NonNullable<typeof gespeichert>["angaben"][string]> | null, meldung: string, gemeinde?: ReturnType<typeof gemeindeAusVerwaltung>) {
     setBusy("speichern");
     setSpeicherFehler(null);
-    const res = await mutate((r) => r.saveStandortAngaben(project.id, angaben));
+    const res = await mutate(async (r) => {
+      if (angaben) await r.saveStandortAngaben(project.id, angaben);
+      if (gemeinde) await r.updateProject(project.id, { parties: { gemeinde } });
+    });
     setBusy(null);
     if (!res.ok) return setSpeicherFehler(res.error);
     setAntwort(null);
@@ -64,7 +71,10 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
   }, [project.id]);
 
   const setZeile = (thema: Thema, patch: Partial<Zeile>) => setZeilen((z) => z.map((x) => (x.thema === thema ? { ...x, ...patch } : x)));
-  const anzahl = antwort ? zeilen.filter((z) => z.gewaehlt && z.wert.trim() && antwort.ergebnisse.find((e) => e.thema === z.thema)?.status === "ermittelt").length : 0;
+  const anzahlWerte = antwort ? zeilen.filter((z) => z.gewaehlt && z.wert.trim() && antwort.ergebnisse.find((e) => e.thema === z.thema)?.status === "ermittelt").length : 0;
+  const verwaltung = antwort?.verwaltung ?? null;
+  const gemeindeMit = !!verwaltung && mitGemeinde;
+  const anzahl = anzahlWerte + (gemeindeMit ? 1 : 0);
   const angaben = gespeichert?.angaben ?? {};
   const uebernommen = THEMEN.filter((t) => angaben[t]);
   const { kreuze, offen } = vorlage ? ankreuzWerte(vorlage, angaben) : { kreuze: [], offen: [] };
@@ -105,16 +115,39 @@ export function StandortAngaben({ project, data, vorlage }: { project: Project; 
                 {antwort.ergebnisse.map((e) => (
                   <ErgebnisZeile key={e.thema} e={e} z={zeilen.find((x) => x.thema === e.thema)} onChange={(p) => setZeile(e.thema, p)} />
                 ))}
+                {verwaltung && (
+                  <li className="pp-standort-zeile">
+                    <label className="pp-standort-titel" htmlFor="pp-standort-gemeinde">
+                      <input id="pp-standort-gemeinde" type="checkbox" checked={mitGemeinde} onChange={(ev) => setMitGemeinde(ev.target.checked)} />
+                      <strong>Gemeinde (Seite 1)</strong>
+                    </label>
+                    <span className="pp-standort-wert">{[verwaltung.name, verwaltung.anschrift, verwaltung.email].filter(Boolean).join(" · ")}</span>
+                    <span className="field-hint">
+                      {verwaltung.quelle}. Telefon steht dort nicht, bitte bei Bedarf unten bei „Gemeinde“ ergänzen.
+                      {gemeindeBisher ? ` Im Projekt steht schon „${gemeindeBisher.name}“; angehakt wird es ersetzt.` : ""}
+                    </span>
+                  </li>
+                )}
               </ul>
               <div className="pp-actions">
-                <Button variant="primary" disabled={!!busy || !anzahl} onClick={() => void speichern(uebernahme(antwort.ergebnisse, zeilen, angaben), `${anzahl} ${anzahl === 1 ? "Wert" : "Werte"} übernommen`)}>
+                <Button
+                  variant="primary"
+                  disabled={!!busy || !anzahl}
+                  onClick={() =>
+                    void speichern(
+                      anzahlWerte ? uebernahme(antwort.ergebnisse, zeilen, angaben) : null,
+                      `${anzahl} ${anzahl === 1 ? "Wert" : "Werte"} übernommen`,
+                      gemeindeMit && verwaltung ? gemeindeAusVerwaltung(verwaltung, gemeindeBisher) : undefined,
+                    )
+                  }
+                >
                   {busy === "speichern" ? "Speichert …" : `Alle übernehmen (${anzahl})`}
                 </Button>
                 <Button variant="ghost" disabled={!!busy} onClick={() => setAntwort(null)}>
                   Verwerfen
                 </Button>
               </div>
-              <p className="field-hint">Amtliche Übersichtsdaten ohne Gewähr, bitte prüfen. Adresssuche: © OpenStreetMap-Mitwirkende (ODbL), Photon. Gemeinden: Statistisches Bundesamt (Destatis). Daten aus dem Umweltinformationssystem der LUBW, des Bayerischen Landesamts für Umwelt (www.lfu.bayern.de) und des HLNUG.</p>
+              <p className="field-hint">Amtliche Übersichtsdaten ohne Gewähr, bitte prüfen. Adresssuche: © OpenStreetMap-Mitwirkende (ODbL), Photon. Gemeinden: Statistisches Bundesamt (Destatis), Anschriften der Verwaltungen: Statistische Ämter des Bundes und der Länder. Daten aus dem Umweltinformationssystem der LUBW, des Bayerischen Landesamts für Umwelt (www.lfu.bayern.de) und des HLNUG.</p>
             </>
           )}
           {speicherFehler && (

@@ -70,6 +70,8 @@ export interface StandortAntwort {
   gemeinde: string | null;
   genauigkeit: Genauigkeit;
   ergebnisse: Ergebnis[];
+  /** Gemeindeverwaltung (Vorschlag für Seite 1); null, wenn die Gemeinde nicht eindeutig bestimmt ist. Ältere Funktionen liefern das Feld nicht. */
+  verwaltung?: Verwaltung | null;
 }
 
 export interface StandortFehler {
@@ -160,6 +162,30 @@ export interface Tabellen {
   ERDBEBEN_BY_KREISE: Record<string, string | null>;
   /** Gemeindeverzeichnis: Schlüssel, Name, Breite, Länge */
   GEMEINDEN: Record<Land, [string, string, number, number][]>;
+  /** Anschriften der Gemeindeverwaltungen je Schlüssel: Verwaltung, Straße, PLZ, Ort, E-Mail */
+  VERWALTUNGEN: Record<string, [string, string | null, string, string, string | null]>;
+  VERWALTUNGEN_STAND: string;
+}
+
+/** Gemeindeverwaltung fürs Planungsprotokoll (Seite 1, „Gemeinde“). Telefon steht nicht im Verzeichnis. */
+export interface Verwaltung {
+  name: string;
+  anschrift: string;
+  email: string | null;
+  quelle: string;
+}
+
+/** Verwaltung der Gemeinde mit diesem Schlüssel aus dem amtlichen Anschriftenverzeichnis; unbekannt: null. */
+export function verwaltungZu(t: Pick<Tabellen, "VERWALTUNGEN" | "VERWALTUNGEN_STAND">, ags: string | null): Verwaltung | null {
+  const v = ags ? t.VERWALTUNGEN[ags] : undefined;
+  if (!v) return null;
+  const [name, strasse, plz, ort, email] = v;
+  return {
+    name,
+    anschrift: [strasse, `${plz} ${ort}`].filter(Boolean).join(", "),
+    email,
+    quelle: `Statistische Ämter des Bundes und der Länder, Anschriften der Gemeinde- und Stadtverwaltungen (Stand ${t.VERWALTUNGEN_STAND})`,
+  };
 }
 
 /** Gemeindenamen vergleichbar machen: "Wangen i. Allgäu" = "Wangen im Allgäu", "Rot a. d. Rot" = "Rot an der Rot". */
@@ -669,7 +695,7 @@ export async function analysieren(a: Anfrage, d: Dienste): Promise<StandortAntwo
       ? { ...e, vorgewaehlt: false, hinweis: [s.hinweis ?? "Die Hausnummer wurde nicht gefunden, der Standort ist nur auf die Straße genau.", e.hinweis].filter(Boolean).join(" ") }
       : e,
   );
-  return { ok: true, adresse: adresseText(a), bundesland: land, gemeinde: s.gemeinde, genauigkeit: s.genauigkeit, ergebnisse: fertig };
+  return { ok: true, adresse: adresseText(a), bundesland: land, gemeinde: s.gemeinde, genauigkeit: s.genauigkeit, ergebnisse: fertig, verwaltung: verwaltungZu(d.tabellen, s.ags) };
 }
 
 // ---------------------------------------------------------------------------

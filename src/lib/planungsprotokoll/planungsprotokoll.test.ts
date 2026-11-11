@@ -215,6 +215,15 @@ function dataset(over: { bauherr?: Partial<BauherrContact> | null; parties?: Pro
 }
 
 describe("Protokolldaten aus dem Projekt", () => {
+  it("Baugrundgutachter: der des Projekts, sonst der Standard aus den Bürodaten, sonst leer", () => {
+    const gutachter = { name: "Baugrund Muster GmbH", anschrift: "Laborweg 3, 67000 Musterstadt", tel: null, mobil: null, email: "baugrund@example.de" };
+    const standard = protokollDaten(dataset({ buero: { ...BUERO, gutachter } }), "p1").beteiligte.baugrundgutachter;
+    expect(standard).toEqual({ name: "Baugrund Muster GmbH", anschrift: "Laborweg 3, 67000 Musterstadt", tel: null, mobil: null, mail: "baugrund@example.de", fax: null });
+    const eigen = protokollDaten(dataset({ buero: { ...BUERO, gutachter }, parties: [{ projectId: "p1", role: "baugrundgutachter", name: "Geotechnik Älbler", contact: null }] }), "p1");
+    expect(eigen.beteiligte.baugrundgutachter).toMatchObject({ name: "Geotechnik Älbler", mail: null });
+    expect(protokollDaten(dataset(), "p1").beteiligte.baugrundgutachter.name).toBeNull();
+    expect(protokollDaten(dataset({ buero: { ...BUERO, gutachter: { ...gutachter, name: " " } } }), "p1").beteiligte.baugrundgutachter.name).toBeNull();
+  });
   it("Projekt-Nr. ist die Hausbau-Nr.", () => {
     expect(protokollDaten(dataset(), "p1").projektNr).toBe("SH-4711");
   });

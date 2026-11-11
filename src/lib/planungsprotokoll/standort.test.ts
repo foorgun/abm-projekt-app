@@ -10,6 +10,7 @@ import {
   featureInfoLesen,
   featureInfoUrl,
   gemeindeFinden,
+  verwaltungZu,
   laermBwLesen,
   laermBwUrl,
   nameGleich,
@@ -27,11 +28,12 @@ import {
   type Tabellen,
 } from "../../../supabase/functions/standort-analyse/logic";
 import { GEMEINDEN } from "../../../supabase/functions/standort-analyse/gemeinden";
+import { VERWALTUNGEN, VERWALTUNGEN_STAND } from "../../../supabase/functions/standort-analyse/verwaltungen";
 import { ERDBEBEN, ERDBEBEN_BY_KREISE, SCHNEELAST } from "../../../supabase/functions/standort-analyse/zonen";
-import { demoStandort, uebernahme, zeilenAus, type Ergebnis } from "./standort";
+import { demoStandort, gemeindeAusVerwaltung, uebernahme, zeilenAus, type Ergebnis } from "./standort";
 import { ANKREUZ, ankreuzWerte } from "./zuordnung";
 
-const TAB: Tabellen = { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN };
+const TAB: Tabellen = { SCHNEELAST, ERDBEBEN, ERDBEBEN_BY_KREISE, GEMEINDEN, VERWALTUNGEN, VERWALTUNGEN_STAND };
 
 // ---------------------------------------------------------------------------
 // Zuordnung mit bekannten Orten (Werte aus den Tabellen des DIBt)
@@ -179,6 +181,38 @@ describe("Adresssuche: Treffer prüfen", () => {
     expect(trefferGuete(t("Leonhardstraße", "1"), anfrage("Marktplatz 1"))).toBeNull();
     expect(trefferGuete(t("Hauptstraße", "50/1"), anfrage("Hauptstraße 1"))).toBe("strasse");
     expect(trefferGuete(t(null, null), anfrage("Marktplatz 1"))).toBeNull();
+  });
+});
+
+describe("Gemeindeverwaltung aus dem Anschriftenverzeichnis", () => {
+  it("Schlüssel ergibt Verwaltung, Anschrift in einer Zeile und Quelle mit Stand", () => {
+    expect(verwaltungZu(TAB, "08421000")).toEqual({ name: "Stadtverwaltung Ulm", anschrift: "Marktplatz 1, 89073 Ulm", email: "info@ulm.de", quelle: expect.stringMatching(/Anschriften der Gemeinde- und Stadtverwaltungen \(Stand \d{2}\.\d{2}\.\d{4}\)/) });
+  });
+  it("Mitglied einer Verwaltungsgemeinschaft: die Verwaltung der Gemeinde selbst", () => {
+    expect(verwaltungZu(TAB, "09171124")?.name).toBe("Gemeinde Mehring");
+    expect(verwaltungZu(TAB, "08425004")?.name).toBe("Gemeindeverwaltung Altheim");
+  });
+  it("ohne Straße nur PLZ und Ort; unbekannt oder ohne Schlüssel: null", () => {
+    const ohne = Object.entries(VERWALTUNGEN).find(([, v]) => !v[1])!;
+    expect(verwaltungZu(TAB, ohne[0])?.anschrift).toBe(`${ohne[1][2]} ${ohne[1][3]}`);
+    expect(verwaltungZu(TAB, "08999999")).toBeNull();
+    expect(verwaltungZu(TAB, null)).toBeNull();
+  });
+  it("als Beteiligte „Gemeinde“: dieselbe Gemeinde behält Tel. und Fax, eine andere nicht", () => {
+    const v = { name: "Stadtverwaltung Ulm", anschrift: "Marktplatz 1, 89073 Ulm", email: "info@ulm.de", quelle: "Q" };
+    const bisher = { projectId: "p", role: "gemeinde" as const, name: "stadtverwaltung ulm", contact: null, phone: "0731 1", email: "alt@example.de" };
+    expect(gemeindeAusVerwaltung(v, bisher)).toEqual({ name: "Stadtverwaltung Ulm", address: "Marktplatz 1, 89073 Ulm", email: "info@ulm.de" });
+    expect(gemeindeAusVerwaltung({ ...v, email: null }, bisher).email).toBe("alt@example.de");
+    expect(gemeindeAusVerwaltung(v, { ...bisher, name: "Gemeinde Dornstadt" })).toEqual({ name: "Stadtverwaltung Ulm", address: "Marktplatz 1, 89073 Ulm", email: "info@ulm.de", phone: null, mobile: null, fax: null });
+    expect(gemeindeAusVerwaltung({ ...v, email: null }, undefined)).toMatchObject({ email: null, phone: null });
+  });
+
+  it("jede Gemeinde aus BW, BY und HE hat eine Verwaltung, nur gemeindefreie Gebiete nicht", () => {
+    // Gemeindefreie Gebiete (Forste, Gutsbezirke): Kennziffer 4xx in BY, 2xx in HE, 9xx in BW
+    const gemeindefrei = (ags: string) => (ags.startsWith("09") && ags[5] === "4") || (ags.startsWith("06") && ags[5] === "2") || (ags.startsWith("08") && ags[5] === "9");
+    const fehlt = (["BW", "BY", "HE"] as const).flatMap((land) => GEMEINDEN[land].filter((g) => !VERWALTUNGEN[g[0]] && !gemeindefrei(g[0])).map((g) => g[1]));
+    expect(fehlt).toEqual([]);
+    expect(Object.keys(VERWALTUNGEN).some(gemeindefrei)).toBe(false);
   });
 });
 
@@ -506,7 +540,7 @@ describe("Analyse", () => {
 
   it("BW: Erdbeben nicht ermittelbar mit Grund und Viewer, Lärm aus der LUBW-Karte", async () => {
     const { d, cache } = aufbau(bw(JSON.stringify({ features: [{ attributes: { ART: "Lden", DB_LOW: 60, DB_HIGH: 65 } }] })));
-    const { von } = await ergebnis(DORNSTADT, d);
+    const { r, von } = await ergebnis(DORNSTADT, d);
     expect(von("schneelast").wert).toBe("1a");
     expect(von("erdbeben")).toMatchObject({ status: "nicht_ermittelbar", viewer: expect.stringContaining("mlw.baden-wuerttemberg") });
     expect(von("laerm")).toMatchObject({ status: "ermittelt", anzeige: "Straße: LDEN 60 bis 65 dB(A)", vorgewaehlt: true });
@@ -514,6 +548,7 @@ describe("Analyse", () => {
     expect(von("laerm").hinweis).toMatch(/DIN 4109/);
     expect([...cache.values()].some((x) => x.thema === "erdbeben")).toBe(false);
     expect([...cache.values()].some((x) => x.thema === "laerm")).toBe(true);
+    expect(r.verwaltung).toMatchObject({ name: expect.stringContaining("Dornstadt"), anschrift: expect.stringContaining("89160") });
   });
 
   it("BW: Lärm ohne Fläche, höchste Stufe und Fehler des Dienstes", async () => {

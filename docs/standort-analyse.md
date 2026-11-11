@@ -33,6 +33,7 @@ Schwabenhaus legt jede Radio-Auswahl dreifach übereinander. Gesetzt wird die ob
 | Thema | Quelle | Lizenz, Bedingungen | Genauigkeit |
 |---|---|---|---|
 | Adresse | [Photon](https://photon.komoot.io) (komoot), Daten OpenStreetMap | ODbL, Namensnennung. Laut Anbieter Fair Use, „extensive usage will be throttled“, keine Verfügbarkeitszusage, keine Lizenzangabe zum Dienst selbst. | Haus, Straße oder Ort (wird gemeldet). Photon sucht unscharf: Es zählt nur ein Treffer mit gleicher Straße und im Ort des Projekts. |
+| Gemeindeverwaltung (Seite 1) | Statistische Ämter des Bundes und der Länder, [Anschriften der Gemeinde- und Stadtverwaltungen](https://www.statistikportal.de/de/veroeffentlichungen/anschriftenverzeichnis) (Stand 31.01.2026), eingebaut als `verwaltungen.ts` | „Die Nutzung der Daten ist uneingeschränkt“, Vervielfältigung und Verbreitung mit Quellenangabe gestattet. | Über den Gemeindeschlüssel. Name der Verwaltung, Anschrift, E-Mail (fehlt bei 210 von 3578), **kein Telefon**. Bei Mitgliedern einer Verwaltungsgemeinschaft die Verwaltung der Gemeinde selbst. |
 | Gemeinde | Statistisches Bundesamt, Gemeindeverzeichnis GV-ISys (Stand 30.09.2026), eingebaut als `gemeinden.ts` | „Vervielfältigung und Verbreitung, auch auszugsweise, mit Quellenangabe gestattet.“ | Über den Namen aus der Adresssuche, bei Namensgleichheit die nächste Gemeinde. Unklar: nicht ermittelbar. |
 | Schneelast | DIBt, Zuordnung nach Verwaltungsgrenzen (Stand 07.02.2023), eingebaut als `zonen.ts` | Auf der Seite keine Lizenz genannt. Verbindlich sind laut DIBt die Bekanntmachungen der Länder. | Gemeinde bzw. Kreis. Die Städte Ulm und Kassel stehen nicht in der Tabelle. |
 | Erdbeben | DIBt, Zuordnung (Stand 02.06.2022), BY und HE | wie oben | Gemarkung. BW fehlt: Das Land verweist nur auf die Karte 1:350 000. |
@@ -60,7 +61,12 @@ Fristen je Thema stehen in `logic.ts` (`CACHE_TAGE`): Adresse, Zonen und Höhe 3
 ```
 python3 scripts/standort/zonen_erzeugen.py Schneelastzonen_nach_Verwaltungsgrenzen.xlsx Erdbebenzonen_Formular_Untergrundklassen.xlsx
 python3 scripts/standort/gemeinden_erzeugen.py AuszugGV3QAktuell.xlsx
+python3 scripts/standort/verwaltungen_erzeugen.py 20260131_Anschriften_der_Gemeinde_und_Stadtverwaltungen.xlsx
 ```
+
+Die Gemeindeverwaltung erscheint in der Liste der Standortangaben als Zeile „Gemeinde (Seite 1)“. Steht im Projekt noch keine
+Gemeinde, ist sie angehakt; „Alle übernehmen“ trägt dann Name, Anschrift und E-Mail bei der Beteiligten „Gemeinde“ ein. Eine
+schon eingetragene Gemeinde wird nur ersetzt, wenn man die Zeile selbst anhakt (bei derselben Gemeinde bleiben Tel. und Fax).
 
 Das Skript bricht ab, wenn die Tabellen nicht zur erwarteten Form passen. Danach `ZONEN_VERSION` in `logic.ts` hochsetzen und die Tests laufen lassen: Sie prüfen, dass jede namentliche Ausnahme genau eine Gemeinde des Kreises trifft.
 
