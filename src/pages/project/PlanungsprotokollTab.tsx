@@ -10,7 +10,7 @@ import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, 
 import { formatDate } from "../../lib/format";
 import { BAUSEITS, ERDBAU_UNBEKANNT, protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
 import { dateiSpeichern, protokollErzeugen } from "../../lib/planungsprotokoll/erzeugen";
-import { seite1Ermitteln, seite1Neu, type Seite1Ergebnis } from "../../lib/planungsprotokoll/seite1";
+import { seite1Ermitteln, type Seite1Ergebnis } from "../../lib/planungsprotokoll/seite1";
 import { bauadresseFuerSuche, kontaktAusDetails, QUELLE_HINWEIS, type Kandidat, type Passt, type SuchAntwort } from "../../lib/planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VARIANTE_LABEL, VORLAGEN, VORLAGEN_LISTE, vorlageFuerFirma } from "../../lib/planungsprotokoll/vorlagen";
 import { feldStand, nochLeer } from "../../lib/planungsprotokoll/zuordnung";
@@ -67,16 +67,28 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
     const am = new Date().toISOString();
     try {
       const e = await seite1Ermitteln(repo, data, project.id);
-      if (seite1Neu(e)) {
-        const res = await mutate(async (r) => {
-          if (e.standort) await r.saveStandortAngaben(project.id, e.standort);
-          if (Object.keys(e.parties).length) await r.updateProject(project.id, { parties: e.parties });
-        });
+      // Getrennt speichern: scheitern die Standortangaben, sind die Beteiligten trotzdem im Projekt
+      const offen = [...e.offen];
+      let eingetragen = e.eingetragen;
+      if (Object.keys(e.parties).length) {
+        const res = await mutate((r) => r.updateProject(project.id, { parties: e.parties }));
         if (!res.ok) {
-          setBericht({ am, eingetragen: [], offen: [`Speichern fehlgeschlagen: ${res.error}`, ...e.offen] });
-          toast("Seite 1 nicht gespeichert", "danger", res.error);
-          return;
+          eingetragen = e.standort ? eingetragen.filter((x) => x.startsWith("Standortangaben")) : [];
+          offen.unshift(`Beteiligte nicht gespeichert: ${res.error}`);
         }
+      }
+      if (e.standort) {
+        const standort = e.standort;
+        const res = await mutate((r) => r.saveStandortAngaben(project.id, standort));
+        if (!res.ok) {
+          eingetragen = eingetragen.filter((x) => !x.startsWith("Standortangaben"));
+          offen.unshift(`Standortangaben nicht gespeichert: ${res.error}`);
+        }
+      }
+      if (offen.length !== e.offen.length) {
+        setBericht({ am, eingetragen, offen });
+        toast("Seite 1 nur teilweise gespeichert", "danger", offen[0]);
+        return;
       }
       setBericht({ am, eingetragen: e.eingetragen, offen: e.offen });
       toast(e.eingetragen.length ? "Seite 1 ausgefüllt" : "Seite 1: nichts Neues gefunden", "ok", `${e.eingetragen.length} eingetragen, ${e.offen.length} offen. Details im Kasten Planungsprotokoll.`);

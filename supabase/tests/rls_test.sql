@@ -1149,6 +1149,9 @@ select test.throws('Mitarbeiterin zählt keine Abrufe für andere', $$insert int
 insert into public.standort_angaben (project_id, angaben, geaendert_von) values ('a0000000-0000-4000-8000-000000000001', '{"radon": {"wert": "nein"}}', auth.uid());
 select test.expect('Mitarbeiterin liest die übernommenen Angaben', (select count(*) from public.standort_angaben), 1);
 update public.standort_angaben set angaben = '{}', geaendert_von = auth.uid() where project_id = 'a0000000-0000-4000-8000-000000000001';
+-- Ein upsert (wie supabase-js .upsert) schreibt auch project_id neu: dafür gibt es kein Recht. Die App ändert deshalb erst
+-- und legt nur ohne vorhandene Zeile an (standortAngabenSpeichern in src/lib/supabaseRepo.ts).
+select test.throws('upsert mit project_id ist verboten', $$insert into public.standort_angaben (project_id, angaben, geaendert_von) values ('a0000000-0000-4000-8000-000000000001', '{}', auth.uid()) on conflict (project_id) do update set project_id = excluded.project_id, angaben = excluded.angaben, geaendert_von = excluded.geaendert_von$$);
 select test.throws('Angaben nur im eigenen Namen', $$update public.standort_angaben set geaendert_von = '00000000-0000-4000-8000-0000000000a1' where project_id = 'a0000000-0000-4000-8000-000000000001'$$);
 
 select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
