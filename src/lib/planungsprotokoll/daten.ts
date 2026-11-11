@@ -1,6 +1,7 @@
 // Planungsprotokoll: aus Projekt, Bauherr, Beteiligten und Bürodaten die Werte für Seite 1 bilden. Reine Funktionen.
 // Fehlt etwas, bleibt der Wert null (das Feld im PDF bleibt leer); es gibt keinen Fehler.
 
+import { bundeslandName } from "../bundesland";
 import type { BauherrContact, BueroDaten, Dataset, PartyRole, ProjectParty } from "../types";
 
 /** Beteiligte, wie sie im Protokoll vorkommen ("architekt" kommt aus den Bürodaten, ggf. mit Sachbearbeiter). */
@@ -145,7 +146,7 @@ function bauherrTeil(contact: BauherrContact | null, label: string) {
   };
 }
 
-function bauortTeil(contact: BauherrContact | null, project: { location: string | null; flur?: string | null; flurstueck?: string | null; gemarkung?: string | null }) {
+function bauortTeil(contact: BauherrContact | null, project: { location: string | null; flur?: string | null; flurstueck?: string | null; gemarkung?: string | null; bundesland?: string | null }) {
   const getrennt = clean(contact?.siteStreet) || clean(contact?.sitePostalCode) || clean(contact?.siteCity);
   const alt = getrennt ? { strasse: null, plz: null, ort: null } : splitAnschrift(contact?.buildingAddress);
   const ort = clean(contact?.siteCity) ?? alt.ort ?? clean(project.location);
@@ -158,7 +159,8 @@ function bauortTeil(contact: BauherrContact | null, project: { location: string 
     gemarkung: clean(project.gemarkung),
     ortsteil: clean(contact?.siteDistrict),
     flurstueck: flur && flst ? `Flur ${flur.replace(/^flur\s*/i, "")}, Flst. ${flst.replace(/^(flst\.?|flurstück)\s*/i, "")}` : flur ? `Flur ${flur.replace(/^flur\s*/i, "")}` : flst,
-    bundesland: clean(contact?.siteState),
+    // Ohne eigene Angabe im Protokoll das Bundesland des Projekts (Kürzel, z. B. "BW" → "Baden-Württemberg")
+    bundesland: clean(contact?.siteState) ?? bundeslandName(project.bundesland),
   };
 }
 

@@ -885,3 +885,18 @@ beides als **ein** PDF ab. Sie versendet nichts: der Kunde kreuzt an und untersc
   daraus nach.
 - **Datenbanktests in dieser Umgebung:** kein lokales Postgres; `tools/test-db.sh` lief unverändert mit Postgres 16.14 aus
   `@embedded-postgres/darwin-arm64` und einem kleinen psql-Ersatz (Node, `pg`), beides nur temporär außerhalb des Repos.
+
+## „Seite 1 ausfüllen“: ein Knopf, alles automatisch (Absprache ABM, 11.11.2026)
+
+Vorher lieferten drei getrennte Vorschlags-Knöpfe (Standortangaben mit Gemeinde, Schornsteinfeger, Behörden und Versorger)
+nur Vorschläge, die einzeln übernommen und gespeichert werden mussten; ohne das blieb Seite 1 im PDF leer. Jetzt:
+
+- **Knopf „Seite 1 ausfüllen“** im Kasten Planungsprotokoll (`src/lib/planungsprotokoll/seite1.ts`): startet die drei
+  Suchen zugleich und speichert die Treffer in einem Schritt.
+- **Nur leere Rollen:** Was im Projekt schon steht, bleibt unverändert und wird nicht gesucht. Standortangaben nur, solange
+  noch keine übernommen sind (dann die vorgewählten, wie „Alle übernehmen“).
+- **Unsicheres bleibt offen:** Versorger mit Sicherheit „niedrig“ und Schornsteinfeger ohne eindeutigen Kehrbezirk werden
+  nicht eingetragen, sondern mit Grund unter „Offen“ gemeldet. Ebenso Fehler einer Suche (z. B. Tageslimit): die anderen
+  laufen weiter.
+- **Bundesland im Protokoll:** ohne eigene Angabe beim Bauort das Bundesland des Projekts (Kürzel → Name).
+- Die einzelnen Vorschlags-Knöpfe bleiben zum Nachprüfen und für Änderungen.

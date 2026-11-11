@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { Download, FileCheck2, FilePen, FileText, Search } from "lucide-react";
+import { Download, FileCheck2, FilePen, FileText, Search, Wand2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useToast } from "../../components/Toast";
 import { StandortAngaben } from "./StandortAngaben";
@@ -10,6 +10,7 @@ import { Button, Card, CardBody, CardHead, DataTable, EmptyState, Field, Input, 
 import { formatDate } from "../../lib/format";
 import { BAUSEITS, ERDBAU_UNBEKANNT, protokollDaten, splitAnschrift } from "../../lib/planungsprotokoll/daten";
 import { dateiSpeichern, protokollErzeugen } from "../../lib/planungsprotokoll/erzeugen";
+import { seite1Ermitteln, seite1Neu, type Seite1Ergebnis } from "../../lib/planungsprotokoll/seite1";
 import { bauadresseFuerSuche, kontaktAusDetails, QUELLE_HINWEIS, type Kandidat, type Passt, type SuchAntwort } from "../../lib/planungsprotokoll/schornsteinfeger";
 import { PROTOKOLL_ORDNER, VARIANTE_LABEL, VORLAGEN, VORLAGEN_LISTE, vorlageFuerFirma } from "../../lib/planungsprotokoll/vorlagen";
 import { feldStand, nochLeer } from "../../lib/planungsprotokoll/zuordnung";
@@ -43,6 +44,31 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
   const vorlage: ProtokollVorlage | null = auto ?? (wahl || null);
   const [busy, setBusy] = useState<ProtokollVariante | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
+  const [fuellt, setFuellt] = useState(false);
+  const [bericht, setBericht] = useState<Seite1Ergebnis | null>(null);
+
+  // Ein Knopf für Seite 1: alle Suchen zugleich, Treffer nur in leere Rollen, sofort gespeichert (Absprache 11.11.2026)
+  async function ausfuellen() {
+    if (fuellt) return;
+    setFuellt(true);
+    setFehler(null);
+    setBericht(null);
+    try {
+      const e = await seite1Ermitteln(repo, data, project.id);
+      if (seite1Neu(e)) {
+        const res = await mutate(async (r) => {
+          if (e.standort) await r.saveStandortAngaben(project.id, e.standort);
+          if (Object.keys(e.parties).length) await r.updateProject(project.id, { parties: e.parties });
+        });
+        if (!res.ok) return setFehler(res.error);
+      }
+      setBericht(e);
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : String(e));
+    } finally {
+      setFuellt(false);
+    }
+  }
 
   const daten = useMemo(() => protokollDaten(data, project.id), [data, project.id]);
   const stand = vorlage ? feldStand(vorlage, daten) : null;
@@ -105,15 +131,49 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
               </p>
             )}
             <div className="pp-actions">
-              <Button variant="primary" icon={<FilePen size={15} />} disabled={!vorlage || !!busy} onClick={() => void erzeugen("bearbeitbar")}>
+              <Button icon={<Wand2 size={15} />} disabled={fuellt || !!busy} onClick={() => void ausfuellen()}>
+                {fuellt ? "Sucht … (bis zu einer Minute)" : "Seite 1 ausfüllen"}
+              </Button>
+              <Button variant="primary" icon={<FilePen size={15} />} disabled={!vorlage || !!busy || fuellt} onClick={() => void erzeugen("bearbeitbar")}>
                 {busy === "bearbeitbar" ? "Wird erzeugt …" : "Planungsprotokoll erzeugen"}
               </Button>
-              <Button icon={<FileCheck2 size={15} />} disabled={!vorlage || !!busy} onClick={() => void erzeugen("flach")}>
+              <Button icon={<FileCheck2 size={15} />} disabled={!vorlage || !!busy || fuellt} onClick={() => void erzeugen("flach")}>
                 {busy === "flach" ? "Wird erzeugt …" : "Flache Fassung erzeugen"}
               </Button>
             </div>
+            {bericht && (
+              <div className="pp-bericht" role="status">
+                {bericht.eingetragen.length ? (
+                  <>
+                    <p>
+                      <strong>Eingetragen und gespeichert:</strong>
+                    </p>
+                    <ul>
+                      {bericht.eingetragen.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p>Nichts Neues eingetragen.</p>
+                )}
+                {bericht.offen.length > 0 && (
+                  <>
+                    <p>
+                      <strong>Offen:</strong>
+                    </p>
+                    <ul className="muted">
+                      {bericht.offen.map((x) => (
+                        <li key={x}>{x}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                <p className="field-hint">Bitte kurz prüfen (unten unter „Angaben für Seite 1“), dann das Planungsprotokoll erzeugen. Vorschläge aus Websuche und amtlichen Verzeichnissen, ohne Gewähr.</p>
+              </div>
+            )}
             <p className="field-hint">
-              „Bearbeitbar“: die Felder bleiben im PDF ausfüllbar. „Flache Fassung“: die Werte sind eingebrannt, zum Versand. Jede Fassung wird neu im Ordner „{PROTOKOLL_ORDNER}“ abgelegt, nichts wird überschrieben.
+              „Seite 1 ausfüllen“ sucht Gemeinde, Bauamt, Wasser, Abwasser, Strom und Schornsteinfeger und trägt sie in leere Felder ein; Vorhandenes bleibt unverändert. „Bearbeitbar“: die Felder bleiben im PDF ausfüllbar. „Flache Fassung“: die Werte sind eingebrannt, zum Versand. Jede Fassung wird neu im Ordner „{PROTOKOLL_ORDNER}“ abgelegt, nichts wird überschrieben.
             </p>
             {fehler && (
               <p className="form-error" role="alert">

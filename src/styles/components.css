@@ -6054,6 +6054,25 @@ li:first-child > .doc-card {
   gap: var(--sp-2);
 }
 
+.pp-bericht {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-14);
+}
+
+.pp-bericht p,
+.pp-bericht ul {
+  margin: 0;
+}
+
+.pp-bericht ul {
+  padding-left: var(--sp-4);
+}
+
 .pp-rollen {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
