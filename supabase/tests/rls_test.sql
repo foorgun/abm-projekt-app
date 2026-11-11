@@ -1561,6 +1561,51 @@ select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4
 select test.expect('0028: ohne Rolle keine Einverständniserklärungen', (select count(*) from public.einverstaendniserklaerungen), 0);
 rollback;
 
+-- 0031: Baugrundauftrag an Clayton (erzeugte Fassungen, nur Admin und Mitarbeiter) -----------------------------------
+begin;
+set local role anon;
+select test.throws('0031: anon darf Baugrundaufträge nicht ansprechen', $$select count(*) from public.baugrundauftraege$$);
+select test.throws('0031: anon legt keinen Baugrundauftrag an',
+  $$insert into public.baugrundauftraege (project_id) values ('a0000000-0000-4000-8000-000000000001')$$);
+rollback;
+
+begin;
+set local role authenticated;
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a2', true);
+insert into public.documents (project_id, name, storage_path, folder_path, uploaded_by)
+values ('a0000000-0000-4000-8000-000000000001', 'Baugrundauftrag_Clayton.pdf', 'a0000000-0000-4000-8000-000000000001/bg/bg.pdf', '10 Bodengutachten', auth.uid());
+select test.expect('0031: Mitarbeiterin legt einen Baugrundauftrag an',
+  test.affected($$insert into public.baugrundauftraege (project_id, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000001', auth.uid(), id from public.documents where name = 'Baugrundauftrag_Clayton.pdf'$$), 1);
+select test.expect('0031: … mit Zeitstempel und sich selbst als Ersteller', (select count(*) from public.baugrundauftraege where erstellt_am is not null and erstellt_von = auth.uid()), 1);
+select test.expect('0031: erstellt_von ist vorbelegt', test.affected($$insert into public.baugrundauftraege (project_id) values ('a0000000-0000-4000-8000-000000000001')$$), 1);
+select test.throws('0031: nicht im Namen einer anderen Person',
+  $$insert into public.baugrundauftraege (project_id, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-0000000000a1')$$);
+select test.throws('0031: nicht mit dem Dokument eines anderen Projekts',
+  $$insert into public.baugrundauftraege (project_id, erstellt_von, dokument_id)
+    select 'a0000000-0000-4000-8000-000000000002', auth.uid(), id from public.documents where name = 'Baugrundauftrag_Clayton.pdf'$$);
+select test.throws('0031: Zeitstempel nicht selbst setzen (kein Spaltenrecht)',
+  $$insert into public.baugrundauftraege (project_id, erstellt_von, erstellt_am) values ('a0000000-0000-4000-8000-000000000001', auth.uid(), now() - interval '1 year')$$);
+select test.throws('0031: Baugrundauftrag ändern geht nicht', $$update public.baugrundauftraege set erstellt_am = now()$$);
+select test.throws('0031: Baugrundauftrag löschen geht nicht', $$delete from public.baugrundauftraege$$);
+
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a1', true);
+select test.expect('0031: Admin sieht die Aufträge der Mitarbeiterin', (select count(*) from public.baugrundauftraege), 2);
+select test.throws('0031: auch Admin löscht keinen Baugrundauftrag', $$delete from public.baugrundauftraege$$);
+
+-- Freiberufler (Projekt a…01 zugewiesen): sieht nichts, legt nichts an
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a3', true);
+select test.expect('0031: Freiberufler sieht keine Baugrundaufträge, auch nicht seines Projekts', (select count(*) from public.baugrundauftraege), 0);
+select test.throws('0031: Freiberufler legt keinen Baugrundauftrag an',
+  $$insert into public.baugrundauftraege (project_id, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', auth.uid())$$);
+
+-- Ohne Rolle: nichts
+select set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-0000000000a4', true);
+select test.expect('0031: ohne Rolle keine Baugrundaufträge', (select count(*) from public.baugrundauftraege), 0);
+select test.throws('0031: ohne Rolle kein Anlegen',
+  $$insert into public.baugrundauftraege (project_id, erstellt_von) values ('a0000000-0000-4000-8000-000000000001', auth.uid())$$);
+rollback;
+
 -- Seed-Plausibilität -----------------------------------------------------------
 select test.expect('Seed: 18 Projektschritte definiert (5 aus Excel + 7 aus 0002 + 6 aus 0021)', (select count(*) from public.step_definitions where stage <> 'Anfrage'), 18);
 select test.expect('0027: drei Schritte der Anfrage, vor allen Projektschritten',

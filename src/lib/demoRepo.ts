@@ -19,6 +19,8 @@ import { demoDetails, demoSuche } from "./planungsprotokoll/schornsteinfeger";
 import { demoStandort } from "./planungsprotokoll/standort";
 import { isAllowedFolder, templateOf } from "./folders";
 import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
+import { BAUGRUND_ORDNER } from "./baugrundauftrag/daten";
+import { BAUGRUND_VORLAGEN, BAUGRUND_VORLAGEN_ORDNER } from "./baugrundauftrag/vorlagen";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_ORDNER } from "./planungsprotokoll/vorlagen";
 import { cleanKuerzel, cleanPrefix } from "./abmNr";
 import { ANFRAGE_BEAUFTRAGT, ANFRAGE_EINGEGANGEN } from "./steps";
@@ -35,6 +37,7 @@ import {
   type MailboxInput,
   type ProjectPatch,
   type EinverstaendnisAblage,
+  type BaugrundauftragAblage,
   type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
@@ -46,7 +49,7 @@ import {
 } from "./repo";
 import type { SessionUser } from "./session";
 import { CLASSIC_PARTY_ROLES } from "./types";
-import type { Activity, AgentSettings, BueroDaten, Dataset, DraftFileRecord, Einverstaendnis, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
+import type { Activity, AgentSettings, Baugrundauftrag, BueroDaten, Dataset, DraftFileRecord, Einverstaendnis, InboxAttachment, InboxStatus, Mailbox, MailboxStatus, Abwesenheit, KalenderEintrag, Planungsprotokoll, Project, ProjectDocument, ProjectDraftRecord, Task } from "./types";
 import { namenErgaenzen } from "./weitereBauherren";
 
 const DELAY_MS = 120; // kleine Verzögerung, damit Ladezustände sichtbar und realistisch bleiben
@@ -109,6 +112,7 @@ export function visibleFor(db: Dataset, user: SessionUser): Dataset {
     standortAngaben: [],
     // undefined statt leer: keine Warnung "Einverständniserklärung fehlt" für Freiberufler
     einverstaendnisse: undefined,
+    baugrundauftraege: [],
   };
 }
 
@@ -148,6 +152,7 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
   /** Erzeugte Planungsprotokolle (PDF) je Fassung: nur in dieser Sitzung, wie alles im Demo-Modus */
   const protokollBlobs = new Map<string, Blob>();
   const erklaerungBlobs = new Map<string, Blob>();
+  const baugrundBlobs = new Map<string, Blob>();
 
   /** Legt eine Kopie ab (Metadaten). Bei Namenskonflikt Zähler anhängen, nie überschreiben. */
   function storeDocument(input: {
@@ -252,6 +257,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       delivered.clear();
       draftBlobs.clear();
       protokollBlobs.clear();
+      erklaerungBlobs.clear();
+      baugrundBlobs.clear();
       return done(undefined);
     },
 
@@ -462,6 +469,8 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
       db.planungsprotokolle = keep(db.planungsprotokolle);
       for (const x of (db.einverstaendnisse ?? []).filter((x) => x.projectId === p.id)) erklaerungBlobs.delete(x.id);
       db.einverstaendnisse = keep(db.einverstaendnisse ?? []);
+      for (const x of (db.baugrundauftraege ?? []).filter((x) => x.projectId === p.id)) baugrundBlobs.delete(x.id);
+      db.baugrundauftraege = keep(db.baugrundauftraege ?? []);
       db.standortAngaben = keep(db.standortAngaben);
       // im Demo-Modus hängt der Kontakt am Projekt: er geht mit
       db.bauherren = keep(db.bauherren);
@@ -1042,6 +1051,38 @@ export function createDemoRepo(today: string = todayIso(), opts: { delayMs?: num
     async einverstaendnisDatei(e) {
       requireStaff();
       const blob = erklaerungBlobs.get(e.id);
+      if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
+      return blob;
+    },
+
+    async baugrundVorlageLaden(teil) {
+      requireStaff();
+      // Im Demo-Modus aus dem lokalen Ordner (Firmendokumente, nicht im Repo und nicht im Build)
+      const info = BAUGRUND_VORLAGEN[teil];
+      const fehlt = new Error(`Vorlage „${info.label}“ nicht gefunden. Im Demo-Modus muss die Datei „${info.datei}“ im Ordner ${BAUGRUND_VORLAGEN_ORDNER}/ liegen.`);
+      // encodeURI statt encodeURIComponent: der Entwicklungsserver findet „%2C“ (Komma im Dateinamen) nicht
+      const res = await fetch(`${BAUGRUND_VORLAGEN_ORDNER}/${encodeURI(info.datei)}`).catch(() => null);
+      if (!res?.ok) throw fehlt;
+      const bytes = await res.arrayBuffer();
+      // Der Entwicklungsserver liefert für fehlende Dateien die Startseite aus: nur echte PDFs annehmen
+      if (new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw fehlt;
+      return bytes;
+    },
+
+    async saveBaugrundauftrag({ projectId, fileName, blob }: BaugrundauftragAblage) {
+      requireStaff();
+      project(projectId);
+      const doc = storeDocument({ projectId, folderPath: BAUGRUND_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, source: "upload", sourceItemId: null, receivedOn: todayIso() });
+      const row: Baugrundauftrag = { id: newId("bg"), projectId, erstelltVon: user.name, erstelltAm: now(), dokumentId: doc.id };
+      db.baugrundauftraege = [row, ...(db.baugrundauftraege ?? [])];
+      baugrundBlobs.set(row.id, blob);
+      log({ projectId, kind: "datei", text: `${fileName} abgelegt` });
+      return done(structuredClone(row));
+    },
+
+    async baugrundauftragDatei(b) {
+      requireStaff();
+      const blob = baugrundBlobs.get(b.id);
       if (!blob) throw new Error("Im Demo-Modus gibt es die Datei nur in der Sitzung, in der sie erzeugt wurde.");
       return blob;
     },
