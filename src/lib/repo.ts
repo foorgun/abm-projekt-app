@@ -18,6 +18,8 @@ import type { StandortWert,
   ContractMeta,
   Dataset,
   Einverstaendnis,
+  Baugrundauftrag,
+  BaugrundVorlage,
   DocumentType,
   KalenderEintrag,
   Mailbox,
@@ -132,6 +134,13 @@ export interface ProtokollAblage {
 
 /** Erzeugte Einverständniserklärung ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
 export interface EinverstaendnisAblage {
+  projectId: string;
+  fileName: string;
+  blob: Blob;
+}
+
+/** Erzeugten Baugrundauftrag (Clayton) ablegen: als Dokument im Projektordner plus Eintrag in der Liste der Fassungen. */
+export interface BaugrundauftragAblage {
   projectId: string;
   fileName: string;
   blob: Blob;
@@ -372,6 +381,14 @@ export interface Repo {
   saveEinverstaendnis(input: EinverstaendnisAblage): Promise<Einverstaendnis>;
   /** Datei einer Fassung zum Herunterladen. */
   einverstaendnisDatei(e: Einverstaendnis): Promise<Blob>;
+
+  // --- Baugrundauftrag an Clayton (nur Admin und Mitarbeiter, nur Schwabenhaus; Migration 0031) ---
+  /** Clayton-Vorlage laden: Echtbetrieb aus dem privaten Bucket "vorlagen", Demo-Modus aus vorlagen/clayton/. */
+  baugrundVorlageLaden(teil: BaugrundVorlage): Promise<ArrayBuffer>;
+  /** Erzeugten Auftrag im Projektordner ablegen und als neue Fassung eintragen (nie überschreiben, nie versenden). */
+  saveBaugrundauftrag(input: BaugrundauftragAblage): Promise<Baugrundauftrag>;
+  /** Datei einer Fassung zum Herunterladen. */
+  baugrundauftragDatei(b: Baugrundauftrag): Promise<Blob>;
   /**
    * Schornsteinfeger zur Bauadresse vorschlagen (Echtbetrieb: Edge Function schornsteinfeger-suche, Demo: feste Beispielantwort).
    * Wirft nie wegen der Quelle: Fehler kommen als { ok: false } bzw. Status quelle_nicht_erreichbar zurück.

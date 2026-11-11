@@ -849,3 +849,39 @@ Dokumente hochladen; Flurstück, Flur, Gemarkung und Bauadresse mussten von Hand
   nachträglichen Auslesen ist er nur vorgewählt, solange kein anderer Kellerbauer eingetragen ist.
 - Die Konstante `KELLER_BAUSEITS` in `nachtraeglich.ts` hat denselben Text wie `BAUSEITS` aus den festen Feldregeln des
   Planungsprotokolls (`src/lib/planungsprotokoll/daten.ts`, paralleler Zweig); nach dem Zusammenführen dorthin verweisen.
+
+- **Noch offen** (nächste Schritte): Bauamt, Wasser und Abwasser per KI-Suche vorschlagen, Strom über VNBdigital (Westnetz.de
+  ist durch einen Bot-Schutz gesperrt und wird nicht automatisch abgefragt), Vermesservertrag nachträglich auslesen,
+  Clayton-Auftrag für Schwabenhaus-Kunden erzeugen.
+
+## Baugrundauftrag an Clayton (Migration 0031)
+
+Bei Schwabenhaus beauftragt ABM das Baugrundgutachten für den Kunden (bei Bien-Zenker und Living Haus ist es im Hauspreis).
+Die App füllt das Auftragsformular von clayton Umwelt-Consult (F324, 3 Seiten) und die Anlage A aus den Projektdaten und legt
+beides als **ein** PDF ab. Sie versendet nichts: der Kunde kreuzt an und unterschreibt, ABM schickt den Auftrag selbst.
+
+- **Wo:** eigene Karte „Baugrundauftrag Clayton“ im Reiter Planungsprotokoll (`src/pages/project/ClaytonAuftrag.tsx`), nur
+  wenn die Hausbaufirma Schwabenhaus ist (`brauchtBaugrundauftrag`, gleiche Erkennung wie `vorlageFuerFirma`) und nur für
+  Admin und Mitarbeiter. Keine Aufgabe, keine Warnung.
+- **Werte** (`src/lib/baugrundauftrag/daten.ts`): Bauherr, Bauort und Kellerbauer kommen aus `protokollDaten` (dieselben Regeln
+  wie im Planungsprotokoll, u. a. Kellerbauer = Eintrag im Projekt wie „Bauseits“, sonst die Hausbaufirma). Tel. des
+  Bauherrn: Festnetz vor Mobil. Haushersteller: Firma des Projekts, Projektnummer = Hausbau-Nr., Ansprechpartner und E-Mail =
+  Verkäufer (eine Telefonnummer des Verkäufers führt die App nicht). Planer: nur die Bürodaten (Name, Tel., E-Mail).
+  „PLZ, Ort, Gemarkung“ als „89134 Blaustein, Gemarkung Bermaringen“. Was fehlt, bleibt leer; die Karte zeigt es mit „fehlt“.
+- **Ankreuzen:** nur „per E-Mail (im PDF-Format)“ (wenn eine E-Mail des Bauherrn da ist) und „Anlage A beigefügt“.
+  Unterkellerung, Art des Bauvorhabens, Geschosse, Garage, Pläne und den eigentlichen Auftragshaken („Ich / Wir beauftragen“)
+  setzt der Kunde. Formular-Nr., Anzahl Sondierungen und Preise (schreibgeschützt vorbelegt) bleiben unverändert.
+- **PDF** (`src/lib/baugrundauftrag/pdf.ts`): Anlage A wird an das Auftragsformular angehängt (Seite 4), ihre Felder kommen
+  ins Formular des Auftrags. Gleich benannte Felder würden verschmelzen: dann gibt es kein PDF. Befüllt wird mit
+  `erzeugeProtokoll` aus dem Planungsprotokoll (Liberation Sans für Umlaute, Schriftgröße passend, Prüfung, dass nichts
+  anderes verändert wurde, bearbeitbare Fassung). Dateiname `Baugrundauftrag_Clayton_<Bauherr>_<JJJJ-MM-TT_HHMM>.pdf`.
+- **Ablage:** Ordner „10 Bodengutachten“, derselbe wie für den Dokumenttyp „baugrundauftrag“ der Vertragsauslesung
+  (`CONTRACT_FOLDER.baugrundauftrag`). Jede Fassung ist ein neues Dokument plus Zeile in `baugrundauftraege` (wie 0028:
+  Admin und Mitarbeiter lesen und legen an, kein Ändern, kein Löschen; Freiberufler und Konten ohne Rolle sehen nichts).
+- **Vorlagen:** Firmendokumente, nicht im Repo. Echtbetrieb: Bucket „vorlagen“ unter `clayton/auftrag.pdf` und
+  `clayton/anlage-a.pdf` (`npm run vorlagen:hochladen`, prüft vorher alle Feldnamen). Demo-Modus: lokaler Ordner
+  `vorlagen/clayton/` mit den Dateinamen, wie Clayton sie liefert. Feld-Inventar (ohne Personendaten) in
+  `docs/baugrundauftrag/clayton.json`, erzeugt mit `node scripts/baugrundauftrag/felder.mjs`; die Tests bauen die Vorlagen
+  daraus nach.
+- **Datenbanktests in dieser Umgebung:** kein lokales Postgres; `tools/test-db.sh` lief unverändert mit Postgres 16.14 aus
+  `@embedded-postgres/darwin-arm64` und einem kleinen psql-Ersatz (Node, `pg`), beides nur temporär außerhalb des Repos.

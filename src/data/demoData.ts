@@ -580,6 +580,7 @@ export function buildDemoDataset(today: string, seed = DEMO_SEED): Dataset {
     buero: DEMO_BUERO,
     planungsprotokolle: [],
     einverstaendnisse: [],
+    baugrundauftraege: [],
     standortAngaben: [],
     companies: COMPANIES,
     salespeople: SALESPEOPLE,

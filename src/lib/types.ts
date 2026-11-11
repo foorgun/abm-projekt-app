@@ -116,6 +116,19 @@ export interface Einverstaendnis {
   dokumentId: string | null;
 }
 
+/** Ein erzeugter Baugrundauftrag an clayton Umwelt-Consult (Migration 0031, nur Schwabenhaus). Das PDF liegt als Dokument im Projektordner. */
+export interface Baugrundauftrag {
+  id: string;
+  projectId: string;
+  /** Name der Person, die ihn erzeugt hat */
+  erstelltVon: string | null;
+  erstelltAm: string;
+  dokumentId: string | null;
+}
+
+/** Die beiden Clayton-Vorlagen: Auftragsformular (3 Seiten) und Anlage A. */
+export type BaugrundVorlage = "auftrag" | "anlage";
+
 // ---------------------------------------------------------------------------
 // Projektdetails (Liste.docx: Projektbeteiligte)
 // ---------------------------------------------------------------------------
@@ -474,6 +487,8 @@ export interface Dataset extends Snapshot {
   planungsprotokolle: Planungsprotokoll[];
   /** Übernommene Standortangaben je Projekt. Leer für Freiberufler (RLS). */
   standortAngaben: StandortAngabenZeile[];
+  /** Erzeugte Baugrundaufträge an Clayton (neueste zuerst, Migration 0031). Leer bzw. fehlend für Freiberufler (RLS). */
+  baugrundauftraege?: Baugrundauftrag[];
 }
 
 // ---------------------------------------------------------------------------

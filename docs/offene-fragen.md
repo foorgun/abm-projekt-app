@@ -145,3 +145,16 @@ Nicht geraten, sondern gesammelt. Antworten bitte direkt hier eintragen.
   liegt, sonst immer BE (`ENTWURFSVERFASSER_REGEL`). Bundesland kommt aus dem Feld am Projekt, sonst aus dem Bundesland beim Bauort,
   nie aus der PLZ. Fehlt es bei MC, steht vorerst BE drin und die App weist darauf hin. Passt das so?
 - **Unterschrift:** Die Erklärung ist ein PDF zum Ausdrucken und Unterschreiben. Versand per Mail und Rücklauf (unterschrieben zurück) kommen später.
+
+## Zum Baugrundauftrag an Clayton (Migration 0031)
+
+- **Ablageordner:** Annahme „10 Bodengutachten“ (dort legt auch die Vertragsauslesung den Typ „baugrundauftrag“ ab). Die
+  Ordnervorlage hat außerdem „07 Vorabzug / 04 Formular Bodengutachten“. Wäre der passender?
+- **Namen im Feld „Vor- und Zuname(n)“:** wie im Planungsprotokoll alle Bauherren ausgeschrieben („A und B“); ohne Namen im
+  Kontakt steht die Projektbezeichnung (meist der Nachname). Bei langen Namen wird die Schrift klein (bis 6 pt). So lassen?
+- **Auftragshaken auf Seite 2** („Ich / Wir beauftragen clayton …“) setzt die App nicht, das soll der Kunde tun. Oder soll er
+  vorab angekreuzt sein?
+- **Tel. des Herstellers:** Für Verkäufer gibt es kein Telefonfeld, das Feld bleibt leer. Braucht es eins?
+- **Bauherrschaft (falls abweichend):** bleibt immer leer, weil Auftraggeber = Bauherr. Gibt es Fälle mit abweichendem Auftraggeber?
+- **Neue Revision von Clayton** (anderes Formular, andere Preise): `npm run vorlagen:hochladen -- --ersetzen` lehnt Vorlagen
+  mit fehlenden Feldern ab; bei geänderten Feldnamen `docs/baugrundauftrag/clayton.json` neu erzeugen und Zuordnung anpassen.
