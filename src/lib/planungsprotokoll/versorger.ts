@@ -5,7 +5,7 @@
 import type { Anfrage, Antwort, Vorschlag, VersorgerRolle } from "../../../supabase/functions/versorger-suche/logic";
 import type { ProtokollDaten } from "./daten";
 
-export { antwortLesen, cacheSchluessel, frage, kostenEur, parseAnfrage, ROLLE_TEXT, VERSORGER_ROLLEN } from "../../../supabase/functions/versorger-suche/logic";
+export { antwortLesen, cacheSchluessel, speichern, frage, kostenEur, parseAnfrage, ROLLE_TEXT, VERSORGER_ROLLEN } from "../../../supabase/functions/versorger-suche/logic";
 export type { Anfrage as VersorgerAnfrage, Antwort as VersorgerAntwort, Fehler as VersorgerFehler, Sicherheit, Vorschlag, VersorgerRolle } from "../../../supabase/functions/versorger-suche/logic";
 
 /**

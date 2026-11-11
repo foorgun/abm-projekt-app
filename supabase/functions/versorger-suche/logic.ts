@@ -21,8 +21,8 @@ export const DEFAULT_MODEL = "claude-sonnet-5-5";
 export const MAX_ABRUFE_PRO_TAG = 20;
 /** Zuständigkeiten ändern sich selten: Treffer gelten 180 Tage */
 export const CACHE_TAGE = 180;
-/** Websuchen je Anfrage (vier Rollen, je ein bis zwei Suchen) */
-export const MAX_SUCHEN = 8;
+/** Websuchen je Anfrage (vier Rollen, je zwei bis drei Suchen; mit 8 fehlten bei kleinen Orten Rollen) */
+export const MAX_SUCHEN = 12;
 export const TIMEOUT_MS = 120_000;
 /** Preise in USD: Tokens je Million, Websuche je Suche (10 USD je 1000) */
 export const PREISE: Record<string, { input: number; output: number }> = {
@@ -100,8 +100,9 @@ export function kostenEur(model: string, input: number, output: number, suchen: 
 
 export const SYSTEM = `Du recherchierst für ein Architekturbüro Zuständigkeiten zu einem Bauort in Deutschland. Nutze die Websuche und
 verlasse dich nur auf offizielle Seiten (Gemeinde, Stadt, Landratsamt, Versorger, Netzbetreiber). Erfinde nie Telefonnummern,
-E-Mail-Adressen oder Anschriften: Was du auf keiner Seite gefunden hast, ist null. Antworte am Ende ausschließlich mit einem
-JSON-Objekt, ohne Text davor oder danach.`;
+E-Mail-Adressen oder Anschriften und ergänze sie nie nach einem Muster (z. B. info@…): Übernimm nur, was vollständig und
+wörtlich auf einer Seite steht; alles andere ist null. Antworte am Ende ausschließlich mit einem JSON-Objekt, ohne Text davor
+oder danach.`;
 
 /** Anweisung an die KI: nur Ortsangaben, keine Personen. */
 export function frage(a: Anfrage): string {
@@ -153,6 +154,9 @@ function vorschlagLesen(v: unknown): Vorschlag | null {
 }
 
 /** Das JSON aus der Schlussantwort lesen (auch mit Codeblock oder Text drumherum). null: nicht lesbar. */
+/** Nur ein vollständiges Ergebnis (alle vier Rollen) kommt in den Zwischenspeicher; sonst beim nächsten Mal neu suchen. */
+export const speichern = (v: Partial<Record<VersorgerRolle, Vorschlag>>): boolean => VERSORGER_ROLLEN.every((r) => v[r]);
+
 export function antwortLesen(text: string): Partial<Record<VersorgerRolle, Vorschlag>> | null {
   const start = text.indexOf("{");
   const ende = text.lastIndexOf("}");

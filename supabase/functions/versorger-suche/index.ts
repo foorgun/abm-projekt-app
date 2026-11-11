@@ -6,7 +6,7 @@
 //
 //   * An den KI-Dienst gehen nur PLZ, Ort, Ortsteil und Bundesland (keine Namen, keine Straße).
 //   * Der Schlüssel (ANTHROPIC_API_KEY) liegt nur hier als Secret. Abschalten: VERSORGER_SUCHE_ENABLED=false.
-//   * Zwischenspeicher (Migration 0030): gleicher Ort innerhalb von 180 Tagen geht nicht erneut hinaus.
+//   * Zwischenspeicher (Migration 0030): gleicher Ort innerhalb von 180 Tagen geht nicht erneut hinaus (nur vollständige Ergebnisse).
 //   * Höchstens 20 Suchen je Person und Tag (Tabelle versorger_abrufe, mit Tokens und Kosten).
 // Aufrufen darf nur, wer angemeldet ist und in user_roles die Rolle admin oder mitarbeiter hat.
 
@@ -22,6 +22,7 @@ import {
   MAX_ABRUFE_PRO_TAG,
   MAX_SUCHEN,
   parseAnfrage,
+  speichern,
   SYSTEM,
   tagesbeginn,
   TIMEOUT_MS,
@@ -115,8 +116,8 @@ Deno.serve(async (req) => {
       console.error("Versorger-Suche: Antwort nicht lesbar");
       return fail("nicht_lesbar", "Die Suche hat kein lesbares Ergebnis geliefert. Bitte erneut versuchen oder von Hand eintragen.", 502);
     }
-    // Leere Ergebnisse nicht speichern: beim nächsten Mal neu suchen
-    if (Object.keys(vorschlaege).length) await admin.from("versorger_suche").upsert({ schluessel, vorschlaege, abgerufen_am: now.toISOString() });
+    // Nur vollständige Ergebnisse speichern: Fehlt eine Rolle, beim nächsten Mal neu suchen
+    if (speichern(vorschlaege)) await admin.from("versorger_suche").upsert({ schluessel, vorschlaege, abgerufen_am: now.toISOString() });
     return json({ ok: true, vorschlaege, gespeichert: false, abgerufenAm: now.toISOString() } satisfies Antwort);
   } catch (e) {
     const zeit = e instanceof Anthropic.APIConnectionTimeoutError;

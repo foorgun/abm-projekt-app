@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { antwortLesen, cacheSchluessel, demoVersorger, frage, kontaktAusVorschlag, kostenEur, parseAnfrage, versorgerAnfrage } from "./versorger";
+import { antwortLesen, cacheSchluessel, speichern, demoVersorger, frage, kontaktAusVorschlag, kostenEur, parseAnfrage, versorgerAnfrage } from "./versorger";
 
 const BAUORT = { strasse: "Am Hölzle 12", plzOrt: "89134 Blaustein", gemarkung: "Bermaringen", ortsteil: "Bermaringen", flurstueck: null, bundesland: "Baden-Württemberg" };
 
@@ -48,6 +48,11 @@ describe("Versorger-Suche: Antwort lesen", () => {
     expect(v.wasser).toEqual({ name: "Stadtwerke", anschrift: null, tel: null, email: null, quelle: null, sicherheit: "niedrig", hinweis: null });
     expect(v.abwasser).toBeUndefined();
     expect(v.strom).toBeUndefined();
+  });
+  it("Zwischenspeicher nur für vollständige Ergebnisse", () => {
+    const demo = demoVersorger({ plz: "89134", ort: "Blaustein", ortsteil: null, bundesland: null }).vorschlaege;
+    expect(speichern(demo)).toBe(true);
+    expect(speichern({ bauamt: demo.bauamt })).toBe(false);
   });
   it("nicht lesbar: null", () => {
     expect(antwortLesen("Ich konnte nichts finden.")).toBeNull();
