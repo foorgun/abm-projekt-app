@@ -10,6 +10,7 @@ import type {
   BauherrContact,
   Company,
   Einverstaendnis,
+  Baugrundauftrag,
   FolderTemplate,
   InboxAttachment,
   InboxItem,
@@ -49,6 +50,7 @@ export const COLS = {
   buero_daten: "name, anschrift, tel, mobil, email, gutachter_name, gutachter_anschrift, gutachter_tel, gutachter_mobil, gutachter_email",
   planungsprotokolle: "id, project_id, vorlage, variante, erstellt_von, erstellt_am, dokument_id",
   einverstaendniserklaerungen: "id, project_id, erstellt_von, erstellt_am, dokument_id",
+  baugrundauftraege: "id, project_id, erstellt_von, erstellt_am, dokument_id",
   documents: "id, project_id, name, folder_path, storage_path, mime, size_bytes, source, source_item_id, received_on, uploaded_by, created_at, doc_type, meta",
   abwesenheiten: "id, user_id, art, von, bis, werktage, status, notiz, entscheidung_von, entscheidung_am, ablehn_grund, created_at",
   urlaubs_anspruch: "user_id, jahr, tage, uebertrag",
@@ -228,6 +230,14 @@ export const toPlanungsprotokoll = (r: Row, names: Map<string, string> = new Map
 });
 
 export const toEinverstaendnis = (r: Row, names: Map<string, string> = new Map()): Einverstaendnis => ({
+  id: r.id,
+  projectId: r.project_id,
+  erstelltVon: r.erstellt_von ? (names.get(r.erstellt_von) ?? null) : null,
+  erstelltAm: stamp(r.erstellt_am),
+  dokumentId: r.dokument_id ?? null,
+});
+
+export const toBaugrundauftrag = (r: Row, names: Map<string, string> = new Map()): Baugrundauftrag => ({
   id: r.id,
   projectId: r.project_id,
   erstelltVon: r.erstellt_von ? (names.get(r.erstellt_von) ?? null) : null,

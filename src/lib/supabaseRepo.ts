@@ -12,8 +12,11 @@ import { checkFile } from "./files";
 import { isAllowedFolder, templateOf } from "./folders";
 import { todayIso } from "./format";
 import type { DetailAntwort, Fehler as SchornsteinfegerFehler, SuchAntwort } from "./planungsprotokoll/schornsteinfeger";
+import type { VersorgerAntwort, VersorgerFehler } from "./planungsprotokoll/versorger";
 import type { StandortAntwort, StandortFehler } from "./planungsprotokoll/standort";
 import { EINVERSTAENDNIS_ORDNER } from "./einverstaendnis/daten";
+import { BAUGRUND_ORDNER } from "./baugrundauftrag/daten";
+import { BAUGRUND_VORLAGEN } from "./baugrundauftrag/vorlagen";
 import { PROTOKOLL_ORDNER, VORLAGEN, VORLAGEN_BUCKET } from "./planungsprotokoll/vorlagen";
 import { cleanKuerzel, cleanPrefix } from "./abmNr";
 import { ANFRAGE_STAGE } from "./steps";
@@ -28,6 +31,7 @@ import {
   type ProjectFields,
   type ProjectPatch,
   type EinverstaendnisAblage,
+  type BaugrundauftragAblage,
   type ProtokollAblage,
   type NewAgentRule,
   type NewProject,
@@ -61,6 +65,7 @@ import {
   toParty,
   toPlanungsprotokoll,
   toEinverstaendnis,
+  toBaugrundauftrag,
   toProject,
   toProjectDraft,
   toSalesperson,
@@ -239,6 +244,22 @@ export function createSupabaseRepo(): Repo {
     if (error) console.warn("Aktivität nicht protokolliert:", error.message);
   }
 
+  /** Datei einer erzeugten Fassung (Einverständniserklärung, Baugrundauftrag) aus dem Speicher; Download wird vermerkt. */
+  async function fassungDatei(dokumentId: string | null): Promise<Blob> {
+    if (!dokumentId) throw new Error("Zu dieser Fassung gibt es kein Dokument.");
+    let path = last?.documents.find((d) => d.id === dokumentId)?.storagePath;
+    if (!path) {
+      const { data, error } = await sb.from("documents").select("storage_path").eq("id", dokumentId).maybeSingle();
+      if (error) fail(error, "Dokument konnte nicht geladen werden");
+      path = (data as Row | null)?.storage_path;
+    }
+    if (!path) throw new Error("Das Dokument zu dieser Fassung ist nicht mehr vorhanden.");
+    const { data, error } = await sb.storage.from(BUCKET).download(path);
+    if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
+    await logDocument(dokumentId, "heruntergeladen");
+    return data;
+  }
+
   async function userNames(): Promise<Map<string, string>> {
     const { data, error } = await sb.rpc("list_user_names");
     if (error) fail(error, "Namen konnten nicht geladen werden");
@@ -289,7 +310,7 @@ export function createSupabaseRepo(): Repo {
           userNames(),
         ]);
       // Urlaub und Krankheit: nur für Admin und Mitarbeiter (Freiberufler bekämen ohnehin keine Zeile)
-      const [absences, entitlements, staffRows, protokolle, bueroRows, standortRows, erklaerungen] = isStaff()
+      const [absences, entitlements, staffRows, protokolle, bueroRows, standortRows, erklaerungen, baugrund] = isStaff()
         ? await Promise.all([
             all(sb, "abwesenheiten", COLS.abwesenheiten, ["von", "id"]),
             all(sb, "urlaubs_anspruch", COLS.urlaubs_anspruch, ["jahr", "user_id"]),
@@ -301,8 +322,10 @@ export function createSupabaseRepo(): Repo {
             all(sb, "standort_angaben", "project_id, angaben, geaendert_am", ["project_id"]),
             // Einverständniserklärungen (Migration 0028): nur Admin und Mitarbeiter
             all(sb, "einverstaendniserklaerungen", COLS.einverstaendniserklaerungen, ["erstellt_am", "id"]),
+            // Baugrundaufträge an Clayton (Migration 0031): nur Admin und Mitarbeiter
+            all(sb, "baugrundauftraege", COLS.baugrundauftraege, ["erstellt_am", "id"]),
           ])
-        : [[], [], [], [], [], [], null];
+        : [[], [], [], [], [], [], null, []];
       const mitarbeiter: StaffMember[] = staffRows
         .filter((r) => r.role === "admin" || r.role === "mitarbeiter")
         .map((r) => ({ id: r.user_id, name: (r.full_name as string)?.trim() || "Unbekannt", role: r.role }))
@@ -342,6 +365,7 @@ export function createSupabaseRepo(): Repo {
         planungsprotokolle: protokolle.map((r) => toPlanungsprotokoll(r, names)).reverse(),
         // Freiberufler: undefined, damit keine Warnung "Einverständniserklärung fehlt" entsteht
         einverstaendnisse: erklaerungen ? erklaerungen.map((r) => toEinverstaendnis(r, names)).reverse() : undefined,
+        baugrundauftraege: baugrund.map((r) => toBaugrundauftrag(r, names)).reverse(),
         standortAngaben: standortRows.map((r) => ({ projectId: r.project_id, angaben: (r.angaben ?? {}) as Record<string, StandortWert>, geaendertAm: r.geaendert_am })),
         agentSettings: s ? { autoFileThreshold: Number(s.auto_file_threshold), suggestThreshold: Number(s.suggest_threshold) } : DEFAULT_SETTINGS,
       };
@@ -658,18 +682,34 @@ export function createSupabaseRepo(): Repo {
 
     async einverstaendnisDatei(e) {
       requireStaff();
-      if (!e.dokumentId) throw new Error("Zu dieser Fassung gibt es kein Dokument.");
-      let path = last?.documents.find((d) => d.id === e.dokumentId)?.storagePath;
-      if (!path) {
-        const { data, error } = await sb.from("documents").select("storage_path").eq("id", e.dokumentId).maybeSingle();
-        if (error) fail(error, "Dokument konnte nicht geladen werden");
-        path = (data as Row | null)?.storage_path;
-      }
-      if (!path) throw new Error("Das Dokument zu dieser Fassung ist nicht mehr vorhanden.");
-      const { data, error } = await sb.storage.from(BUCKET).download(path);
-      if (error || !data) throw new Error("Die Datei ließ sich nicht aus dem Speicher laden.");
-      await logDocument(e.dokumentId, "heruntergeladen");
-      return data;
+      return fassungDatei(e.dokumentId);
+    },
+
+    async baugrundVorlageLaden(teil) {
+      requireStaff();
+      const info = BAUGRUND_VORLAGEN[teil];
+      const { data, error } = await sb.storage.from(VORLAGEN_BUCKET).download(info.speicherPfad);
+      if (error || !data) throw new Error(`Die Vorlage „${info.label}“ liegt noch nicht im Speicher (Bucket „${VORLAGEN_BUCKET}“, ${info.speicherPfad}). Ein Admin lädt sie mit scripts/vorlagen-hochladen.ts hoch.`);
+      return data.arrayBuffer();
+    },
+
+    async saveBaugrundauftrag({ projectId, fileName, blob }: BaugrundauftragAblage) {
+      requireStaff();
+      // Erst als normales Dokument in den Projektordner (eigener Speicherpfad, nie überschrieben), dann als Fassung eintragen
+      const doc = await repo.uploadDocument({ projectId, folderPath: BAUGRUND_ORDNER, file: { name: fileName, size: blob.size, type: "application/pdf" }, blob });
+      const me = await userId();
+      const { data, error } = await sb
+        .from("baugrundauftraege")
+        .insert({ project_id: projectId, erstellt_von: me, dokument_id: doc.id })
+        .select(COLS.baugrundauftraege)
+        .single();
+      if (error) fail(error, `Das PDF liegt im Ordner „${BAUGRUND_ORDNER}“, ließ sich aber nicht in die Liste der Fassungen eintragen`);
+      return toBaugrundauftrag(data as unknown as Row, new Map([[me, user.name]]));
+    },
+
+    async baugrundauftragDatei(b) {
+      requireStaff();
+      return fassungDatei(b.dokumentId);
     },
 
     async documentUrl(doc) {
@@ -1125,6 +1165,18 @@ export function createSupabaseRepo(): Repo {
     async schornsteinfegerDetails(bsmId) {
       requireStaff();
       return schornsteinfeger<DetailAntwort>({ art: "details", bsmId }, (d) => typeof (d as DetailAntwort).details?.name === "string");
+    },
+
+    async versorgerSuchen(anfrage) {
+      requireStaff();
+      const nichtErreichbar: VersorgerFehler = { ok: false, code: "error", message: "Die Suche ist gerade nicht erreichbar. Ist die Funktion versorger-suche eingerichtet? Sonst bitte von Hand eintragen." };
+      const { data, error } = await sb.functions.invoke("versorger-suche", { body: anfrage }).catch(() => ({ data: null, error: {} }));
+      if (error) {
+        const res = await (error as { context?: Response }).context?.json?.().catch(() => null);
+        return res && typeof res === "object" && res.ok === false && typeof res.message === "string" ? (res as VersorgerFehler) : nichtErreichbar;
+      }
+      const d = data as VersorgerAntwort | null;
+      return d && typeof d === "object" && d.ok === true && d.vorschlaege && typeof d.vorschlaege === "object" ? d : nichtErreichbar;
     },
 
     async standortAnalyse(projectId) {

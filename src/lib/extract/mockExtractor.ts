@@ -102,6 +102,7 @@ export function draftFromText(datei: ProjectDraft["datei"], pages: string[], tex
   const bau = find(pages, new RegExp(`(?:Bauadresse|Baugrundst(?:ü|ue)ck|Bauort|Baustelle) *:? *(${street})`));
   put("buildingAddress", bau, "hoch");
   if (bau) put("location", bau, "hoch", bau.wert.match(/\d{5} +(.+)$/)?.[1] ?? null);
+  put("flur", find(pages, /\bFlur(?!st)(?:-?Nr\.?)? *:? *(\d+)/), "hoch");
   put("flurstueck", find(pages, /Flurst(?:ü|ue)ck(?:s-?Nr\.?|snummer)? *:? *(\d+(?:\/\d+)?)/), "hoch");
   put("gemarkung", find(pages, /Gemarkung *:? *([A-ZÄÖÜ][\wäöüß-]+(?: [A-ZÄÖÜ][\wäöüß-]+)?)/), "hoch");
 
@@ -109,6 +110,12 @@ export function draftFromText(datei: ProjectDraft["datei"], pages: string[], tex
   put("company", find(pages, /(?:Hausbaufirma|Haushersteller|Hausbauunternehmen|Auftragnehmer(?:in)?) *:? *([A-ZÄÖÜ][^\n,;_]{2,60})/), "hoch");
   put("vermesser", find(pages, /(?:Vermesser|Vermessungsstelle) *: *([A-ZÄÖÜ][^\n,;_·]{2,60})/), "hoch");
   put("vermesser", find(pages, /((?:Ingenieurb(?:ü|ue)ro|Vermessungsb(?:ü|ue)ro) +[A-ZÄÖÜ][^\n,;_·]{1,40}?)(?= *[·,;\n]|$)/m), "mittel");
+  // Briefkopf des Vermessungsbüros: "Vermessungsbüro Beispiel · Musterstraße 1 · 89073 Ulm"
+  const kopf = find(pages, /(?:Ingenieurb(?:ü|ue)ro|Vermessungsb(?:ü|ue)ro)[^\n·]*· *([A-ZÄÖÜ][^\n·,]*\d+ ?[a-z]? *[·,] *\d{5} +[A-ZÄÖÜ][^\n·,]*)/);
+  put("vermesserAnschrift", kopf, "mittel", kopf ? kopf.wert.replace(/ *· */, ", ").trim() : null);
+
+  // --- Keller/Bodenplatte bauseits (nur ausdrücklich genannt; normalizeFields lässt es nur im Werkvertrag stehen) ---
+  put("kellerBauseits", find(pages, /((?:Keller|Bodenplatte)[^\n]{0,40}(?:bauseits|Eigenleistung|nicht im Leistungsumfang)|(?:bauseits|Eigenleistung)[^\n]{0,30}(?:Keller|Bodenplatte))/i), "hoch", "ja");
 
   // --- Vertrag (Metadaten) -------------------------------------------------------------------------------
   const whole = pages.join("\n");

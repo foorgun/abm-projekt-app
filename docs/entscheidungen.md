@@ -781,3 +781,107 @@ den Kellerbauer legt die Hausbaufirma später fest, die Gemeinde ergibt sich aus
 - **Formular „Angaben für Seite 1“ speichert nur geänderte Rollen** und lädt neue Daten nach, solange nichts bearbeitet ist.
   Vorher hätte ein beim Öffnen geladenes Formular eine danach übernommene Gemeinde beim Speichern wieder gelöscht.
 - **Kellerbauer und Erdbauer** bleiben Handeingabe. **Vermesser aus Mails** ist noch offen (docs/offene-fragen.md).
+
+## Seite 1 des Planungsprotokolls: feste Feldregeln (Absprache ABM, 11.11.2026)
+
+Ziel: Seite 1 per Knopfdruck vollständig. Regeln in `src/lib/planungsprotokoll/daten.ts`, Tests in `planungsprotokoll.test.ts`.
+
+- **Architekt:** nur die Bürodaten (Büroname, Anschrift, Tel., Mobil, E-Mail), keine Personennamen. Der Sachbearbeiter im
+  Projekt wirkt nicht mehr aufs Protokoll; der Abschnitt ist aus dem Formular entfernt (gespeicherte Einträge bleiben).
+- **Vermesser und Baugrundgutachter:** immer der Standard aus den Bürodaten (derzeit Clayton), auch wenn im Projekt ein
+  anderer steht (z. B. aus dem Vermesservertrag). Nur ohne Standard gilt der Eintrag im Projekt. Die Zusammenfassung nennt
+  „Vermessungsbüro variiert (Vermesservertrag)“ und „Vermesser immer Clayton“; entschieden: immer Clayton.
+- **Kellerbauer/Bodenplatte:** die Hausbaufirma des Projekts (nur der Name, die Stammdaten haben keine Anschrift). Ein Eintrag
+  im Projekt geht vor, insbesondere „Bauseits“ (Knopf im Formular) bei Kauf ohne Keller/Bodenplatte laut Bauvertrag.
+  „Bauseits“ ist ein normaler Eintrag der Rolle Kellerbauer, keine eigene Spalte: so braucht es keine Migration, und die
+  Vertragsauslesung kann ihn später genauso setzen.
+- **Erdbau:** „nicht bekannt“, solange im Projekt keiner steht.
+- **Gas und Fernwärme:** bleiben immer leer. Sie sind gar nicht mehr zugeordnet (FB-22: 45 statt 51 Felder), damit der
+  Stand „x von y Feldern“ sie nicht als fehlend zählt.
+- **Schwabenhaus Seite 2:** Strom, Wasser und Abwasser werden wie der Schornsteinfeger mitbefüllt (Name und Anschrift getrennt,
+  ein Telefonfeld: Festnetz, sonst Mobil). Bei FB-22 stehen sie ohnehin auf Seite 1.
+
+## Bauamt, Wasser, Abwasser und Strom vorschlagen (Migration 0030, Edge Function versorger-suche)
+
+Absprache ABM 11.11.2026: Genehmigungsbehörde, Wasser und Abwasser „per Google bzw. KI ermitteln“, Strom über die
+Westnetz-Abfrage „Bin ich im Netzgebiet?“.
+
+- **KI mit Websuche** (Anthropic, Modell wie bei der Auslesung `claude-sonnet-5-5`, änderbar mit `VERSORGER_MODEL`), nur
+  offizielle Seiten, nichts erfinden: fehlende Telefonnummern bleiben leer. Antwort je Rolle mit Quelle und Sicherheit
+  (offizielle Angabe, abgeleitet, unsicher). Knopf „Behörden und Versorger ermitteln“ in „Angaben für Seite 1“.
+- **Immer Vorschlag:** vorgewählt nur Rollen, die im Formular leer sind, und nie unsichere Treffer. „Übernehmen“ füllt das
+  Formular, gespeichert wird mit „Angaben speichern“.
+- **Datensparsam:** an den KI-Dienst gehen nur PLZ, Ort, Ortsteil und Bundesland des Bauorts, keine Namen, keine Straße.
+  Schlüssel nur in der Funktion. Abschalten mit `VERSORGER_SUCHE_ENABLED=false`.
+- **Kosten:** Zwischenspeicher je Ort 180 Tage, höchstens 20 Suchen je Person und Tag, jede Suche mit Tokens, Anzahl der
+  Websuchen und geschätzten Kosten in `versorger_abrufe` (nur Admins lesen; schreiben nur die Funktion).
+- **Strom ohne automatische Westnetz-Abfrage:** westnetz.de steht hinter einem Cloudflare-Bot-Schutz; den umgeht die App
+  nicht. VNBdigital (Portal aller Verteilnetzbetreiber) hat keine öffentlich dokumentierte Schnittstelle. Deshalb sucht die
+  KI auch den Stromnetzbetreiber; zum Gegenprüfen öffnen zwei Knöpfe Westnetz bzw. VNBdigital und kopieren die Bauadresse.
+- **Schwabenhaus:** Strom, Wasser und Abwasser stehen dort auf Seite 2 und werden mitbefüllt (siehe oben).
+
+## Vertrag nachträglich auslesen, Keller/Bodenplatte bauseits
+
+Anlass: Der Vermesservertrag kommt oft erst, wenn das Projekt längst angelegt ist. Bisher ließ er sich nur in die
+Dokumente hochladen; Flurstück, Flur, Gemarkung und Bauadresse mussten von Hand übertragen werden.
+
+- **Bereich „Vertrag nachträglich auslesen“** im Reiter Planungsprotokoll und im Reiter Dokumente (nur Admin und
+  Mitarbeiter, `src/pages/project/VertragNachtraeglich.tsx`). Dieselbe Auslesung wie beim Anlegen (Mock im Demo-Modus,
+  sonst Edge Function `extract-project`), die Dokumentart erkennt die Auslesung, der Mensch kann sie ändern.
+- **Vergleich statt Formular** (`src/lib/extract/nachtraeglich.ts`): je Feld der Wert im Projekt neben dem ausgelesenen.
+  Leere Projektfelder sind vorgewählt, abweichende vorhandene Werte nicht (als „weicht ab“ markiert), gleiche Werte stehen
+  nur als Hinweis darunter und werden nie geschrieben. Als gleich gilt auch eine andere Schreibweise (Bauort mit PLZ,
+  „Flur 3“ = „3“, „Flst. 1234/5“ = „1234/5“, getrennte Bauadresse = eine Zeile, Telefon ohne Leerzeichen).
+- **Übernehmen** schreibt nur die gewählten Felder über `repo.updateProject` (Verlaufseintrag wie beim Bearbeiten) und legt
+  die Datei über `repo.fileContract` im Ordner ihrer Art ab (Vermesservertrag → „04 Vermesser“), mit Vertragsdatum usw.
+  als Metadaten. Liegt dort schon eine Datei gleichen Namens, ist die Ablage nicht vorgewählt. Keine Migration.
+- **Bauadresse** schreibt die eine Zeile und die getrennten Bauort-Felder (Straße, PLZ, Ort), wenn sie eindeutig
+  aufteilbar ist. Bauherr 1 im Projekt nur mit Nachname: der volle Name aus dem Vertrag gilt als Ergänzung (vorgewählt).
+- **Vermesser:** Name und, soweit ausgelesen, Anschrift, Telefon und E-Mail des Büros (neue Felder `vermesserAnschrift`,
+  `vermesserTelefon`, `vermesserEmail`, nur im Vermesservertrag). Gleicher Vermesser: nur fehlende Kontaktangaben werden
+  ergänzt. Im Planungsprotokoll steht beim Vermesser der Standard aus den Bürodaten; der ausgelesene wird trotzdem am
+  Projekt gespeichert. Neues Feld `flur` (Nummer der Flur, getrennt vom Flurstück) für Vermesservertrag, Baugrundauftrag,
+  Honorarvereinbarung und Mail.
+- **Keller/Bodenplatte bauseits** (Feld `kellerBauseits`, nur Werkvertrag): „ja“ nur, wenn der Vertrag ausdrücklich
+  Keller bzw. Bodenplatte als bauseits, Eigenleistung oder nicht im Leistungsumfang nennt; sonst bleibt das Feld leer
+  (nie „nein“). App und Edge Function verwerfen jeden anderen Wert. Folge: Beteiligter „Kellerbauer“ mit Namen „Bauseits“.
+  Beim Anlegen aus einem Vertrag wird er nach dem Anlegen eingetragen (die Prüfmaske nennt das am Werkvertrag); beim
+  nachträglichen Auslesen ist er nur vorgewählt, solange kein anderer Kellerbauer eingetragen ist.
+- Die Konstante `KELLER_BAUSEITS` in `nachtraeglich.ts` hat denselben Text wie `BAUSEITS` aus den festen Feldregeln des
+  Planungsprotokolls (`src/lib/planungsprotokoll/daten.ts`, paralleler Zweig); nach dem Zusammenführen dorthin verweisen.
+
+- **Noch offen** (nächste Schritte): Bauamt, Wasser und Abwasser per KI-Suche vorschlagen, Strom über VNBdigital (Westnetz.de
+  ist durch einen Bot-Schutz gesperrt und wird nicht automatisch abgefragt), Vermesservertrag nachträglich auslesen,
+  Clayton-Auftrag für Schwabenhaus-Kunden erzeugen.
+
+## Baugrundauftrag an Clayton (Migration 0031)
+
+Bei Schwabenhaus beauftragt ABM das Baugrundgutachten für den Kunden (bei Bien-Zenker und Living Haus ist es im Hauspreis).
+Die App füllt das Auftragsformular von clayton Umwelt-Consult (F324, 3 Seiten) und die Anlage A aus den Projektdaten und legt
+beides als **ein** PDF ab. Sie versendet nichts: der Kunde kreuzt an und unterschreibt, ABM schickt den Auftrag selbst.
+
+- **Wo:** eigene Karte „Baugrundauftrag Clayton“ im Reiter Planungsprotokoll (`src/pages/project/ClaytonAuftrag.tsx`), nur
+  wenn die Hausbaufirma Schwabenhaus ist (`brauchtBaugrundauftrag`, gleiche Erkennung wie `vorlageFuerFirma`) und nur für
+  Admin und Mitarbeiter. Keine Aufgabe, keine Warnung.
+- **Werte** (`src/lib/baugrundauftrag/daten.ts`): Bauherr, Bauort und Kellerbauer kommen aus `protokollDaten` (dieselben Regeln
+  wie im Planungsprotokoll, u. a. Kellerbauer = Eintrag im Projekt wie „Bauseits“, sonst die Hausbaufirma). Tel. des
+  Bauherrn: Festnetz vor Mobil. Haushersteller: Firma des Projekts, Projektnummer = Hausbau-Nr., Ansprechpartner und E-Mail =
+  Verkäufer (eine Telefonnummer des Verkäufers führt die App nicht). Planer: nur die Bürodaten (Name, Tel., E-Mail).
+  „PLZ, Ort, Gemarkung“ als „89134 Blaustein, Gemarkung Bermaringen“. Was fehlt, bleibt leer; die Karte zeigt es mit „fehlt“.
+- **Ankreuzen:** nur „per E-Mail (im PDF-Format)“ (wenn eine E-Mail des Bauherrn da ist) und „Anlage A beigefügt“.
+  Unterkellerung, Art des Bauvorhabens, Geschosse, Garage, Pläne und den eigentlichen Auftragshaken („Ich / Wir beauftragen“)
+  setzt der Kunde. Formular-Nr., Anzahl Sondierungen und Preise (schreibgeschützt vorbelegt) bleiben unverändert.
+- **PDF** (`src/lib/baugrundauftrag/pdf.ts`): Anlage A wird an das Auftragsformular angehängt (Seite 4), ihre Felder kommen
+  ins Formular des Auftrags. Gleich benannte Felder würden verschmelzen: dann gibt es kein PDF. Befüllt wird mit
+  `erzeugeProtokoll` aus dem Planungsprotokoll (Liberation Sans für Umlaute, Schriftgröße passend, Prüfung, dass nichts
+  anderes verändert wurde, bearbeitbare Fassung). Dateiname `Baugrundauftrag_Clayton_<Bauherr>_<JJJJ-MM-TT_HHMM>.pdf`.
+- **Ablage:** Ordner „10 Bodengutachten“, derselbe wie für den Dokumenttyp „baugrundauftrag“ der Vertragsauslesung
+  (`CONTRACT_FOLDER.baugrundauftrag`). Jede Fassung ist ein neues Dokument plus Zeile in `baugrundauftraege` (wie 0028:
+  Admin und Mitarbeiter lesen und legen an, kein Ändern, kein Löschen; Freiberufler und Konten ohne Rolle sehen nichts).
+- **Vorlagen:** Firmendokumente, nicht im Repo. Echtbetrieb: Bucket „vorlagen“ unter `clayton/auftrag.pdf` und
+  `clayton/anlage-a.pdf` (`npm run vorlagen:hochladen`, prüft vorher alle Feldnamen). Demo-Modus: lokaler Ordner
+  `vorlagen/clayton/` mit den Dateinamen, wie Clayton sie liefert. Feld-Inventar (ohne Personendaten) in
+  `docs/baugrundauftrag/clayton.json`, erzeugt mit `node scripts/baugrundauftrag/felder.mjs`; die Tests bauen die Vorlagen
+  daraus nach.
+- **Datenbanktests in dieser Umgebung:** kein lokales Postgres; `tools/test-db.sh` lief unverändert mit Postgres 16.14 aus
+  `@embedded-postgres/darwin-arm64` und einem kleinen psql-Ersatz (Node, `pg`), beides nur temporär außerhalb des Repos.

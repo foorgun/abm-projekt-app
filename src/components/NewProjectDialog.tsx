@@ -26,6 +26,7 @@ import { companyForAbm, suggestNummer } from "../lib/abmNr";
 import { suggestBundesland } from "../lib/bundesland";
 import { isPilot } from "../lib/appMode";
 import { scanWerkvertragFile, vermesservertragFile, vorlageVermessungFile } from "../lib/extract/fixtures";
+import { beteiligteNachAnlage, KELLER_BAUSEITS } from "../lib/extract/nachtraeglich";
 import { sourcePage } from "../lib/extract/previewState";
 import { extension } from "../lib/files";
 import { formatBytes, formatDate, monthStart } from "../lib/format";
@@ -103,11 +104,16 @@ const CONFLICT_LABEL: Partial<Record<DraftFieldKey, string>> & Record<string, st
   company: "Hausbaufirma",
   buildingAddress: "Bauadresse",
   location: "Bauort",
+  flur: "Flur",
   flurstueck: "Flurstück",
   gemarkung: "Gemarkung",
   vermesser: "Vermesser",
   rechtsform: "Rechtsform",
   foerderung: "Förderung",
+  vermesserAnschrift: "Anschrift (Vermesser)",
+  vermesserTelefon: "Telefon (Vermesser)",
+  vermesserEmail: "E-Mail (Vermesser)",
+  kellerBauseits: "Keller/Bodenplatte bauseits",
 };
 
 /** Eine hineingezogene Mail (.eml): wird mit dem Projekt samt der nicht auslesbaren Anhänge in MAIL_FOLDER abgelegt. */
@@ -705,6 +711,13 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
       return setServerError(res.error);
     }
     const notes = [v.createFolders ? "Projektordner aus der Vorlage angelegt." : "Ohne Projektordner angelegt."];
+    // Beteiligte, die das Formular nicht kennt: Kellerbauer „Bauseits“ laut Werkvertrag, Kontakt des Vermessers
+    const beteiligte = beteiligteNachAnlage(draft, effective.vermesser);
+    if (beteiligte) {
+      const extra = await mutate((r) => r.updateProject(res.value.id, { parties: beteiligte }));
+      if (!extra.ok) notes.push(`Beteiligte nicht ergänzt: ${extra.error}`);
+      else if (beteiligte.kellerbauer) notes.push(`Kellerbauer: „${KELLER_BAUSEITS}“ (laut Werkvertrag).`);
+    }
     if (missing.length && !pilot) notes.push(`Aufgabe angelegt: ${missing.length === 1 ? "eine Angabe" : `${missing.length} Angaben`} nachfragen.`);
     const { filed, errors: filingErrors, mailErrors } = await fileInto(res.value.id);
     setBusy(false);
@@ -1426,6 +1439,7 @@ function NewProjectDialog({ onClose, draftId, request }: { onClose: () => void; 
                 </Field>
                 <Field label="Flur" htmlFor="np-flur">
                   <Input id="np-flur" value={v.flur ?? ""} onChange={(e) => set({ flur: e.target.value || null })} autoComplete="off" />
+                  <Src k="flur" />
                 </Field>
               </div>
             </details>
