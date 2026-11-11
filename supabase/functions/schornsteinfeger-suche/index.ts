@@ -167,6 +167,16 @@ Deno.serve(async (req) => {
       treffer = passendeTreffer(g2.treffer, anfrage.plz, anfang, "anfang");
     }
 
+    // Ungeteilte Straßen: den Schornsteinfeger der ganzen Straße mit der Straßen-ID nachladen (höchstens drei Zeilen)
+    for (const t of treffer.filter((x) => !x.bezirke?.length && x.strassenId).slice(0, 3)) {
+      const r = await abrufen("details", { do: "zeigebevollmaechtigter", plz: t.plz, strassenid: t.strassenId! });
+      if (r === "limit") return limitFehler();
+      if (!r.ok) return json(nichtErreichbar(suchbegriff, r.meldung));
+      const d = detailsLesen(r.html);
+      if (d.ok) t.bevollmaechtigter = d.details;
+      else console.error("Fegersuche: Antwort zur ganzen Straße nicht lesbar");
+    }
+
     // Treffer gelten 90 Tage, "nichts gefunden" 24 Stunden (beim Lesen geprüft); ein älterer Eintrag wird überschrieben
     const antwort = suchAntwort(treffer, anfrage.hausnummer, suchbegriff);
     if (speicherFrist(antwort.status) !== null) {
