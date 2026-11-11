@@ -105,6 +105,7 @@ export async function seite1Ermitteln(repo: Repo, data: Dataset, projectId: stri
       if (!res.ok) return offen("schornsteinfeger", res.message);
       if (res.status !== "eindeutig") return offen("schornsteinfeger", res.meldung ?? "kein eindeutiger Kehrbezirk, bitte unten beim Schornsteinfeger auswählen.");
       const k = res.kandidaten[0];
+      if (k.details) return eintragen("schornsteinfeger", ohneLeer(kontaktAusDetails(k.details)));
       const d = await repo.schornsteinfegerDetails(k.bsmId);
       eintragen("schornsteinfeger", d.ok ? ohneLeer(kontaktAusDetails(d.details)) : { name: k.name });
     } catch (e) {

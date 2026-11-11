@@ -580,8 +580,15 @@ function SchornsteinfegerVorschlag({
   async function uebernehmen() {
     const k = ergebnis?.kandidaten.find((x) => key(x) === wahl);
     if (!k) return;
-    setBusy("details");
     setHinweis(null);
+    // Ungeteilte Straße: Kontaktdaten kamen mit der Suche
+    if (k.details) {
+      onUebernehmen(kontaktAusDetails(k.details));
+      setUebernommen(k.details.name);
+      setErgebnis(null);
+      return;
+    }
+    setBusy("details");
     try {
       const res = await repo.schornsteinfegerDetails(k.bsmId);
       if (res.ok) {
@@ -631,7 +638,7 @@ function SchornsteinfegerVorschlag({
               <input type="radio" name="pp-schornsteinfeger" value={key(k)} checked={wahl === key(k)} onChange={() => setWahl(key(k))} />
               <span className="pp-kandidat-text">
                 <strong>{k.name}</strong>
-                <span className="muted">{[`Bezirk ${k.bezirk}`, k.strasse, k.ortsteil].filter(Boolean).join(" · ")}</span>
+                <span className="muted">{[k.bezirk ? `Bezirk ${k.bezirk}` : "für die ganze Straße", k.strasse, k.ortsteil].filter(Boolean).join(" · ")}</span>
               </span>
               {ergebnis.status !== "ohne_hausnummer" && (
                 <Pill tone={PASST_LABEL[k.passt].tone} dot={false}>

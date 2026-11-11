@@ -30,13 +30,19 @@ export interface Bezirk {
   hnr: string;
 }
 
-/** Eine Straße (Zeile der Trefferliste). `bezirke` = null: die Quelle nennt für diese Zeile keine Bezirke. */
+/**
+ * Eine Straße (Zeile der Trefferliste). `bezirke` = null: die Zeile nennt keine Bezirke. Das ist bei ungeteilten Straßen
+ * so (ein Schornsteinfeger für die ganze Straße): dann gibt es nur die Straßen-ID, und der Schornsteinfeger kommt mit einer
+ * zweiten Abfrage (do=zeigebevollmaechtigter) als `bevollmaechtigter`.
+ */
 export interface Treffer {
   strasse: string;
   ortsteil: string | null;
   plz: string;
   ort: string | null;
   bezirke: Bezirk[] | null;
+  strassenId?: string | null;
+  bevollmaechtigter?: Details | null;
 }
 
 export interface Kandidat {
@@ -46,6 +52,8 @@ export interface Kandidat {
   strasse: string;
   ortsteil: string | null;
   passt: Passt;
+  /** Ungeteilte Straße: Kontaktdaten kommen gleich mit (dann ist bsmId leer, keine Detailabfrage nötig) */
+  details?: Details;
 }
 
 export interface SuchAntwort {
@@ -226,9 +234,14 @@ const RANG: Record<Passt, number> = { ja: 0, unsicher: 1, nein: 2 };
  */
 export function bezirkeAbgleichen(treffer: Treffer[], hausnummer: string | null): { status: SuchStatus; kandidaten: Kandidat[] } {
   const mitBezirken = treffer.filter((t) => t.bezirke?.length);
-  if (!mitBezirken.length) return { status: "nicht_gefunden", kandidaten: [] };
+  // Ungeteilte Straße: ein Schornsteinfeger für alle Hausnummern
+  const ganze: Kandidat[] = treffer
+    .filter((t) => !t.bezirke?.length && t.bevollmaechtigter)
+    .map((t) => ({ name: t.bevollmaechtigter!.name, bsmId: "", bezirk: "", strasse: t.strasse, ortsteil: t.ortsteil, passt: "ja" as const, details: t.bevollmaechtigter! }));
+  if (!mitBezirken.length && !ganze.length) return { status: "nicht_gefunden", kandidaten: [] };
+  if (!mitBezirken.length && ganze.length === 1) return { status: "eindeutig", kandidaten: ganze };
   const ohneNummer = !hausnummer || !grundnummer(hausnummerNormalisieren(hausnummer));
-  const kandidaten: Kandidat[] = mitBezirken.flatMap((t) =>
+  const kandidaten: Kandidat[] = [...ganze, ...mitBezirken.flatMap((t) =>
     t.bezirke!.map((b) => ({
       name: b.name,
       bsmId: b.bsmId,
@@ -237,7 +250,7 @@ export function bezirkeAbgleichen(treffer: Treffer[], hausnummer: string | null)
       ortsteil: t.ortsteil,
       passt: ohneNummer ? ("unsicher" as const) : hausnummerPasst(b.hnr, hausnummer!),
     })),
-  );
+  )];
   if (ohneNummer) return { status: "ohne_hausnummer", kandidaten };
   kandidaten.sort((a, b) => RANG[a.passt] - RANG[b.passt]);
   const ja = kandidaten.filter((k) => k.passt === "ja").length;
@@ -348,7 +361,8 @@ export function strassenLesen(html: string): { ok: true; treffer: Treffer[] } | 
     const plzAttr = leerZuNull(attribut(zeile, "data-plz"));
     const ortsteilSpalte = leerZuNull(klartext(zellen[1] ?? ""));
     if (all === null) {
-      treffer.push({ strasse, ortsteil: ortsteilSpalte, plz: plzAttr ?? "", ort: null, bezirke: null });
+      const strassenId = leerZuNull(attribut(zeile, "data-strassenId"));
+      treffer.push({ strasse, ortsteil: ortsteilSpalte, plz: plzAttr ?? "", ort: null, bezirke: null, strassenId: strassenId && /^\d+$/.test(strassenId) ? strassenId : null });
       continue;
     }
     const j = bezirkeAusJson(all);
@@ -386,17 +400,21 @@ export function detailsLesen(html: string): { ok: true; details: Details } | { o
   if (!name) return { ok: false };
   const d: Details = { name, plz_ort: null, strasse: null, email: null, tel: null, mobil: null, fax: null, innung: null };
   const wert = (z: string, label: RegExp) => leerZuNull(z.replace(label, ""));
-  for (const z of zeilen(b1)) {
-    if (z === name) continue;
+  // Die Quelle setzt Mobil und E-Mail je nach Abfrage in den linken oder rechten Block: Beschriftete Zeilen überall lesen
+  const beschriftet = (z: string): boolean => {
     if (/^e-?mail\s*:/i.test(z)) d.email = wert(z, /^e-?mail\s*:/i);
-    else if (/^\d{5}\s/.test(z)) d.plz_ort = z.replace(/\s+\/\s*([A-Za-zÄÖÜ]{1,3})$/, " /$1");
-    else if (!d.strasse) d.strasse = z;
-  }
-  for (const z of zeilen(b2)) {
-    if (/^tel\.?\s*:/i.test(z)) d.tel = wert(z, /^tel\.?\s*:/i);
+    else if (/^tel\.?\s*:/i.test(z)) d.tel = wert(z, /^tel\.?\s*:/i);
     else if (/^fax\s*:/i.test(z)) d.fax = wert(z, /^fax\s*:/i);
     else if (/^mobil\s*:/i.test(z)) d.mobil = wert(z, /^mobil\s*:/i);
+    else return /^web\s*:/i.test(z);
+    return true;
+  };
+  for (const z of zeilen(b1)) {
+    if (z === name || beschriftet(z)) continue;
+    if (/^\d{5}\s/.test(z)) d.plz_ort = z.replace(/\s+\/\s*([A-Za-zÄÖÜ]{1,3})$/, " /$1");
+    else if (!d.strasse) d.strasse = z;
   }
+  for (const z of zeilen(b2)) beschriftet(z);
   const innung = [...html.matchAll(/<div\b[^>]*>([^<]*Innung[^<]*)<\/div>/gi)].map((m) => klartext(m[1]))[0];
   if (innung) d.innung = innung.match(/Mitglied der (.+)$/i)?.[1]?.trim() ?? innung;
   return { ok: true, details: d };
@@ -422,6 +440,8 @@ export function speicherFrist(status: SuchStatus): number | null {
 
 /** Gilt ein gespeichertes Suchergebnis noch? Die Frist hängt davon ab, ob es Bezirke enthält (nicht von der Hausnummer). */
 export function cacheGueltig(treffer: Treffer[], abgerufenAm: string, now: Date): boolean {
+  // Neu abfragen: Einträge von vor dem Nachladen (ohne Feld strassenId) und Straßen, deren Schornsteinfeger nicht nachkam
+  if (treffer.some((t) => !t.bezirke?.length && !t.bevollmaechtigter && (t.strassenId === undefined || !!t.strassenId))) return false;
   const frist = speicherFrist(bezirkeAbgleichen(treffer, null).status);
   const am = Date.parse(abgerufenAm);
   return frist !== null && Number.isFinite(am) && now.getTime() - am < frist;

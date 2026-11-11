@@ -360,7 +360,7 @@ describe("Eingabe, Limits, Funktion", () => {
   });
   it("gespeichertes nicht_gefunden (leer oder ohne Bezirke) gilt nur 24 Stunden", () => {
     const am = "2026-10-20T08:00:00.000Z";
-    for (const treffer of [[], [{ ...VOGELSANG[0], bezirke: null }]] as Treffer[][]) {
+    for (const treffer of [[], [{ ...VOGELSANG[0], bezirke: null, strassenId: null }]] as Treffer[][]) {
       expect(cacheGueltig(treffer, am, new Date("2026-10-21T07:59:59Z"))).toBe(true);
       expect(cacheGueltig(treffer, am, new Date("2026-10-21T08:00:00Z"))).toBe(false);
       expect(cacheGueltig(treffer, am, new Date("2026-11-01T08:00:00Z"))).toBe(false);
@@ -395,5 +395,48 @@ describe("Demo-Modus", () => {
     expect(demoDetails("9001")).toMatchObject({ ok: true, details: { name: "Erika Rußmann" } });
     expect(demoDetails("9002")).toMatchObject({ ok: true, details: { mobil: null, email: null } });
     expect(demoDetails("1").ok).toBe(false);
+  });
+});
+
+// Ungeteilte Straße (z. B. eine Straße mit nur einem Kehrbezirk): Die Trefferzeile hat kein data-all, nur eine Straßen-ID;
+// der Schornsteinfeger kommt mit do=zeigebevollmaechtigter. Aufbau wie die echte Antwort, Daten erfunden.
+const UNGETEILT_SUCHE =
+  "<table id='street' class='display street'><thead><tr><th>Straße</th><th>Ortsteil</th><th class='auswaehlen'></th></tr></thead><tbody>" +
+  "<tr class='click mark' data-ortid='99001'><td>Musterstraße</td><td>Musterstadt</td><td class='auswaehlen' align='center'><a data-plz='89000' data-strassenId='99001'>Auswählen</a></td></tr>";
+const UNGETEILT_DETAILS =
+  "<div class='beraterliste'><div style='font-size:10px;'>Schornsteinfegermeister - Mitglied der Innung Musterstadt</div><div class='adresse_block1'><strong style='color:#0070b1;'>Max Kehrwieder</strong><br/>\n" +
+  "  89000 Musterstadt <br/> Kaminweg 7<br/><strong>Mobil: </strong>0170 0000001<br/></div><div class='adresse_block2'><b>Tel.:</b> 0000 000001 <br/><b>Fax: </b> 0000 000002<br/><b>E-Mail: </b>kehrwieder@example.de<br><b>Web: </b><a href=\"javascript:goWeb('example.de');\">Hier klicken</a><br /></div></div>";
+
+describe("Ungeteilte Straße", () => {
+  it("liest die Straßen-ID aus der Trefferzeile", () => {
+    const r = strassenLesen(UNGETEILT_SUCHE);
+    expect(r).toEqual({ ok: true, treffer: [{ strasse: "Musterstraße", ortsteil: "Musterstadt", plz: "89000", ort: null, bezirke: null, strassenId: "99001" }] });
+  });
+
+  it("liest Mobil im linken und E-Mail im rechten Block", () => {
+    expect(detailsLesen(UNGETEILT_DETAILS)).toEqual({
+      ok: true,
+      details: { name: "Max Kehrwieder", plz_ort: "89000 Musterstadt", strasse: "Kaminweg 7", email: "kehrwieder@example.de", tel: "0000 000001", mobil: "0170 0000001", fax: "0000 000002", innung: "Innung Musterstadt" },
+    });
+  });
+
+  it("ein Schornsteinfeger für die ganze Straße ist eindeutig, mit oder ohne Hausnummer", () => {
+    const d = detailsLesen(UNGETEILT_DETAILS);
+    if (!d.ok) throw new Error("nicht lesbar");
+    const treffer = [{ strasse: "Musterstraße", ortsteil: null, plz: "89000", ort: null, bezirke: null, strassenId: "99001", bevollmaechtigter: d.details }];
+    for (const nr of ["1", null]) {
+      const a = suchAntwort(treffer, nr, "Musterstraße");
+      expect(a.status).toBe("eindeutig");
+      expect(a.kandidaten[0]).toMatchObject({ name: "Max Kehrwieder", bsmId: "", passt: "ja", details: { email: "kehrwieder@example.de" } });
+    }
+  });
+
+  it("alte Einträge ohne nachgeladenen Schornsteinfeger werden neu abgefragt", () => {
+    const jetzt = new Date("2026-11-11T12:00:00Z");
+    const zeile = { strasse: "Musterstraße", ortsteil: null, plz: "89000", ort: null, bezirke: null };
+    expect(cacheGueltig([zeile], "2026-11-11T11:00:00Z", jetzt)).toBe(false); // alter Eintrag
+    expect(cacheGueltig([{ ...zeile, strassenId: "99001" }], "2026-11-11T11:00:00Z", jetzt)).toBe(false); // Nachladen gescheitert
+    expect(cacheGueltig([{ ...zeile, strassenId: null }], "2026-11-11T11:00:00Z", jetzt)).toBe(true);
+    expect(cacheGueltig([], "2026-11-11T11:00:00Z", jetzt)).toBe(true);
   });
 });
