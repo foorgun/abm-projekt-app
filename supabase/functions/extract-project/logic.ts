@@ -14,9 +14,13 @@ export const FIELDS = [
   "company",
   "buildingAddress",
   "location",
+  "flur",
   "flurstueck",
   "gemarkung",
   "vermesser",
+  "vermesserAnschrift",
+  "vermesserTelefon",
+  "vermesserEmail",
   "vertragsart",
   "vertragsdatum",
   "vertragspreis",
@@ -24,6 +28,7 @@ export const FIELDS = [
   "haustyp",
   "rechtsform",
   "foerderung",
+  "kellerBauseits",
 ] as const;
 
 export type FieldKey = (typeof FIELDS)[number];
@@ -33,16 +38,17 @@ export const DOC_TYPES = ["werkvertrag", "vermessungsvertrag", "baugrundauftrag"
 export type DocType = (typeof DOC_TYPES)[number];
 
 const BAUHERR: FieldKey[] = ["bauherrLabel", "bauherrName", "phone", "email", "address", "bauherr2Name", "bauherr2Phone", "bauherr2Email"];
-const GRUNDSTUECK: FieldKey[] = ["buildingAddress", "location", "flurstueck", "gemarkung"];
+const GRUNDSTUECK: FieldKey[] = ["buildingAddress", "location", "flur", "flurstueck", "gemarkung"];
+const VERMESSER: FieldKey[] = ["vermesser", "vermesserAnschrift", "vermesserTelefon", "vermesserEmail"];
 const VERTRAG: FieldKey[] = ["vertragsart", "vertragsdatum", "vertragspreis", "angebotsnummer"];
 
 /** Schema je Dokumentart: nur diese Felder werden übernommen. Muss zu FIELDS_BY_TYPE der App passen (Test). */
 export const FIELDS_BY_TYPE: Record<DocType, readonly FieldKey[]> = {
-  werkvertrag: [...BAUHERR, "company", ...VERTRAG, "haustyp", "rechtsform", "foerderung"],
-  vermessungsvertrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, "vermesser", ...VERTRAG],
+  werkvertrag: [...BAUHERR, "company", ...VERTRAG, "haustyp", "rechtsform", "foerderung", "kellerBauseits"],
+  vermessungsvertrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, ...VERMESSER, ...VERTRAG],
   baugrundauftrag: ["bauherrLabel", "bauherrName", "phone", "email", "address", ...GRUNDSTUECK, ...VERTRAG],
   honorarvereinbarung: [...BAUHERR, ...GRUNDSTUECK, ...VERTRAG],
-  sonstiges: FIELDS.filter((k) => k !== "haustyp" && k !== "rechtsform" && k !== "foerderung"),
+  sonstiges: FIELDS.filter((k) => k !== "haustyp" && k !== "rechtsform" && k !== "foerderung" && k !== "kellerBauseits"),
 };
 
 /**
@@ -361,11 +367,12 @@ Bedeutung der Felder:
 - phone, email: Telefon und E-Mail des ersten Bauherrn. address: Wohnanschrift der Bauherren (Straße Hausnummer, PLZ Ort).
 - bauherr2Name, bauherr2Phone, bauherr2Email: zweiter Bauherr, falls eingetragen.
 - company: Hausbaufirma bzw. Auftragnehmer des Werkvertrags (aus Briefkopf oder Vertragstext).
-- buildingAddress, location, flurstueck, gemarkung: NUR wenn die Stelle ausdrücklich als Baugrundstück, Bauort, Bauvorhaben, Flurstück oder Gemarkung bezeichnet ist. Im Werkvertrag steht das Baugrundstück nicht. Die Wohnanschrift ist nie die Bauadresse. location ist der Ort des Bauvorhabens (z. B. "Blaustein").
-- vermesser: Name des Vermessungsbüros.
+- buildingAddress, location, flur, flurstueck, gemarkung: NUR wenn die Stelle ausdrücklich als Baugrundstück, Bauort, Bauvorhaben, Flur, Flurstück oder Gemarkung bezeichnet ist. Im Werkvertrag steht das Baugrundstück nicht. Die Wohnanschrift ist nie die Bauadresse. location ist der Ort des Bauvorhabens (z. B. "Blaustein"). flur ist nur die Nummer der Flur (z. B. "3"), flurstueck nur die Flurstücksnummer (z. B. "1234/5").
+- vermesser: Name des Vermessungsbüros. vermesserAnschrift, vermesserTelefon, vermesserEmail: Anschrift (Straße Hausnummer, PLZ Ort), Telefon und E-Mail des Vermessungsbüros (meist im Briefkopf), nie die des Bauherrn.
 - vertragsdatum: Datum des Vertrags bzw. Auftrags als JJJJ-MM-TT. vertragspreis: Betrag wie im Dokument, z. B. "312.450,00 €". angebotsnummer: Angebots- oder Auftragsnummer, wie sie dasteht. haustyp: Bezeichnung des Hauses.
 - rechtsform: "Eheleute" oder "Bauherrengemeinschaft", nur wenn angekreuzt oder eingetragen.
 - foerderung: "ja", wenn eine KfW- oder WEF-Förderung angekreuzt ist, sonst weglassen.
+- kellerBauseits: "ja" NUR, wenn der Vertrag ausdrücklich sagt, dass Keller bzw. Bodenplatte bauseits, in Eigenleistung des Bauherrn oder nicht im Leistungsumfang sind (z. B. "Ausführung ab Oberkante Bodenplatte/Kellerdecke", "Keller/Bodenplatte bauseits"). Sonst weglassen, auch wenn nichts dazu dasteht; nie "nein" angeben.
 
 Ausgabe: ein Array "felder" mit einem Eintrag je gefundenem Feld und ein Array "hinweise".
 Erlaubte Werte für "feld" (genau diese Schreibweise, jedes höchstens einmal, keine anderen): ${FIELDS.join(", ")}.
@@ -426,6 +433,8 @@ export function toResponse(raw: unknown, art: DocType | null = null, only: reado
   const allowed = new Set<FieldKey>(only ?? FIELDS_BY_TYPE[dokumentart]);
   for (const k of FIELDS) if (k !== "vertragsart" && !allowed.has(k)) felder[k] = { wert: null, quelle: null, sicherheit: "niedrig" };
   felder.vertragsart = { ...felder.vertragsart, wert: dokumentart, sicherheit: art ? "hoch" : felder.vertragsart.sicherheit };
+  // Keller/Bodenplatte bauseits: nur ein ausdrückliches "ja" zählt
+  if (felder.kellerBauseits.wert) felder.kellerBauseits = felder.kellerBauseits.wert.toLowerCase() === "ja" ? { ...felder.kellerBauseits, wert: "ja" } : { wert: null, quelle: null, sicherheit: "niedrig" };
   return { ok: true, dokumentart, felder, hinweise };
 }
 

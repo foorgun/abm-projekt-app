@@ -1,5 +1,6 @@
 import { FileText, RotateCcw, X } from "lucide-react";
 import { PHASE_PROGRESS, type JobState } from "../lib/extract/batch";
+import { KELLER_BAUSEITS } from "../lib/extract/nachtraeglich";
 import { FOERDER_FRIST_MONATE, foerderFrist, VERTRAGSART_LABEL, VERTRAGSARTEN, type Vertragsart } from "../lib/extract/types";
 import { formatBytes, formatDate } from "../lib/format";
 import type { ContractMeta } from "../lib/types";
@@ -175,9 +176,10 @@ export function DocumentCards({
                 <Input id={`${id}-haustyp`} value={d.meta.haustyp ?? ""} onChange={(e) => onMeta(d, "haustyp", e.target.value)} autoComplete="off" />
               </Field>
             )}
-            {(f?.rechtsform.wert || f?.foerderung.wert) && (
+            {(f?.rechtsform.wert || f?.foerderung.wert || f?.kellerBauseits.wert) && (
               <ul className="contract-notes">
                 {f.rechtsform.wert && <li>Rechtsform laut Vertrag: {f.rechtsform.wert}</li>}
+                {f.kellerBauseits.wert && <li>Keller/Bodenplatte laut Vertrag bauseits: im Projekt wird beim Kellerbauer „{KELLER_BAUSEITS}“ eingetragen.</li>}
                 {f.foerderung.wert && (
                   <li>
                     KfW/WEF-Förderung angekreuzt. Frist {FOERDER_FRIST_MONATE} Monate ab Vertragsdatum

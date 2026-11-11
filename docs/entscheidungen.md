@@ -763,3 +763,33 @@ Ablauf haben.
   im Ablauf einträgt, nimmt die Anfrage damit an (mit der Prüfung auf den Bauherrn). Danach zeigt die Seite den Ablauf
   des Projekts.
 - **Kein Planungsprotokoll** bei Anfragen: der Reiter erscheint erst nach dem Annehmen.
+
+## Vertrag nachträglich auslesen, Keller/Bodenplatte bauseits
+
+Anlass: Der Vermesservertrag kommt oft erst, wenn das Projekt längst angelegt ist. Bisher ließ er sich nur in die
+Dokumente hochladen; Flurstück, Flur, Gemarkung und Bauadresse mussten von Hand übertragen werden.
+
+- **Bereich „Vertrag nachträglich auslesen“** im Reiter Planungsprotokoll und im Reiter Dokumente (nur Admin und
+  Mitarbeiter, `src/pages/project/VertragNachtraeglich.tsx`). Dieselbe Auslesung wie beim Anlegen (Mock im Demo-Modus,
+  sonst Edge Function `extract-project`), die Dokumentart erkennt die Auslesung, der Mensch kann sie ändern.
+- **Vergleich statt Formular** (`src/lib/extract/nachtraeglich.ts`): je Feld der Wert im Projekt neben dem ausgelesenen.
+  Leere Projektfelder sind vorgewählt, abweichende vorhandene Werte nicht (als „weicht ab“ markiert), gleiche Werte stehen
+  nur als Hinweis darunter und werden nie geschrieben. Als gleich gilt auch eine andere Schreibweise (Bauort mit PLZ,
+  „Flur 3“ = „3“, „Flst. 1234/5“ = „1234/5“, getrennte Bauadresse = eine Zeile, Telefon ohne Leerzeichen).
+- **Übernehmen** schreibt nur die gewählten Felder über `repo.updateProject` (Verlaufseintrag wie beim Bearbeiten) und legt
+  die Datei über `repo.fileContract` im Ordner ihrer Art ab (Vermesservertrag → „04 Vermesser“), mit Vertragsdatum usw.
+  als Metadaten. Liegt dort schon eine Datei gleichen Namens, ist die Ablage nicht vorgewählt. Keine Migration.
+- **Bauadresse** schreibt die eine Zeile und die getrennten Bauort-Felder (Straße, PLZ, Ort), wenn sie eindeutig
+  aufteilbar ist. Bauherr 1 im Projekt nur mit Nachname: der volle Name aus dem Vertrag gilt als Ergänzung (vorgewählt).
+- **Vermesser:** Name und, soweit ausgelesen, Anschrift, Telefon und E-Mail des Büros (neue Felder `vermesserAnschrift`,
+  `vermesserTelefon`, `vermesserEmail`, nur im Vermesservertrag). Gleicher Vermesser: nur fehlende Kontaktangaben werden
+  ergänzt. Im Planungsprotokoll steht beim Vermesser der Standard aus den Bürodaten; der ausgelesene wird trotzdem am
+  Projekt gespeichert. Neues Feld `flur` (Nummer der Flur, getrennt vom Flurstück) für Vermesservertrag, Baugrundauftrag,
+  Honorarvereinbarung und Mail.
+- **Keller/Bodenplatte bauseits** (Feld `kellerBauseits`, nur Werkvertrag): „ja“ nur, wenn der Vertrag ausdrücklich
+  Keller bzw. Bodenplatte als bauseits, Eigenleistung oder nicht im Leistungsumfang nennt; sonst bleibt das Feld leer
+  (nie „nein“). App und Edge Function verwerfen jeden anderen Wert. Folge: Beteiligter „Kellerbauer“ mit Namen „Bauseits“.
+  Beim Anlegen aus einem Vertrag wird er nach dem Anlegen eingetragen (die Prüfmaske nennt das am Werkvertrag); beim
+  nachträglichen Auslesen ist er nur vorgewählt, solange kein anderer Kellerbauer eingetragen ist.
+- Die Konstante `KELLER_BAUSEITS` in `nachtraeglich.ts` hat denselben Text wie `BAUSEITS` aus den festen Feldregeln des
+  Planungsprotokolls (`src/lib/planungsprotokoll/daten.ts`, paralleler Zweig); nach dem Zusammenführen dorthin verweisen.

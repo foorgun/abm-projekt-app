@@ -20,6 +20,7 @@ export type FormKey =
   | "companyId"
   | "buildingAddress"
   | "location"
+  | "flur"
   | "flurstueck"
   | "gemarkung"
   | "vermesser"
@@ -42,6 +43,7 @@ export const FORM_SOURCE: Record<FormKey, DraftFieldKey> = {
   companyId: "company",
   buildingAddress: "buildingAddress",
   location: "location",
+  flur: "flur",
   flurstueck: "flurstueck",
   gemarkung: "gemarkung",
   vermesser: "vermesser",
@@ -92,6 +94,7 @@ export function applyDraft(draft: ProjectDraft, base: NewProject, ctx: { compani
     // andere Firma als im leeren Formular: ein vorgewählter Verkäufer passt nicht mehr
     salespersonId: company && company.id !== base.companyId ? null : base.salespersonId,
     vermesser: v("vermesser") ?? base.vermesser ?? null,
+    flur: v("flur") ?? base.flur ?? null,
     flurstueck: v("flurstueck"),
     gemarkung: v("gemarkung"),
     bauherr: namenTeilen({
@@ -133,6 +136,7 @@ export function formPatchFor(key: DraftFieldKey, wert: string, companies: Compan
   switch (key) {
     case "bauherrLabel":
     case "location":
+    case "flur":
     case "flurstueck":
     case "gemarkung":
     case "vermesser":

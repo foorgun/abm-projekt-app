@@ -29,6 +29,7 @@ export const SCAN_WERKVERTRAG_FELDER: Partial<Record<DraftFieldKey, DraftField>>
   angebotsnummer: f("A-2026-0417", "Angebot Nr. A-2026-0417", "mittel"),
   haustyp: f("Beispielhaus 140", "Haustyp: Beispielhaus 140", "mittel"),
   foerderung: f("ja", "☒ KfW/WEF-Förderung", "mittel"),
+  kellerBauseits: f("ja", "☒ Ausführung ab Oberkante Bodenplatte (Bodenplatte bauseits)", "mittel"),
 };
 
 /** Zeilen des erfundenen Scans; daraus zeichnet der Demo-Modus das Bild (gedruckter Vordruck, Eintragungen wie von Hand). */
@@ -44,6 +45,7 @@ export const SCAN_WERKVERTRAG_ZEILEN: { text: string; hand?: string }[] = [
   { text: "Haustyp:", hand: "Beispielhaus 140" },
   { text: "Vertragspreis (inkl. USt.):", hand: "312.450,00 €" },
   { text: "☒ KfW/WEF-Förderung wird beantragt (Frist 15 Monate ab Vertragsdatum)" },
+  { text: "☒ Ausführung ab Oberkante Bodenplatte (Bodenplatte bauseits)" },
   { text: "Ort, Datum:", hand: "Ulm, den 02.10.2026" },
   { text: "ERFUNDENES BEISPIEL · keine echten Daten" },
 ];
@@ -126,7 +128,7 @@ export const VERMESSERVERTRAG_ZEILEN: string[] = [
   "Anschrift: Lindenweg 12, 89073 Ulm",
   "Telefon: 0731 000119",
   "Baugrundstück: Am Hölzle 12, 89134 Blaustein",
-  "Flurstück: 1234/5   Gemarkung: Bermaringen",
+  "Flur: 3   Flurstück: 1234/5   Gemarkung: Bermaringen",
   "Leistungen: [x] Lageplan zum Bauantrag   [x] Absteckung",
   "Honorar: 2.380,00 EUR",
   "Ulm, den 05.10.2026",
