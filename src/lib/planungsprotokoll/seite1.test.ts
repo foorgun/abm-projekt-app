@@ -65,6 +65,14 @@ describe("Seite 1 ausfüllen", () => {
     expect(e.offen).toContain("Schornsteinfeger: Netz weg");
   });
 
+  it("nennt einen fehlenden Wert beim Standort nur einmal", async () => {
+    const { repo, data, p } = await vorbereiten();
+    const m = "Bundesland des Bauorts fehlt.";
+    const ohne: Repo = { ...repo, standortAnalyse: async () => ({ ok: false, code: "fehlende_angaben", message: m, fehlt: [m] }) };
+    const e = await seite1Ermitteln(ohne, data, p.id);
+    expect(e.offen).toContain(`Gemeinde: ${m}`);
+  });
+
   it("Bundesland im Protokoll: ohne eigene Angabe das des Projekts", async () => {
     const { data, p } = await vorbereiten();
     const ohne: Dataset = { ...data, projects: data.projects.map((x) => (x.id === p.id ? { ...x, bundesland: "BW" } : x)), bauherren: data.bauherren.map((b) => (b.projectId === p.id ? { ...b, siteState: null } : b)) };

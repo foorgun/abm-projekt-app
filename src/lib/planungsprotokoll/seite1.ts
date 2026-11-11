@@ -55,7 +55,7 @@ export async function seite1Ermitteln(repo: Repo, data: Dataset, projectId: stri
     try {
       const res = await repo.standortAnalyse(projectId);
       if (!res.ok) {
-        if (mitGemeinde) offen("gemeinde", [res.message, ...(res.fehlt ?? [])].join(" "));
+        if (mitGemeinde) offen("gemeinde", [...new Set([res.message, ...(res.fehlt ?? [])])].join(" "));
         return;
       }
       if (mitGemeinde) {

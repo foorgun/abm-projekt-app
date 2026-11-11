@@ -45,7 +45,18 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
   const [busy, setBusy] = useState<ProtokollVariante | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
   const [fuellt, setFuellt] = useState(false);
-  const [bericht, setBericht] = useState<Seite1Ergebnis | null>(null);
+  // Bericht der letzten Suche: bleibt beim Wechsel des Reiters und beim Neuladen sichtbar (je Projekt, nur in diesem Tab)
+  const berichtKey = `abm-seite1-${project.id}`;
+  const [bericht, setBerichtState] = useState<Seite1Bericht | null>(() => berichtLesen(berichtKey));
+  const setBericht = (b: Seite1Bericht | null) => {
+    setBerichtState(b);
+    try {
+      if (b) sessionStorage.setItem(berichtKey, JSON.stringify(b));
+      else sessionStorage.removeItem(berichtKey);
+    } catch {
+      // ohne Speicher (z. B. privater Modus) nur bis zum Verlassen des Reiters
+    }
+  };
 
   // Ein Knopf für Seite 1: alle Suchen zugleich, Treffer nur in leere Rollen, sofort gespeichert (Absprache 11.11.2026)
   async function ausfuellen() {
@@ -53,6 +64,7 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
     setFuellt(true);
     setFehler(null);
     setBericht(null);
+    const am = new Date().toISOString();
     try {
       const e = await seite1Ermitteln(repo, data, project.id);
       if (seite1Neu(e)) {
@@ -60,11 +72,18 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
           if (e.standort) await r.saveStandortAngaben(project.id, e.standort);
           if (Object.keys(e.parties).length) await r.updateProject(project.id, { parties: e.parties });
         });
-        if (!res.ok) return setFehler(res.error);
+        if (!res.ok) {
+          setBericht({ am, eingetragen: [], offen: [`Speichern fehlgeschlagen: ${res.error}`, ...e.offen] });
+          toast("Seite 1 nicht gespeichert", "danger", res.error);
+          return;
+        }
       }
-      setBericht(e);
+      setBericht({ am, eingetragen: e.eingetragen, offen: e.offen });
+      toast(e.eingetragen.length ? "Seite 1 ausgefüllt" : "Seite 1: nichts Neues gefunden", "ok", `${e.eingetragen.length} eingetragen, ${e.offen.length} offen. Details im Kasten Planungsprotokoll.`);
     } catch (e) {
-      setFehler(e instanceof Error ? e.message : String(e));
+      const m = e instanceof Error ? e.message : String(e);
+      setBericht({ am, eingetragen: [], offen: [`Suche abgebrochen: ${m}`] });
+      toast("Seite 1 ausfüllen fehlgeschlagen", "danger", m);
     } finally {
       setFuellt(false);
     }
@@ -146,7 +165,7 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
                 {bericht.eingetragen.length ? (
                   <>
                     <p>
-                      <strong>Eingetragen und gespeichert:</strong>
+                      <strong>Eingetragen und gespeichert</strong> <span className="muted">(Suche von {new Date(bericht.am).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} Uhr)</span>
                     </p>
                     <ul>
                       {bericht.eingetragen.map((x) => (
@@ -155,7 +174,9 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
                     </ul>
                   </>
                 ) : (
-                  <p>Nichts Neues eingetragen.</p>
+                  <p>
+                    <strong>Nichts Neues eingetragen</strong> <span className="muted">(Suche von {new Date(bericht.am).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} Uhr)</span>
+                  </p>
                 )}
                 {bericht.offen.length > 0 && (
                   <>
@@ -193,6 +214,17 @@ export function PlanungsprotokollTab({ project, data, contact }: { project: Proj
       <AngabenForm project={project} data={data} contact={contact} />
     </div>
   );
+}
+
+type Seite1Bericht = Pick<Seite1Ergebnis, "eingetragen" | "offen"> & { am: string };
+
+function berichtLesen(key: string): Seite1Bericht | null {
+  try {
+    const b = JSON.parse(sessionStorage.getItem(key) ?? "null") as Seite1Bericht | null;
+    return b && typeof b.am === "string" && Array.isArray(b.eingetragen) && Array.isArray(b.offen) ? b : null;
+  } catch {
+    return null;
+  }
 }
 
 function stempel(at: string): string {
